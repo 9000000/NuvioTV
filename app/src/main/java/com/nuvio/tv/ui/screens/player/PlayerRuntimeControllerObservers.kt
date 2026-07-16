@@ -159,6 +159,7 @@ internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
     pendingAudioSelectionAfterSubtitleRefresh = null
     resetSubtitleAutoSyncState()
     attachedAddonSubtitleKeys = emptySet()
+    stopSidecarAddonSubtitle(clearView = true)
     _uiState.update {
         it.copy(
             addonSubtitles = emptyList(),

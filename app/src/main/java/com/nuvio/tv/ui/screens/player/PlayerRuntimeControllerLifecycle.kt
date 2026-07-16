@@ -39,6 +39,7 @@ internal fun PlayerRuntimeController.releasePlayer(flushPlaybackState: Boolean) 
     hidePlayerEngineSwitchInfoJob?.cancel()
     hideSubtitleDelayOverlayJob?.cancel()
     subtitleAutoSyncLoadJob?.cancel()
+    stopSidecarAddonSubtitle(clearView = true)
     playbackPreparationJob?.cancel()
     playbackPreparationJob = null
     traktMappingJob?.cancel()

@@ -184,7 +184,7 @@ private fun PlayerRuntimeController.maybeLoadSubtitleAutoSyncCues(force: Boolean
     }
 }
 
-private suspend fun PlayerRuntimeController.downloadSubtitleBody(url: String): String =
+internal suspend fun PlayerRuntimeController.downloadSubtitleBody(url: String): String =
     withContext(Dispatchers.IO) {
         val requestBuilder = Request.Builder().url(url)
         currentHeaders
