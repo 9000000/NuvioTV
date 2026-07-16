@@ -790,28 +790,28 @@ internal fun PlayerRuntimeController.initializePlayer(
                 Log.i(PlayerRuntimeController.TAG, "HDR10PLUS_STRIP: enabled — will remove HDR10+ SEI NALs")
             }
 
-            val effectiveExtractorsFactory: ExtractorsFactory =             
-                    if (isExperimentalDv7ToDv81ActiveForCurrentPlayback || stripDvRpuEnabled || stripHdr10PlusSei) {
-                        DolbyVisionExtractorsFactory(
-                            delegate = extractorsFactory,
-                            config = DolbyVisionConversionConfig(
-                                active = isExperimentalDv7ToDv81ActiveForCurrentPlayback,
-                                forcedMode = when {
-                                    libdoviModeOverrideActive -> libdoviModeOverride
-                                    dv7Mode1Forced -> 1
-                                    else -> -1
-                                },
-                                preserveMapping = playerSettings.dv7ToDv81PreserveMappingEnabled &&
-                                        manualDv81Selected,
-                                dv5Enabled = playerSettings.dv5ToDv81Enabled,
-                                manualDv81 = manualDv81Selected && !dv7Mode1Forced
-                            ),
-                            stripDvRpu = stripDvRpuEnabled,
-                            stripHdr10PlusSei = stripHdr10PlusSei
-                        )
-                    } else {
-                        extractorsFactory
-                    }
+            // Always use DolbyVisionExtractorsFactory: when no DV feature is active it
+            // still swaps stock Matroska for the vendored extractor (DTS-HD MA / DTS:X
+            // first-sample sniff). MP4/TS extractors are returned untouched when
+            // config is inactive.
+            val effectiveExtractorsFactory: ExtractorsFactory =
+                    DolbyVisionExtractorsFactory(
+                        delegate = extractorsFactory,
+                        config = DolbyVisionConversionConfig(
+                            active = isExperimentalDv7ToDv81ActiveForCurrentPlayback,
+                            forcedMode = when {
+                                libdoviModeOverrideActive -> libdoviModeOverride
+                                dv7Mode1Forced -> 1
+                                else -> -1
+                            },
+                            preserveMapping = playerSettings.dv7ToDv81PreserveMappingEnabled &&
+                                    manualDv81Selected,
+                            dv5Enabled = playerSettings.dv5ToDv81Enabled,
+                            manualDv81 = manualDv81Selected && !dv7Mode1Forced
+                        ),
+                        stripDvRpu = stripDvRpuEnabled,
+                        stripHdr10PlusSei = stripHdr10PlusSei
+                    )
 
             setLoadingStatus(
                 phase = "building_player",
