@@ -825,8 +825,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 // createMediaSource falls back to a plain DefaultExtractorsFactory and the
                 // conversion never runs. (The libass path wires it via buildWithAssSupportCompat.)
                 mediaSourceFactory.configureSubtitleParsing(
-                    extractorsFactory =
-                        if (isExperimentalDv7ToDv81ActiveForCurrentPlayback || stripDvRpuEnabled || stripHdr10PlusSei) effectiveExtractorsFactory else null,
+                    // Always wire the Matroska factory — DTS-HD sniff must not depend on DV.
+                    extractorsFactory = effectiveExtractorsFactory,
                     subtitleParserFactory = null
                 )
                 val playerDataSourceFactory = PlayerPlaybackNetworking.createDataSourceFactory(context, headers)
@@ -1244,23 +1244,32 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if ((error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
                              error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK) &&
                             !autoSwitchInternalPlayerOnErrorEnabled) {
-                            if (!isSafeAudioModeActiveForCurrentPlayback) {
-                                safeAudioForcedStreamUrls.add(currentStreamUrl)
-                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
-                                return
-                            }
-                            if (!isAudioDisabledForCurrentPlayback) {
-                                audioDisabledForcedStreamUrls.add(currentStreamUrl)
-                                retryCurrentStreamWithAudioDisabled(currentPosition)
-                                return
+                            // Video decoder failures used to consume the safe-audio budget.
+                            // Only run this ladder when the failing renderer looks like audio.
+                            val failingMime = (error as? androidx.media3.exoplayer.ExoPlaybackException)
+                                ?.rendererFormat?.sampleMimeType
+                            val audioRendererFailed = failingMime == null ||
+                                MimeTypes.isAudio(failingMime)
+                            if (audioRendererFailed) {
+                                if (!isSafeAudioModeActiveForCurrentPlayback) {
+                                    safeAudioForcedStreamUrls.add(currentStreamUrl)
+                                    retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                    return
+                                }
+                                if (!isAudioDisabledForCurrentPlayback) {
+                                    audioDisabledForcedStreamUrls.add(currentStreamUrl)
+                                    retryCurrentStreamWithAudioDisabled(currentPosition)
+                                    return
+                                }
                             }
                         }
 
-                        // AudioTrack init (5001) or write (5002, e.g. ERROR_DEAD_OBJECT on an
-                        // E-AC-3/AC-3 passthrough or offload track) failure: re-select audio with
-                        // passthrough/tunneling off and the channel count constrained to the
-                        // device's capabilities, then fall back to disabling audio so video keeps
-                        // playing — instead of surfacing the fatal error screen.
+                        // AudioTrack init (5001) / write (5002): try a light PCM rebuild first,
+                        // then the heavier safe-audio / disable-audio path below.
+                        if (tryAudioTrackPcmFallback(error)) {
+                            return
+                        }
+
                         if (error.isAudioTrackFailure()) {
                             if (!isSafeAudioModeActiveForCurrentPlayback) {
                                 safeAudioForcedStreamUrls.add(currentStreamUrl)
