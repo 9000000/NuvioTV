@@ -894,8 +894,8 @@ private fun MDBListRatingsRow(ratings: MDBListRatings) {
             Triple("imdb", com.nuvio.tv.R.raw.imdb_logo_2016, ratings.imdb),
             Triple("tmdb", com.nuvio.tv.R.raw.mdblist_tmdb, ratings.tmdb),
             Triple("letterboxd", com.nuvio.tv.R.raw.mdblist_letterboxd, ratings.letterboxd),
-            Triple("tomatoes", com.nuvio.tv.R.raw.mdblist_tomatoes, ratings.tomatoes),
-            Triple("mal", com.nuvio.tv.R.raw.mdblist_mal, ratings.mal)
+            Triple("mal", com.nuvio.tv.R.raw.mdblist_mal, ratings.mal),
+            Triple("tomatoes", com.nuvio.tv.R.raw.mdblist_tomatoes, ratings.tomatoes)
         ).filter { it.third != null }
     }
 
