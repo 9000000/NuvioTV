@@ -509,27 +509,28 @@ object FrameRateUtils {
         }
 
         try {
-            // Pass 1: Head Range (first 2 MB - bytes=0-2097151)
-            val headFetched = fetchHttpRangeToFile(targetUrl, headers, "bytes=0-2097151", tempFile)
+            // Pass 1: Head Range Probe & Debrid Server Warmup (first 2 MB - bytes=0-2097151)
+            val headFetched = fetchHttpRangeToFile(targetUrl, headers, "bytes=0-2097151", tempFile, append = false)
             if (headFetched && tempFile.length() > 0) {
                 val detection = detectFrameRateFromLocalFile(context, tempFile)
                 if (detection != null) {
-                    Log.d(TAG, "OkHttp AFR probe Pass 1 (head) succeeded: FPS=${detection.snapped}")
+                    Log.d(TAG, "OkHttp AFR probe Pass 1 (head 2MB) succeeded: FPS=${detection.snapped}")
                     return detection
                 }
             }
 
-            // Pass 2: Tail Range for MP4/MOV if Pass 1 yielded no FPS (moov atom at end of file)
+            // Pass 2: Concatenated Head (ftyp) + Tail (moov) for Legacy MP4/MOV
+            // Appending tail to head preserves byte 0 'ftyp' atom so FFmpeg parses exact timescale & FPS instead of defaulting to 25fps.
             if (isMp4Source(targetUrl)) {
                 val contentLength = fetchContentLength(targetUrl, headers)
                 if (contentLength > 2_097_152L) {
-                    val tailStart = (contentLength - 1_048_576L).coerceAtLeast(0L)
+                    val tailStart = (contentLength - 1_048_576L).coerceAtLeast(2_097_152L)
                     val tailRange = "bytes=$tailStart-${contentLength - 1}"
-                    val tailFetched = fetchHttpRangeToFile(targetUrl, headers, tailRange, tempFile)
+                    val tailFetched = fetchHttpRangeToFile(targetUrl, headers, tailRange, tempFile, append = true)
                     if (tailFetched && tempFile.length() > 0) {
                         val detection = detectFrameRateFromLocalFile(context, tempFile)
                         if (detection != null) {
-                            Log.d(TAG, "OkHttp AFR probe Pass 2 (tail) succeeded for MP4: FPS=${detection.snapped}")
+                            Log.d(TAG, "OkHttp AFR probe Pass 2 (head+tail concatenation) succeeded for MP4: FPS=${detection.snapped}")
                             return detection
                         }
                     }
@@ -547,7 +548,8 @@ object FrameRateUtils {
         url: String,
         headers: Map<String, String>,
         rangeHeader: String,
-        targetFile: java.io.File
+        targetFile: java.io.File,
+        append: Boolean = false
     ): Boolean {
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
@@ -563,9 +565,9 @@ object FrameRateUtils {
         return try {
             probeHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful && response.code != 206) return false
-                val body = response.body ?: return false
+                val body = response.body
                 body.byteStream().use { input ->
-                    java.io.FileOutputStream(targetFile).use { output ->
+                    java.io.FileOutputStream(targetFile, append).use { output ->
                         input.copyTo(output)
                     }
                 }
