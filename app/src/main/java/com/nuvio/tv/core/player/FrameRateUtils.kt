@@ -443,6 +443,7 @@ object FrameRateUtils {
             .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(false)
@@ -510,7 +511,10 @@ object FrameRateUtils {
 
         try {
             // Pass 1: Head Range Probe & Debrid Server Warmup (first 2 MB - bytes=0-2097151)
-            val headFetched = fetchHttpRangeToFile(targetUrl, headers, "bytes=0-2097151", tempFile, append = false)
+            val headMaxBytes = 2_097_152L + 65_536L
+            val headFetched = fetchHttpRangeToFile(
+                targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, append = false
+            )
             if (headFetched && tempFile.length() > 0) {
                 val detection = detectFrameRateFromLocalFile(context, tempFile)
                 if (detection != null) {
@@ -526,7 +530,10 @@ object FrameRateUtils {
                 if (contentLength > 2_097_152L) {
                     val tailStart = (contentLength - 1_048_576L).coerceAtLeast(2_097_152L)
                     val tailRange = "bytes=$tailStart-${contentLength - 1}"
-                    val tailFetched = fetchHttpRangeToFile(targetUrl, headers, tailRange, tempFile, append = true)
+                    val tailMaxBytes = 1_048_576L + 65_536L
+                    val tailFetched = fetchHttpRangeToFile(
+                        targetUrl, headers, tailRange, tailMaxBytes, tempFile, append = true
+                    )
                     if (tailFetched && tempFile.length() > 0) {
                         val detection = detectFrameRateFromLocalFile(context, tempFile)
                         if (detection != null) {
@@ -544,10 +551,28 @@ object FrameRateUtils {
         return null
     }
 
+    private fun copyStreamBounded(
+        input: java.io.InputStream,
+        output: java.io.OutputStream,
+        maxBytes: Long
+    ): Boolean {
+        val buffer = ByteArray(8192)
+        var totalRead = 0L
+        while (totalRead < maxBytes) {
+            val toRead = minOf(buffer.size.toLong(), maxBytes - totalRead).toInt()
+            val bytesRead = input.read(buffer, 0, toRead)
+            if (bytesRead <= 0) break
+            output.write(buffer, 0, bytesRead)
+            totalRead += bytesRead
+        }
+        return totalRead > 0
+    }
+
     private fun fetchHttpRangeToFile(
         url: String,
         headers: Map<String, String>,
         rangeHeader: String,
+        maxBytes: Long,
         targetFile: java.io.File,
         append: Boolean = false
     ): Boolean {
@@ -562,18 +587,22 @@ object FrameRateUtils {
             }
         }
 
+        val call = probeHttpClient.newCall(requestBuilder.build())
         return try {
-            probeHttpClient.newCall(requestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful && response.code != 206) return false
+            call.execute().use { response ->
+                if (response.code != 206) {
+                    Log.w(TAG, "fetchHttpRangeToFile server did not return 206 Partial Content (code=${response.code})")
+                    return false
+                }
                 val body = response.body
                 body.byteStream().use { input ->
                     java.io.FileOutputStream(targetFile, append).use { output ->
-                        input.copyTo(output)
+                        copyStreamBounded(input, output, maxBytes)
                     }
                 }
-                true
             }
         } catch (e: Exception) {
+            call.cancel()
             Log.w(TAG, "fetchHttpRangeToFile failed ($rangeHeader): ${e.message}")
             false
         }
@@ -591,12 +620,14 @@ object FrameRateUtils {
             }
         }
 
+        val call = probeHttpClient.newCall(requestBuilder.build())
         return try {
-            probeHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+            call.execute().use { response ->
                 if (!response.isSuccessful) return -1L
                 response.header("Content-Length")?.toLongOrNull() ?: -1L
             }
         } catch (_: Exception) {
+            call.cancel()
             -1L
         }
     }

@@ -259,7 +259,13 @@ internal fun PlayerRuntimeController.initializePlayer(
             if (effectiveInternalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
                 mpvInitializationInProgress = true
                 try {
-                    afrJob.await()
+                    val awaitedAfr = withTimeoutOrNull(AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS + 1000L) {
+                        afrJob.await()
+                    }
+                    if (awaitedAfr == null) {
+                        Log.w(PlayerRuntimeController.TAG, "AFR preflight await timed out in MPV branch; cancelling afrJob")
+                        afrJob.cancel()
+                    }
                     if (mpvDelayStartAfterAfrSwitch) {
                         Log.d(PlayerRuntimeController.TAG, "AFR display mode switched; delaying MPV start by ${MPV_AFR_SETTLE_DELAY_MS}ms")
                         delay(MPV_AFR_SETTLE_DELAY_MS)
@@ -565,8 +571,12 @@ internal fun PlayerRuntimeController.initializePlayer(
             isVc1TrackSelectionBypassActiveForCurrentPlayback = vc1TrackSelectionBypassActive
 
             val startupSubtitlePreparation = prepareStreamStartSubtitles(playerSettings)
-            withTimeoutOrNull(AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS + 1000L) {
+            val awaitedAfr = withTimeoutOrNull(AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS + 1000L) {
                 afrJob.await()
+            }
+            if (awaitedAfr == null) {
+                Log.w(PlayerRuntimeController.TAG, "AFR preflight await timed out in ExoPlayer branch; cancelling afrJob")
+                afrJob.cancel()
             }
 
             // ── Libass Setup (From 0.5.7-beta/Left) ──
