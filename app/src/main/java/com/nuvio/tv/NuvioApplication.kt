@@ -50,16 +50,21 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             private val store = ConcurrentHashMap<String, MutableList<Cookie>>()
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                return store[url.host]?.filter { cookie ->
-                    cookie.expiresAt > System.currentTimeMillis()
-                } ?: emptyList()
+                val hostCookies = store[url.host] ?: return emptyList()
+                synchronized(hostCookies) {
+                    return hostCookies.filter { cookie ->
+                        cookie.expiresAt > System.currentTimeMillis()
+                    }
+                }
             }
 
             override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
                 val hostCookies = store.getOrPut(url.host) { mutableListOf() }
-                cookies.forEach { newCookie ->
-                    hostCookies.removeAll { it.name == newCookie.name }
-                    hostCookies.add(newCookie)
+                synchronized(hostCookies) {
+                    cookies.forEach { newCookie ->
+                        hostCookies.removeAll { it.name == newCookie.name }
+                        hostCookies.add(newCookie)
+                    }
                 }
             }
         }
