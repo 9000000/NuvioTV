@@ -43,6 +43,8 @@ import com.nuvio.tv.R
 import java.util.Locale
 import javax.inject.Inject
 
+private val YEAR_REGEX = Regex("""\b(19|20)\d{2}\b""")
+
 data class LibraryTypeTab(
     val key: String,
     val label: String
@@ -710,10 +712,8 @@ class LibraryViewModel @Inject constructor(
             .ifBlank { context.getString(R.string.type_unknown) }
     }
 
-    private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
-
     private fun LibraryEntry.extractYear(): String? =
-        releaseInfo?.let { yearRegex.find(it)?.value }
+        releaseInfo?.let { YEAR_REGEX.find(it)?.value }
 
     private fun LibraryUiState.withVisibleItems(): LibraryUiState {
         // Step 1: List filter (Trakt only)
