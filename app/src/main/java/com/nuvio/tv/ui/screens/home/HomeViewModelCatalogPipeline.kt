@@ -47,7 +47,9 @@ internal fun HomeViewModel.observeCollectionsPipeline() {
             .distinctUntilChanged()
             .debounce(300)
             .collectLatest { collections ->
-                collectionsCache = collections
+                // Deduplicate by collection ID (keep last occurrence) to prevent
+                // duplicate LazyColumn keys when users import overlapping collections.
+                collectionsCache = collections.associateBy { it.id }.values.toList()
                 rebuildCatalogOrder(addonsCache)
                 scheduleUpdateCatalogRows()
             }
@@ -702,9 +704,10 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             val placeholdersByKey = synchronized(catalogStateLock) {
                 placeholderDescriptors.associateBy { it.catalogKey }
             }
+            val addedCollectionIds = mutableSetOf<String>()
             collectionsCache.forEach { collection ->
                 val key = "collection_${collection.id}"
-            if (collection.pinToTop && key !in disabledHomeCatalogKeys) {
+            if (collection.pinToTop && key !in disabledHomeCatalogKeys && addedCollectionIds.add(collection.id)) {
                 add(HomeRow.CollectionRow(collection))
             }
         }
@@ -712,7 +715,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             if (key in disabledHomeCatalogKeys) continue
             val collectionEntry = collectionsSnapshot[key]
             if (collectionEntry != null) {
-                if (!collectionEntry.pinToTop) {
+                if (!collectionEntry.pinToTop && addedCollectionIds.add(collectionEntry.id)) {
                     add(HomeRow.CollectionRow(collectionEntry))
                 }
             } else {
