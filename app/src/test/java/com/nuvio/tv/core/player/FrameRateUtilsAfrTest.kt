@@ -655,6 +655,15 @@ class FrameRateUtilsAfrTest {
         assertEquals(24.11f, FrameRateUtils.snapToStandardRate(24.11f), 0.0001f)
     }
 
+    @Test
+    fun `isMp4Source detects mp4 m4v mov extensions`() {
+        assertTrue(FrameRateUtils.isMp4Source("https://example.com/video.mp4"))
+        assertTrue(FrameRateUtils.isMp4Source("https://example.com/movie.m4v?token=123"))
+        assertTrue(FrameRateUtils.isMp4Source("file:///sdcard/clip.mov"))
+        assertFalse(FrameRateUtils.isMp4Source("https://example.com/video.mkv"))
+        assertFalse(FrameRateUtils.isMp4Source("https://example.com/stream.m3u8"))
+    }
+
     private fun assertNear(expected: Float, actual: Float, epsilon: Float = 0.001f) {
         assertTrue(
             "Expected ~$expected but was $actual",

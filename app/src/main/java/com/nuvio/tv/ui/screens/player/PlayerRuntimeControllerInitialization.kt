@@ -565,7 +565,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             isVc1TrackSelectionBypassActiveForCurrentPlayback = vc1TrackSelectionBypassActive
 
             val startupSubtitlePreparation = prepareStreamStartSubtitles(playerSettings)
-            afrJob.await()
+            withTimeoutOrNull(AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS + 1000L) {
+                afrJob.await()
+            }
 
             // ── Libass Setup (From 0.5.7-beta/Left) ──
             requestedUseLibassByUser = playerSettings.useLibass

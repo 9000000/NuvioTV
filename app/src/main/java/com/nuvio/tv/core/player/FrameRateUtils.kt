@@ -438,11 +438,23 @@ object FrameRateUtils {
         return frameRate.isFinite() && frameRate in MIN_VALID_VIDEO_FPS..MAX_VALID_VIDEO_FPS
     }
 
+    private val probeHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(false)
+            .build()
+    }
+
     fun detectFrameRateFromSource(
         context: Context,
         sourceUrl: String,
         headers: Map<String, String> = emptyMap()
     ): FrameRateDetection? {
+        detectFrameRateWithOkHttpProbe(context, sourceUrl, headers)?.let { return it }
         detectFrameRateFromNextLib(context, sourceUrl, headers)?.let { return it }
         return detectFrameRateFromExtractor(context, sourceUrl, headers)
     }
@@ -467,6 +479,153 @@ object FrameRateUtils {
             }
         }
         return detectFrameRateWithExtractor(context, sourceUrl, headers)
+    }
+
+    internal fun isMp4Source(sourceUrl: String): Boolean {
+        val normalized = sourceUrl.substringBefore('?').lowercase(Locale.ROOT)
+        return normalized.endsWith(".mp4") || normalized.endsWith(".m4v") || normalized.endsWith(".mov")
+    }
+
+    fun detectFrameRateWithOkHttpProbe(
+        context: Context,
+        sourceUrl: String,
+        headers: Map<String, String> = emptyMap()
+    ): FrameRateDetection? {
+        val scheme = parseUriScheme(sourceUrl)
+        if (scheme != "http" && scheme != "https") return null
+        if (isLiveStreamUrl(sourceUrl)) return null
+
+        val targetUrl = if (isResolveProxyUrl(sourceUrl)) {
+            extractEmbeddedResolveUrl(sourceUrl)?.takeIf { it.isNotBlank() } ?: sourceUrl
+        } else {
+            sourceUrl
+        }
+
+        val tempFile = try {
+            java.io.File.createTempFile("afr_probe_", ".tmp", context.cacheDir)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create temp file for AFR probe: ${e.message}")
+            return null
+        }
+
+        try {
+            // Pass 1: Head Range (first 2 MB - bytes=0-2097151)
+            val headFetched = fetchHttpRangeToFile(targetUrl, headers, "bytes=0-2097151", tempFile)
+            if (headFetched && tempFile.length() > 0) {
+                val detection = detectFrameRateFromLocalFile(context, tempFile)
+                if (detection != null) {
+                    Log.d(TAG, "OkHttp AFR probe Pass 1 (head) succeeded: FPS=${detection.snapped}")
+                    return detection
+                }
+            }
+
+            // Pass 2: Tail Range for MP4/MOV if Pass 1 yielded no FPS (moov atom at end of file)
+            if (isMp4Source(targetUrl)) {
+                val contentLength = fetchContentLength(targetUrl, headers)
+                if (contentLength > 2_097_152L) {
+                    val tailStart = (contentLength - 1_048_576L).coerceAtLeast(0L)
+                    val tailRange = "bytes=$tailStart-${contentLength - 1}"
+                    val tailFetched = fetchHttpRangeToFile(targetUrl, headers, tailRange, tempFile)
+                    if (tailFetched && tempFile.length() > 0) {
+                        val detection = detectFrameRateFromLocalFile(context, tempFile)
+                        if (detection != null) {
+                            Log.d(TAG, "OkHttp AFR probe Pass 2 (tail) succeeded for MP4: FPS=${detection.snapped}")
+                            return detection
+                        }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "OkHttp AFR probe failed: ${e.message}")
+        } finally {
+            runCatching { tempFile.delete() }
+        }
+        return null
+    }
+
+    private fun fetchHttpRangeToFile(
+        url: String,
+        headers: Map<String, String>,
+        rangeHeader: String,
+        targetFile: java.io.File
+    ): Boolean {
+        val requestBuilder = okhttp3.Request.Builder()
+            .url(url)
+            .header("Range", rangeHeader)
+            .header("Connection", "close")
+
+        headers.forEach { (k, v) ->
+            if (v.isNotBlank() && !k.equals("Range", ignoreCase = true)) {
+                requestBuilder.header(k, v)
+            }
+        }
+
+        return try {
+            probeHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful && response.code != 206) return false
+                val body = response.body ?: return false
+                body.byteStream().use { input ->
+                    java.io.FileOutputStream(targetFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchHttpRangeToFile failed ($rangeHeader): ${e.message}")
+            false
+        }
+    }
+
+    private fun fetchContentLength(url: String, headers: Map<String, String>): Long {
+        val requestBuilder = okhttp3.Request.Builder()
+            .url(url)
+            .head()
+            .header("Connection", "close")
+
+        headers.forEach { (k, v) ->
+            if (v.isNotBlank() && !k.equals("Range", ignoreCase = true)) {
+                requestBuilder.header(k, v)
+            }
+        }
+
+        return try {
+            probeHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) return -1L
+                response.header("Content-Length")?.toLongOrNull() ?: -1L
+            }
+        } catch (_: Exception) {
+            -1L
+        }
+    }
+
+    private fun detectFrameRateFromLocalFile(context: Context, file: java.io.File): FrameRateDetection? {
+        try {
+            val uri = Uri.fromFile(file)
+            val mediaInfo = MediaInfoBuilder().from(context = context, uri = uri).build()
+            if (mediaInfo != null) {
+                try {
+                    val video = mediaInfo.videoStream
+                    if (video != null) {
+                        val measured = video.frameRate.toFloat()
+                        if (isValidVideoFrameRate(measured)) {
+                            return FrameRateDetection(
+                                raw = measured,
+                                snapped = snapToStandardRate(measured),
+                                videoWidth = video.frameWidth.takeIf { it > 0 },
+                                videoHeight = video.frameHeight.takeIf { it > 0 }
+                            )
+                        }
+                    }
+                } finally {
+                    runCatching { mediaInfo.release() }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.d(TAG, "Local NextLib probe failed: ${e.message}")
+        }
+
+        return detectFrameRateWithExtractor(context, file.absolutePath, emptyMap())
     }
 
     private fun detectFrameRateWithNextLib(
