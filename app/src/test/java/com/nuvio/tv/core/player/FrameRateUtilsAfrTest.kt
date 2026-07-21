@@ -664,6 +664,39 @@ class FrameRateUtilsAfrTest {
         assertFalse(FrameRateUtils.isMp4Source("https://example.com/stream.m3u8"))
     }
 
+    @Test
+    fun `sparse file vs concatenation layout preserves original atom offsets`() {
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"), "mp4_atom_test_${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+        try {
+            val headBytes = "ftypisom00000008".toByteArray(Charsets.US_ASCII)
+            val tailBytes = "moovtrakmdhdstco".toByteArray(Charsets.US_ASCII)
+            val totalContentLength = 10_000_000L
+            val tailStart = 9_000_000L
+
+            // 1. Concatenated File (Head + Tail directly appended)
+            val concatFile = java.io.File(tempDir, "concat.mp4")
+            concatFile.outputStream().use { out ->
+                out.write(headBytes)
+                out.write(tailBytes)
+            }
+            assertEquals(headBytes.size.toLong() + tailBytes.size, concatFile.length())
+            assertTrue(concatFile.length() < tailStart)
+
+            // 2. Sparse File (Head at 0, Seek to tailStart, Write Tail)
+            val sparseFile = java.io.File(tempDir, "sparse.mp4")
+            java.io.RandomAccessFile(sparseFile, "rw").use { raf ->
+                raf.write(headBytes)
+                raf.seek(tailStart)
+                raf.write(tailBytes)
+            }
+            assertEquals(tailStart + tailBytes.size, sparseFile.length())
+            assertTrue(sparseFile.length() >= tailStart)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
     private fun assertNear(expected: Float, actual: Float, epsilon: Float = 0.001f) {
         assertTrue(
             "Expected ~$expected but was $actual",

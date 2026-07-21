@@ -513,7 +513,7 @@ object FrameRateUtils {
             // Pass 1: Head Range Probe & Debrid Server Warmup (first 2 MB - bytes=0-2097151)
             val headMaxBytes = 2_097_152L + 65_536L
             val headFetched = fetchHttpRangeToFile(
-                targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, append = false
+                targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, fileOffset = 0L
             )
             if (headFetched && tempFile.length() > 0) {
                 val detection = detectFrameRateFromLocalFile(context, tempFile)
@@ -523,8 +523,8 @@ object FrameRateUtils {
                 }
             }
 
-            // Pass 2: Concatenated Head (ftyp) + Tail (moov) for Legacy MP4/MOV
-            // Appending tail to head preserves byte 0 'ftyp' atom so FFmpeg parses exact timescale & FPS instead of defaulting to 25fps.
+            // Pass 2: Sparse File Head (ftyp) + Tail (moov) for Legacy MP4/MOV
+            // Writing tail at fileOffset=tailStart via RandomAccessFile preserves exact MP4 atom offsets (stco/co64) without breaking FFmpeg container parser.
             if (isMp4Source(targetUrl)) {
                 val contentLength = fetchContentLength(targetUrl, headers)
                 if (contentLength > 2_097_152L) {
@@ -532,12 +532,12 @@ object FrameRateUtils {
                     val tailRange = "bytes=$tailStart-${contentLength - 1}"
                     val tailMaxBytes = 1_048_576L + 65_536L
                     val tailFetched = fetchHttpRangeToFile(
-                        targetUrl, headers, tailRange, tailMaxBytes, tempFile, append = true
+                        targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = tailStart
                     )
                     if (tailFetched && tempFile.length() > 0) {
                         val detection = detectFrameRateFromLocalFile(context, tempFile)
                         if (detection != null) {
-                            Log.d(TAG, "OkHttp AFR probe Pass 2 (head+tail concatenation) succeeded for MP4: FPS=${detection.snapped}")
+                            Log.d(TAG, "OkHttp AFR probe Pass 2 (sparse head+tail file) succeeded for MP4: FPS=${detection.snapped}")
                             return detection
                         }
                     }
@@ -551,30 +551,13 @@ object FrameRateUtils {
         return null
     }
 
-    private fun copyStreamBounded(
-        input: java.io.InputStream,
-        output: java.io.OutputStream,
-        maxBytes: Long
-    ): Boolean {
-        val buffer = ByteArray(8192)
-        var totalRead = 0L
-        while (totalRead < maxBytes) {
-            val toRead = minOf(buffer.size.toLong(), maxBytes - totalRead).toInt()
-            val bytesRead = input.read(buffer, 0, toRead)
-            if (bytesRead <= 0) break
-            output.write(buffer, 0, bytesRead)
-            totalRead += bytesRead
-        }
-        return totalRead > 0
-    }
-
     private fun fetchHttpRangeToFile(
         url: String,
         headers: Map<String, String>,
         rangeHeader: String,
         maxBytes: Long,
         targetFile: java.io.File,
-        append: Boolean = false
+        fileOffset: Long = 0L
     ): Boolean {
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
@@ -596,8 +579,20 @@ object FrameRateUtils {
                 }
                 val body = response.body
                 body.byteStream().use { input ->
-                    java.io.FileOutputStream(targetFile, append).use { output ->
-                        copyStreamBounded(input, output, maxBytes)
+                    java.io.RandomAccessFile(targetFile, "rw").use { raf ->
+                        if (fileOffset > 0L) {
+                            raf.seek(fileOffset)
+                        }
+                        val buffer = ByteArray(8192)
+                        var totalRead = 0L
+                        while (totalRead < maxBytes) {
+                            val toRead = minOf(buffer.size.toLong(), maxBytes - totalRead).toInt()
+                            val bytesRead = input.read(buffer, 0, toRead)
+                            if (bytesRead <= 0) break
+                            raf.write(buffer, 0, bytesRead)
+                            totalRead += bytesRead
+                        }
+                        totalRead > 0
                     }
                 }
             }
