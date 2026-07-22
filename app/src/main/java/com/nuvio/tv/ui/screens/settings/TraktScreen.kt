@@ -92,6 +92,7 @@ fun TraktScreen(
     val watchProgressFormatter: (WatchProgressSource) -> String = { source ->
         when (source) {
             WatchProgressSource.TRAKT -> strWatchProgressTrakt
+            WatchProgressSource.SIMKL -> "Simkl"
             WatchProgressSource.NUVIO_SYNC -> strWatchProgressNuvio
         }
     }
@@ -100,6 +101,7 @@ fun TraktScreen(
     val librarySourceFormatter: (LibrarySourceMode) -> String = { mode ->
         when (mode) {
             LibrarySourceMode.TRAKT -> strLibrarySourceTrakt
+            LibrarySourceMode.SIMKL -> "Simkl"
             LibrarySourceMode.LOCAL -> strLibrarySourceNuvio
         }
     }

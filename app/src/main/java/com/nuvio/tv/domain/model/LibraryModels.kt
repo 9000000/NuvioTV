@@ -43,7 +43,8 @@ data class LibraryEntry(
 
 enum class LibrarySourceMode {
     LOCAL,
-    TRAKT
+    TRAKT,
+    SIMKL
 }
 
 enum class TraktListPrivacy(val apiValue: String) {
