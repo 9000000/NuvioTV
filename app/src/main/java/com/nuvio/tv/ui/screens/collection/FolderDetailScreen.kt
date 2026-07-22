@@ -484,7 +484,7 @@ private fun TabbedGridContent(
                             Card(
                                 onClick = {},
                                 modifier = Modifier
-                                    .width(posterCardStyle.width)
+                                    .fillMaxWidth()
                                     .height(posterCardStyle.height)
                                     .focusProperties { canFocus = false },
                                 shape = CardDefaults.shape(shape = cardShape),
@@ -510,7 +510,7 @@ private fun TabbedGridContent(
                             // Reserve space for title + release date to match ContentCard height
                             Spacer(
                                 modifier = Modifier
-                                    .width(posterCardStyle.width)
+                                    .fillMaxWidth()
                                     .padding(top = NuvioTheme.spacing.sm)
                                     .height(
                                         MaterialTheme.typography.titleMedium.lineHeight.value.dp +
