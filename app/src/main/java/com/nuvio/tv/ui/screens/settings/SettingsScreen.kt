@@ -197,9 +197,9 @@ private fun rememberSettingsSectionSpecs() = listOf(
     ),
     SettingsSectionSpec(
         category = SettingsCategory.TRAKT,
-        title = "Trakt",
+        title = stringResource(R.string.settings_tracking_title),
         rawIconRes = R.raw.trakt_tv_glyph,
-        subtitle = stringResource(R.string.settings_trakt_subtitle),
+        subtitle = stringResource(R.string.settings_tracking_subtitle),
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(

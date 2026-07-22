@@ -9,7 +9,9 @@ interface SimklAuthStorage {
     fun savePinSession(session: SimklPinSession)
     fun clearPinSession(error: SimklAuthError? = null)
     fun saveAccessToken(token: String)
-    fun saveIdentity(username: String?, accountId: Long?)
+    fun saveIdentity(username: String?, accountId: Long?, settingsActivityWatermark: String? = null)
+    fun recordSettingsActivityWatermark(watermark: String)
     fun clearAuth(error: SimklAuthError? = null)
     fun removeProfile(profileId: Int)
+    fun clearAllProfiles()
 }

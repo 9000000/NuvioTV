@@ -391,6 +391,9 @@
     <string name="settings_playback">Playback</string>
     <string name="settings_playback_subtitle">Player, subtitles, and auto-play</string>
     <string name="settings_trakt_subtitle">Open Trakt connection screen</string>
+    <string name="settings_tracking_title">Tracking</string>
+    <string name="settings_tracking_subtitle">Manage Trakt and Simkl connections</string>
+    <string name="settings_tracking_description">Connect tracking providers and choose which one powers your Library and Continue Watching.</string>
     <string name="settings_about_subtitle">Version and policies</string>
     <string name="settings_network">Network speed</string>
     <string name="settings_network_subtitle">Latency and download diagnostics</string>
@@ -1721,6 +1724,7 @@
     <string name="genre_talk">Talk</string>
     <string name="genre_war_politics">War &amp; Politics</string>
     <string name="library_sort_trakt_order">Trakt Order</string>
+    <string name="library_sort_provider_order">Provider Order</string>
     <string name="library_sort_added_desc">Added ↓</string>
     <string name="library_sort_added_asc">Added ↑</string>
     <string name="library_sort_title_asc">Title A-Z</string>
@@ -1756,6 +1760,10 @@
     <string name="library_empty_trakt_subtitle">Use + in details to add items to watchlist or lists</string>
     <string name="library_empty_trakt_not_auth_title">Trakt not connected</string>
     <string name="library_empty_trakt_not_auth_subtitle">Connect your Trakt account in Settings to view your Trakt library</string>
+    <string name="library_empty_simkl_title">No %1$s in this status</string>
+    <string name="library_empty_simkl_subtitle">Use + in details to add items to a Simkl status</string>
+    <string name="library_empty_simkl_not_auth_title">Simkl not connected</string>
+    <string name="library_empty_simkl_not_auth_subtitle">Connect your Simkl account in Settings to view your Simkl library</string>
     <string name="library_list_create_dialog_title">Create List</string>
     <string name="library_list_edit_dialog_title">Edit List</string>
     <string name="library_sync_btn">Sync</string>
@@ -2526,6 +2534,38 @@
     <string name="trakt_library_error_list_limit_reached">Trakt list limit reached. Upgrade required.</string>
     <string name="trakt_error_insufficient_ids_mark_watched">Insufficient Trakt IDs to mark watched</string>
     <string name="trakt_error_request_failed">Trakt request failed</string>
+    <string name="simkl_account_title">Simkl account</string>
+    <string name="simkl_description">Connect Simkl to sync lists, watched history, playback progress, and scrobbles.</string>
+    <string name="simkl_connect">Connect Simkl</string>
+    <string name="simkl_disconnect">Disconnect Simkl</string>
+    <string name="simkl_disconnect_title">Disconnect Simkl?</string>
+    <string name="simkl_disconnect_subtitle">This removes the Simkl account and cached Simkl data from this profile.</string>
+    <string name="simkl_connected_as">Connected as %1$s</string>
+    <string name="simkl_user_fallback">Simkl user</string>
+    <string name="simkl_awaiting_instruction">Open the Simkl verification page and enter this code.</string>
+    <string name="simkl_code_expires">Code expires in %1$s</string>
+    <string name="simkl_sync_now">Sync now</string>
+    <string name="simkl_visit">Visit Simkl</string>
+    <string name="details_view_on_simkl">View on Simkl</string>
+    <string name="simkl_missing_credentials">Missing SIMKL_CLIENT_ID</string>
+    <string name="simkl_status_enter_code">Enter the code on Simkl to finish connecting</string>
+    <string name="simkl_status_waiting">Waiting for Simkl approval…</string>
+    <string name="simkl_status_connected">Connected to Simkl</string>
+    <string name="simkl_status_disconnected">Disconnected from Simkl</string>
+    <string name="simkl_status_syncing">Syncing Simkl…</string>
+    <string name="simkl_status_synced">Simkl sync completed</string>
+    <string name="simkl_watch_progress_selected">Simkl selected for Continue Watching</string>
+    <string name="simkl_library_source_selected">Simkl selected for Library</string>
+    <string name="simkl_error_code_expired">Simkl code expired. Start again.</string>
+    <string name="simkl_error_authorization_revoked">Simkl authorization was revoked. Connect again.</string>
+    <string name="simkl_error_network">Unable to reach Simkl. Try again.</string>
+    <string name="tracking_removal_title">Remove from %1$s?</string>
+    <string name="tracking_removal_message">Removing %1$s can also clear %2$s on the provider.</string>
+    <string name="tracking_removal_impact_history">watched history</string>
+    <string name="tracking_removal_impact_rating">the rating</string>
+    <string name="tracking_removal_impact_history_rating">watched history and the rating</string>
+    <string name="action_remove_anyway">Remove anyway</string>
+    <string name="cd_simkl_qr">Simkl activation QR</string>
     <string name="trakt_error_mark_watched_failed">Failed to mark watched on Trakt (%1$d)</string>
 
     <!-- Detail / poster options errors -->

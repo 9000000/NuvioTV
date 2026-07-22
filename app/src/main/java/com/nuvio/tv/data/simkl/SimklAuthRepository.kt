@@ -91,13 +91,30 @@ class SimklAuthRepository(
         throw SimklAuthException(SimklAuthError.INVALID_PIN_RESPONSE)
     }
 
-    suspend fun refreshUserSettings(): String? {
+    suspend fun refreshUserSettings(activityWatermark: String? = null): String? {
         if (!storage.state.value.isAuthenticated) return null
         val response = apiClient.execute(SimklApiRequest(SimklHttpMethod.POST, "/users/settings"))
         val settings = runCatching { json.decodeFromString<SimklUserSettingsResponse>(response.body) }.getOrNull()
             ?: return null
-        storage.saveIdentity(settings.user?.name, settings.account?.id)
+        storage.saveIdentity(settings.user?.name, settings.account?.id, activityWatermark)
         return settings.user?.name
+    }
+
+    suspend fun synchronizeUserSettings(activityWatermark: String?) {
+        if (!storage.state.value.isAuthenticated) return
+        try {
+            when (simklSettingsRefreshAction(storage.state.value, activityWatermark)) {
+                SimklSettingsRefreshAction.NONE -> Unit
+                SimklSettingsRefreshAction.RECORD_WATERMARK -> {
+                    storage.recordSettingsActivityWatermark(requireNotNull(activityWatermark))
+                }
+                SimklSettingsRefreshAction.FETCH -> refreshUserSettings(activityWatermark)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            Unit
+        }
     }
 
     fun cancelPinAuth() = storage.clearPinSession()

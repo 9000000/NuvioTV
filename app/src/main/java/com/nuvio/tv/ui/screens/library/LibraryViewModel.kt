@@ -13,10 +13,11 @@ import com.nuvio.tv.core.cloud.CloudLibraryUiState
 import com.nuvio.tv.core.debrid.DebridProviderCapability
 import com.nuvio.tv.core.debrid.DebridProviders
 import com.nuvio.tv.core.debrid.supports
+import com.nuvio.tv.core.tracking.TrackingLibraryProviderRegistry
+import com.nuvio.tv.core.tracking.providerId
 import com.nuvio.tv.data.local.DebridSettingsDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.LibraryPreferences
-import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.repository.TraktLibraryService
 import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.domain.model.LibraryEntry
@@ -36,6 +37,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -59,14 +62,14 @@ enum class LibrarySortOption(
     val key: String,
     val labelResId: Int
 ) {
-    DEFAULT("default", R.string.library_sort_trakt_order),
+    DEFAULT("default", R.string.library_sort_provider_order),
     ADDED_DESC("added_desc", R.string.library_sort_added_desc),
     ADDED_ASC("added_asc", R.string.library_sort_added_asc),
     TITLE_ASC("title_asc", R.string.library_sort_title_asc),
     TITLE_DESC("title_desc", R.string.library_sort_title_desc);
 
     companion object {
-        val TraktOptions = listOf(DEFAULT, ADDED_DESC, ADDED_ASC, TITLE_ASC, TITLE_DESC)
+        val TrackingOptions = listOf(DEFAULT, ADDED_DESC, ADDED_ASC, TITLE_ASC, TITLE_DESC)
         val LocalOptions = listOf(ADDED_DESC, ADDED_ASC, TITLE_ASC, TITLE_DESC)
     }
 }
@@ -114,7 +117,7 @@ data class LibraryUiState(
     val selectedGenre: String? = null,
     val selectedYear: String? = null,
     val isNuvioAccount: Boolean = false,
-    val isTraktAuthenticated: Boolean = false,
+    val isTrackingAuthenticated: Boolean = false,
     val posterCardWidthDp: Int = 126,
     val posterCardCornerRadiusDp: Int = 12,
     val isLoading: Boolean = true,
@@ -135,7 +138,7 @@ class LibraryViewModel @Inject constructor(
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
     private val libraryPreferences: LibraryPreferences,
     private val authManager: AuthManager,
-    private val traktAuthDataStore: TraktAuthDataStore,
+    private val trackingProviderRegistry: TrackingLibraryProviderRegistry,
     private val watchProgressRepository: com.nuvio.tv.domain.repository.WatchProgressRepository,
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
@@ -457,6 +460,11 @@ class LibraryViewModel @Inject constructor(
     }
 
     private fun observeLibraryData() {
+        val selectedProviderAuthenticated = libraryRepository.sourceMode.flatMapLatest { sourceMode ->
+            sourceMode.providerId
+                ?.let { providerId -> trackingProviderRegistry.provider(providerId)?.isAuthenticated }
+                ?: flowOf(true)
+        }
         viewModelScope.launch {
             combine(
                 libraryRepository.sourceMode,
@@ -465,7 +473,7 @@ class LibraryViewModel @Inject constructor(
                 libraryRepository.listTabs,
                 libraryPreferences.sortOption,
                 authManager.authState,
-                traktAuthDataStore.isEffectivelyAuthenticated
+                selectedProviderAuthenticated
             ) { args ->
                 val sourceMode = args[0] as LibrarySourceMode
                 val isSyncing = args[1] as Boolean
@@ -475,7 +483,7 @@ class LibraryViewModel @Inject constructor(
                 val listTabs = args[3] as List<LibraryListTab>
                 val persistedSortKey = args[4] as String?
                 val authState = args[5] as AuthState
-                val isTraktAuthenticated = args[6] as Boolean
+                val isTrackingAuthenticated = args[6] as Boolean
                 DataBundle(
                     sourceMode = sourceMode,
                     isSyncing = isSyncing,
@@ -483,13 +491,13 @@ class LibraryViewModel @Inject constructor(
                     listTabs = listTabs,
                     persistedSortKey = persistedSortKey,
                     authState = authState,
-                    isTraktAuthenticated = isTraktAuthenticated
+                    isTrackingAuthenticated = isTrackingAuthenticated
                 )
             }.collectLatest { bundle ->
-                val (sourceMode, isSyncing, items, listTabs, persistedSortKey, authState, isTraktAuthenticated) = bundle
+                val (sourceMode, isSyncing, items, listTabs, persistedSortKey, authState, isTrackingAuthenticated) = bundle
                 _uiState.update { current ->
                     val nextSelectedList = when {
-                        sourceMode == LibrarySourceMode.TRAKT && isTraktAuthenticated -> {
+                        sourceMode.providerId != null && isTrackingAuthenticated -> {
                             current.selectedListKey
                                 ?.takeIf { key -> listTabs.any { it.key == key } }
                                 ?: listTabs.firstOrNull()?.key
@@ -507,12 +515,12 @@ class LibraryViewModel @Inject constructor(
 
                     val nextSelectedType = current.selectedTypeTab
                         ?: LibraryTypeTab.All.copy(label = context.getString(R.string.library_type_all))
-                    val sortOptions = if (sourceMode == LibrarySourceMode.TRAKT && isTraktAuthenticated) {
-                        LibrarySortOption.TraktOptions
+                    val sortOptions = if (sourceMode.providerId != null && isTrackingAuthenticated) {
+                        LibrarySortOption.TrackingOptions
                     } else {
                         LibrarySortOption.LocalOptions
                     }
-                    val modeDefault = if (sourceMode == LibrarySourceMode.TRAKT && isTraktAuthenticated) LibrarySortOption.DEFAULT else LibrarySortOption.ADDED_DESC
+                    val modeDefault = if (sourceMode.providerId != null && isTrackingAuthenticated) LibrarySortOption.DEFAULT else LibrarySortOption.ADDED_DESC
                     val persistedSort = persistedSortKey?.let { key ->
                         LibrarySortOption.entries.find { it.key == key }
                     }
@@ -532,7 +540,7 @@ class LibraryViewModel @Inject constructor(
                         selectedSortOption = nextSelectedSort,
                         manageSelectedListKey = nextManageSelected,
                         isNuvioAccount = isNuvioAccount,
-                        isTraktAuthenticated = isTraktAuthenticated,
+                        isTrackingAuthenticated = isTrackingAuthenticated,
                         isSyncing = isSyncing,
                         isLoading = isSyncing && items.isEmpty()
                     )
@@ -633,7 +641,7 @@ class LibraryViewModel @Inject constructor(
         val listTabs: List<LibraryListTab>,
         val persistedSortKey: String?,
         val authState: AuthState,
-        val isTraktAuthenticated: Boolean
+        val isTrackingAuthenticated: Boolean
     )
 
     private data class CloudLibrarySettingsSnapshot(
@@ -716,8 +724,7 @@ class LibraryViewModel @Inject constructor(
         releaseInfo?.let { YEAR_REGEX.find(it)?.value }
 
     private fun LibraryUiState.withVisibleItems(): LibraryUiState {
-        // Step 1: List filter (Trakt only)
-        val listFiltered = if (sourceMode == LibrarySourceMode.TRAKT) {
+        val listFiltered = if (sourceMode.providerId != null) {
             val listKey = selectedListKey ?: ""
             allItems.filter { entry -> entry.listKeys.contains(listKey) }
         } else {
@@ -795,7 +802,7 @@ class LibraryViewModel @Inject constructor(
 
         // Step 5: Sort
         val sorted = when (selectedSortOption) {
-            LibrarySortOption.DEFAULT -> if (sourceMode == LibrarySourceMode.TRAKT) {
+            LibrarySortOption.DEFAULT -> if (sourceMode.providerId != null) {
                 yearFiltered.sortedWith(
                     compareBy<LibraryEntry> { it.traktRank ?: Int.MAX_VALUE }
                         .thenByDescending { it.listedAt }

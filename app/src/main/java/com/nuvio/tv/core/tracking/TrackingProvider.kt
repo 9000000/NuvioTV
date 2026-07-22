@@ -1,6 +1,8 @@
 package com.nuvio.tv.core.tracking
 
 import kotlinx.coroutines.flow.StateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
 
 enum class TrackingProviderId(val storageId: String) {
     TRAKT("trakt"),
@@ -43,7 +45,13 @@ interface TrackingProvider {
         get() = null
 }
 
-class TrackingProviderRegistry(providers: Collection<TrackingProvider>) {
+@Singleton
+class TrackingProviderRegistry private constructor(providers: Collection<TrackingProvider>) {
+    @Inject
+    constructor(providers: Set<@JvmSuppressWildcards TrackingProvider>) : this(providers as Collection<TrackingProvider>)
+
+    internal constructor(providers: List<TrackingProvider>) : this(providers as Collection<TrackingProvider>)
+
     private val providersById = providers.associateBy { it.descriptor.id }
 
     init {

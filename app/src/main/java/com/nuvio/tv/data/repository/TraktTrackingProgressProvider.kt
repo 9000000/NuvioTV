@@ -1,0 +1,140 @@
+package com.nuvio.tv.data.repository
+
+import com.nuvio.tv.core.tracking.TrackingProgressProvider
+import com.nuvio.tv.core.tracking.TrackingProviderId
+import com.nuvio.tv.core.tracking.TrackingRefreshIntent
+import com.nuvio.tv.data.local.LayoutPreferenceDataStore
+import com.nuvio.tv.data.local.TraktAuthDataStore
+import com.nuvio.tv.domain.model.WatchProgress
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+
+@Singleton
+class TraktTrackingProgressProvider @Inject constructor(
+    private val service: TraktProgressService,
+    private val layoutPreferences: LayoutPreferenceDataStore,
+    authDataStore: TraktAuthDataStore
+) : TrackingProgressProvider {
+    override val providerId = TrackingProviderId.TRAKT
+    override val isAuthenticated = authDataStore.isEffectivelyAuthenticated
+    override val allProgress = service.observeAllProgress()
+    override val remoteProgressLoaded = service.observeRemoteProgressLoaded()
+    override val watchedMovieIds = service.observeAllWatchedMovieIds()
+    override val nextUpSeeds = combine(
+        service.observeWatchedShowSeeds(),
+        service.observeAllProgress().map { items ->
+            val now = System.currentTimeMillis()
+            items.filter { progress ->
+                progress.source == WatchProgress.SOURCE_TRAKT_HISTORY ||
+                    progress.isRecentCompletedPlaybackSeed(now)
+            }
+        },
+        layoutPreferences.nextUpFromFurthestEpisode
+    ) { canonical, optimistic, useFurthest ->
+        mergeTrackingNextUpSeeds(canonical, optimistic, useFurthest)
+    }
+
+    override fun episodeProgress(contentId: String) = service.observeEpisodeProgress(contentId)
+
+    override fun airedEpisodeOrder(contentId: String) = service.observeAiredEpisodes(contentId)
+
+    override fun isWatched(
+        contentId: String,
+        videoId: String?,
+        season: Int?,
+        episode: Int?
+    ): Flow<Boolean> = if (season != null && episode != null) {
+        service.observeEpisodeProgress(contentId).map { progress ->
+            progress[season to episode]?.isCompleted() == true
+        }
+    } else {
+        service.observeMovieWatched(contentId, videoId)
+    }
+
+    override suspend fun watchedShowEpisodes() = service.getWatchedShowEpisodes()
+
+    override suspend fun showIdSiblings() = service.getShowIdSiblings()
+
+    override suspend fun refresh(intent: TrackingRefreshIntent) = service.refreshNow()
+
+    override suspend fun removeProgress(contentId: String, season: Int?, episode: Int?) =
+        service.removeProgress(contentId, season, episode)
+
+    override fun applyOptimisticProgress(progress: WatchProgress, quiet: Boolean) {
+        if (quiet) service.updateOptimisticProgressQuietly(progress) else service.applyOptimisticProgress(progress)
+    }
+
+    override fun applyOptimisticRemoval(contentId: String, season: Int?, episode: Int?) =
+        service.applyOptimisticRemoval(contentId, season, episode)
+
+    override fun clearOptimistic() = service.clearOptimistic()
+
+    override fun preserveLocalProgressOnClear(contentId: String): Boolean =
+        !isTraktCompatibleId(contentId)
+
+    override fun isHiddenFromProgress(contentId: String): Boolean =
+        service.isShowHiddenFromProgress(contentId)
+
+    override suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress {
+        val season = progress.season ?: return progress
+        val episode = progress.episode ?: return progress
+        return service.remapEpisodeSeedToAddon(
+            contentId = progress.contentId,
+            contentType = progress.contentType,
+            season = season,
+            episode = episode,
+            episodeTitle = progress.episodeTitle
+        )?.let { remapped ->
+            progress.copy(
+                season = remapped.season,
+                episode = remapped.episode,
+                videoId = remapped.videoId ?: progress.videoId
+            )
+        } ?: progress
+    }
+}
+
+private fun WatchProgress.isRecentCompletedPlaybackSeed(nowEpochMs: Long): Boolean {
+    if (!contentType.equals("series", ignoreCase = true)) return false
+    if (!isCompleted() || source != WatchProgress.SOURCE_TRAKT_PLAYBACK) return false
+    if (season == null || episode == null || season == 0) return false
+    return nowEpochMs - lastWatched in 0..3 * 60_000L
+}
+
+private fun mergeTrackingNextUpSeeds(
+    canonical: List<WatchProgress>,
+    optimistic: List<WatchProgress>,
+    useFurthest: Boolean
+): List<WatchProgress> {
+    val merged = linkedMapOf<String, WatchProgress>()
+    canonical.forEach { seed -> merged[trackingNextUpKey(seed)] = seed }
+    optimistic.forEach { seed ->
+        val key = trackingNextUpKey(seed)
+        val existing = merged[key]
+        if (existing == null || shouldReplaceTrackingSeed(existing, seed, useFurthest)) {
+            merged[key] = seed
+        }
+    }
+    return merged.values.sortedByDescending(WatchProgress::lastWatched)
+}
+
+private fun trackingNextUpKey(progress: WatchProgress): String =
+    progress.traktShowId?.let { "trakt_show:$it" } ?: progress.contentId.trim()
+
+private fun shouldReplaceTrackingSeed(
+    existing: WatchProgress,
+    candidate: WatchProgress,
+    useFurthest: Boolean
+): Boolean {
+    if (!useFurthest) return candidate.lastWatched >= existing.lastWatched
+    val candidatePosition = (candidate.season ?: -1) to (candidate.episode ?: -1)
+    val existingPosition = (existing.season ?: -1) to (existing.episode ?: -1)
+    return candidatePosition.first > existingPosition.first ||
+        candidatePosition.first == existingPosition.first &&
+        (candidatePosition.second > existingPosition.second ||
+            candidatePosition.second == existingPosition.second &&
+            candidate.lastWatched >= existing.lastWatched)
+}

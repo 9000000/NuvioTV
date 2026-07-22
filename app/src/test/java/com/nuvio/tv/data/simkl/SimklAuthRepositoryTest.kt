@@ -162,8 +162,18 @@ class SimklAuthRepositoryTest {
             mutableState.value = mutableState.value.copy(isAuthenticated = true, error = null)
         }
 
-        override fun saveIdentity(username: String?, accountId: Long?) {
-            mutableState.value = mutableState.value.copy(username = username, accountId = accountId)
+        override fun saveIdentity(username: String?, accountId: Long?, settingsActivityWatermark: String?) {
+            mutableState.value = mutableState.value.copy(
+                username = username,
+                accountId = accountId,
+                hasFetchedUserSettings = true,
+                settingsActivityWatermark = settingsActivityWatermark
+                    ?: mutableState.value.settingsActivityWatermark
+            )
+        }
+
+        override fun recordSettingsActivityWatermark(watermark: String) {
+            mutableState.value = mutableState.value.copy(settingsActivityWatermark = watermark)
         }
 
         override fun clearAuth(error: SimklAuthError?) {
@@ -172,6 +182,8 @@ class SimklAuthRepositoryTest {
         }
 
         override fun removeProfile(profileId: Int) = Unit
+
+        override fun clearAllProfiles() = clearAuth()
     }
 
     private class RecordingEngine(vararg responses: SimklRawHttpResponse) : SimklHttpEngine {

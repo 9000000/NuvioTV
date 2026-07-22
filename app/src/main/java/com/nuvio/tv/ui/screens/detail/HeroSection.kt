@@ -73,6 +73,7 @@ import com.nuvio.tv.domain.model.NextToWatch
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -97,6 +98,8 @@ fun HeroContentSection(
     isMovieWatched: Boolean,
     isMovieWatchedPending: Boolean,
     onToggleMovieWatched: () -> Unit,
+    simklSourceUrl: String? = null,
+    onViewOnSimkl: () -> Unit = {},
     trailerAvailable: Boolean = false,
     onTrailerClick: () -> Unit = {},
     hideLogoDuringTrailer: Boolean = false,
@@ -286,6 +289,13 @@ fun HeroContentSection(
                             )
                         }
 
+                        if (simklSourceUrl != null) {
+                            SimklAttributionButton(
+                                onClick = onViewOnSimkl,
+                                onFocused = onHeroActionFocused
+                            )
+                        }
+
                         if (trailerAvailable) {
                             ActionIconButtonPainter(
                                 painter = trailerPainter,
@@ -392,6 +402,41 @@ fun HeroContentSection(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SimklAttributionButton(
+    onClick: () -> Unit,
+    onFocused: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.onFocusChanged { state ->
+            if (state.isFocused) onFocused()
+        },
+        colors = ButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.Secondary,
+            contentColor = NuvioTheme.colors.TextPrimary,
+            focusedContentColor = NuvioTheme.colors.OnSecondary
+        ),
+        contentPadding = PaddingValues(
+            horizontal = NuvioTheme.spacing.md,
+            vertical = NuvioTheme.spacing.sm
+        )
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(stringResource(R.string.details_view_on_simkl))
         }
     }
 }

@@ -267,6 +267,7 @@ fun LibraryScreen(
                     text = when {
                         viewMode == LibraryViewMode.Cloud -> stringResource(R.string.library_source_cloud).uppercase()
                         uiState.sourceMode == LibrarySourceMode.TRAKT -> "TRAKT"
+                        uiState.sourceMode == LibrarySourceMode.SIMKL -> "SIMKL"
                         uiState.isNuvioAccount -> "NUVIO"
                         else -> stringResource(R.string.library_source_local)
                     },
@@ -331,11 +332,12 @@ fun LibraryScreen(
                 )
             }
 
-            if (uiState.sourceMode == LibrarySourceMode.TRAKT && uiState.isTraktAuthenticated) {
+            if (uiState.sourceMode != LibrarySourceMode.LOCAL && uiState.isTrackingAuthenticated) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     LibraryActionsRow(
                         pending = uiState.pendingOperation,
                         isSyncing = uiState.isSyncing,
+                        showManageLists = uiState.sourceMode == LibrarySourceMode.TRAKT,
                         onManageLists = viewModel::onOpenManageLists,
                         onRefresh = viewModel::onRefresh
                     )
@@ -346,13 +348,17 @@ fun LibraryScreen(
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     val selectedTypeLabel = uiState.selectedTypeTab?.let { localizedTypeLabel(it.key) }?.lowercase() ?: stringResource(R.string.library_type_items)
                     val title = when {
-                        uiState.sourceMode == LibrarySourceMode.TRAKT && !uiState.isTraktAuthenticated -> stringResource(R.string.library_empty_trakt_not_auth_title)
+                        uiState.sourceMode == LibrarySourceMode.TRAKT && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_trakt_not_auth_title)
+                        uiState.sourceMode == LibrarySourceMode.SIMKL && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_simkl_not_auth_title)
                         uiState.sourceMode == LibrarySourceMode.TRAKT -> stringResource(R.string.library_empty_trakt_title, selectedTypeLabel)
+                        uiState.sourceMode == LibrarySourceMode.SIMKL -> stringResource(R.string.library_empty_simkl_title, selectedTypeLabel)
                         else -> stringResource(R.string.library_empty_local_title, selectedTypeLabel)
                     }
                     val subtitle = when {
-                        uiState.sourceMode == LibrarySourceMode.TRAKT && !uiState.isTraktAuthenticated -> stringResource(R.string.library_empty_trakt_not_auth_subtitle)
+                        uiState.sourceMode == LibrarySourceMode.TRAKT && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_trakt_not_auth_subtitle)
+                        uiState.sourceMode == LibrarySourceMode.SIMKL && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_simkl_not_auth_subtitle)
                         uiState.sourceMode == LibrarySourceMode.TRAKT -> stringResource(R.string.library_empty_trakt_subtitle)
+                        uiState.sourceMode == LibrarySourceMode.SIMKL -> stringResource(R.string.library_empty_simkl_subtitle)
                         else -> stringResource(R.string.library_empty_local_subtitle)
                     }
                     EmptyScreenState(
@@ -903,7 +909,7 @@ private fun LibrarySelectorsRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
         ) {
-            if (sourceMode == LibrarySourceMode.TRAKT) {
+            if (sourceMode != LibrarySourceMode.LOCAL) {
                 LibraryDropdownPicker(
                     modifier = Modifier
                         .weight(1f)
@@ -919,7 +925,7 @@ private fun LibrarySelectorsRow(
             }
 
             LibraryDropdownPicker(
-                modifier = if (sourceMode == LibrarySourceMode.TRAKT) {
+                modifier = if (sourceMode != LibrarySourceMode.LOCAL) {
                     Modifier.weight(1f)
                 } else {
                     Modifier
@@ -1153,6 +1159,7 @@ private data class LibraryOption(
 private fun LibraryActionsRow(
     pending: Boolean,
     isSyncing: Boolean,
+    showManageLists: Boolean,
     onManageLists: () -> Unit,
     onRefresh: () -> Unit
 ) {
@@ -1160,15 +1167,17 @@ private fun LibraryActionsRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
     ) {
-        Button(
-            onClick = onManageLists,
-            enabled = !pending && !isSyncing,
-            colors = ButtonDefaults.colors(
-                containerColor = NuvioTheme.colors.BackgroundCard,
-                contentColor = NuvioTheme.colors.TextPrimary
-            )
-        ) {
-            Text(stringResource(R.string.library_manage_lists))
+        if (showManageLists) {
+            Button(
+                onClick = onManageLists,
+                enabled = !pending && !isSyncing,
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
+                )
+            ) {
+                Text(stringResource(R.string.library_manage_lists))
+            }
         }
         Button(
             onClick = onRefresh,

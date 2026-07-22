@@ -5,8 +5,9 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import com.nuvio.tv.core.profile.ProfileManager
+import com.nuvio.tv.core.profile.ProfileScopedCredentialStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.nuvio.tv.data.local.ProfileDataStore
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -27,13 +28,13 @@ import kotlinx.serialization.json.Json
 @Singleton
 class AndroidSimklAuthStorage @Inject constructor(
     @ApplicationContext context: Context,
-    private val profileManager: ProfileManager
-) : SimklAuthStorage {
+    profileDataStore: ProfileDataStore
+) : SimklAuthStorage, ProfileScopedCredentialStore {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(SimklAuthState())
-    private var activeProfileId = profileManager.activeProfileId.value
+    private var activeProfileId = 1
     private var currentAccessToken: String? = null
 
     override val state: StateFlow<SimklAuthState> = _state.asStateFlow()
@@ -41,7 +42,7 @@ class AndroidSimklAuthStorage @Inject constructor(
     init {
         load(activeProfileId)
         scope.launch {
-            profileManager.activeProfileId.collect { profileId ->
+            profileDataStore.activeProfileId.collect { profileId ->
                 activeProfileId = profileId
                 load(profileId)
             }
@@ -68,8 +69,20 @@ class AndroidSimklAuthStorage @Inject constructor(
         publish()
     }
 
-    override fun saveIdentity(username: String?, accountId: Long?) {
-        val metadata = metadata().copy(username = username, accountId = accountId)
+    override fun saveIdentity(username: String?, accountId: Long?, settingsActivityWatermark: String?) {
+        val current = metadata()
+        val metadata = current.copy(
+            username = username,
+            accountId = accountId,
+            hasFetchedUserSettings = true,
+            settingsActivityWatermark = settingsActivityWatermark ?: current.settingsActivityWatermark
+        )
+        saveMetadata(metadata)
+        publish(metadata = metadata)
+    }
+
+    override fun recordSettingsActivityWatermark(watermark: String) {
+        val metadata = metadata().copy(settingsActivityWatermark = watermark)
         saveMetadata(metadata)
         publish(metadata = metadata)
     }
@@ -87,7 +100,16 @@ class AndroidSimklAuthStorage @Inject constructor(
             .remove(profileKey(METADATA_KEY, profileId))
             .remove(profileKey(TOKEN_KEY, profileId))
             .apply()
-        if (profileId == activeProfileId) clearAuth()
+        if (profileId == activeProfileId) {
+            currentAccessToken = null
+            publish(metadata = SimklStoredAuthMetadata())
+        }
+    }
+
+    override fun clearAllProfiles() {
+        preferences.edit().clear().apply()
+        currentAccessToken = null
+        publish(metadata = SimklStoredAuthMetadata())
     }
 
     private fun load(profileId: Int) {
@@ -101,6 +123,8 @@ class AndroidSimklAuthStorage @Inject constructor(
     private fun metadata(): SimklStoredAuthMetadata = SimklStoredAuthMetadata(
         username = _state.value.username,
         accountId = _state.value.accountId,
+        hasFetchedUserSettings = _state.value.hasFetchedUserSettings,
+        settingsActivityWatermark = _state.value.settingsActivityWatermark,
         pinSession = _state.value.pinSession
     )
 
@@ -112,6 +136,8 @@ class AndroidSimklAuthStorage @Inject constructor(
             isAuthenticated = !currentAccessToken.isNullOrBlank(),
             username = metadata.username,
             accountId = metadata.accountId,
+            hasFetchedUserSettings = metadata.hasFetchedUserSettings,
+            settingsActivityWatermark = metadata.settingsActivityWatermark,
             pinSession = metadata.pinSession,
             error = error
         )

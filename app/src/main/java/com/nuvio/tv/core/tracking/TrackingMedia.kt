@@ -54,7 +54,28 @@ data class TrackingMediaReference(
     val ids: TrackingExternalIds = TrackingExternalIds(),
     val episode: TrackingEpisode? = null,
     val catalog: TrackingCatalogReference? = null
-)
+) {
+    val hasResolvableIdentity: Boolean
+        get() = ids.hasAny || !title.isNullOrBlank()
+
+    val stableKey: String
+        get() = buildString {
+            append(kind.name.lowercase())
+            append(':')
+            append(
+                ids.simkl?.let { "simkl:$it" }
+                    ?: ids.imdb?.takeIf(String::isNotBlank)?.let { "imdb:$it" }
+                    ?: ids.tmdb?.let { "tmdb:$it" }
+                    ?: ids.tvdb?.takeIf(String::isNotBlank)?.let { "tvdb:$it" }
+                    ?: ids.trakt?.let { "trakt:$it" }
+                    ?: ids.mal?.let { "mal:$it" }
+                    ?: ids.anidb?.let { "anidb:$it" }
+                    ?: ids.anilist?.let { "anilist:$it" }
+                    ?: ids.kitsu?.let { "kitsu:$it" }
+                    ?: "title:${title.orEmpty().trim().lowercase()}:${year ?: 0}"
+            )
+        }
+}
 
 fun parseTrackingExternalIds(rawValue: String?): TrackingExternalIds {
     if (rawValue.isNullOrBlank()) return TrackingExternalIds()

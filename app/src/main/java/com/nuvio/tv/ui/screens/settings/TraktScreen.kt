@@ -4,6 +4,8 @@ package com.nuvio.tv.ui.screens.settings
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import android.content.Intent
+import android.net.Uri
 import androidx.annotation.RawRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -62,6 +64,7 @@ import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.local.WatchProgressSource
 import com.nuvio.tv.data.local.MoreLikeThisSourcePreference
 import com.nuvio.tv.data.repository.TraktProgressService
+import com.nuvio.tv.data.simkl.SimklConnectionMode
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.ui.components.NuvioDialog
 import kotlinx.coroutines.delay
@@ -70,11 +73,14 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun TraktScreen(
     viewModel: TraktViewModel = hiltViewModel(),
+    simklViewModel: SimklSettingsViewModel = hiltViewModel(),
     onBackPress: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val simklUiState by simklViewModel.uiState.collectAsStateWithLifecycle()
     val primaryFocusRequester = remember { FocusRequester() }
     var showDisconnectConfirm by remember { mutableStateOf(false) }
+    var showSimklDisconnectConfirm by remember { mutableStateOf(false) }
     var showDaysCapDialog by remember { mutableStateOf(false) }
     var showCommentsDialog by remember { mutableStateOf(false) }
     var showWatchProgressDialog by remember { mutableStateOf(false) }
@@ -130,7 +136,11 @@ fun TraktScreen(
 
     BackHandler { onBackPress() }
 
-    val nowMillis by produceState(initialValue = System.currentTimeMillis(), key1 = uiState.mode) {
+    val nowMillis by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = uiState.mode,
+        key2 = simklUiState.mode
+    ) {
         while (true) {
             value = System.currentTimeMillis()
             delay(1_000)
@@ -170,13 +180,13 @@ fun TraktScreen(
             )
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
             Text(
-                text = "Trakt",
+                text = stringResource(R.string.settings_tracking_title),
                 style = MaterialTheme.typography.headlineLarge,
                 color = NuvioTheme.colors.TextPrimary
             )
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
             Text(
-                text = stringResource(R.string.trakt_description),
+                text = stringResource(R.string.settings_tracking_description),
                 style = MaterialTheme.typography.bodyLarge,
                 color = NuvioTheme.colors.TextSecondary
             )
@@ -280,6 +290,16 @@ fun TraktScreen(
                     ) {
                         Text(stringResource(R.string.trakt_disconnect))
                     }
+                    Button(
+                        onClick = { viewModel.onSyncNow() },
+                        enabled = !uiState.isLoading,
+                        colors = ButtonDefaults.colors(
+                            containerColor = NuvioTheme.colors.BackgroundCard,
+                            contentColor = NuvioTheme.colors.TextPrimary
+                        )
+                    ) {
+                        Text(stringResource(R.string.simkl_sync_now))
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
                     TraktConnectedStatsStrip(
                         stats = uiState.connectedStats,
@@ -312,18 +332,6 @@ fun TraktScreen(
                 }
 
                 if (uiState.mode == TraktConnectionMode.CONNECTED) {
-                    SettingsActionRow(
-                        title = stringResource(R.string.trakt_library_source_title),
-                        subtitle = stringResource(R.string.trakt_library_source_subtitle),
-                        value = librarySourceFormatter(uiState.librarySourceMode),
-                        onClick = { showLibrarySourceDialog = true }
-                    )
-                    SettingsActionRow(
-                        title = stringResource(R.string.trakt_watch_progress_title),
-                        subtitle = stringResource(R.string.trakt_watch_progress_subtitle),
-                        value = watchProgressFormatter(uiState.watchProgressSource),
-                        onClick = { showWatchProgressDialog = true }
-                    )
                     SettingsActionRow(
                         title = stringResource(R.string.trakt_continue_watching_window),
                         subtitle = stringResource(R.string.trakt_continue_watching_subtitle),
@@ -361,6 +369,41 @@ fun TraktScreen(
                         color = Color(0xFFFF6E6E)
                     )
                 }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(NuvioTheme.spacing.hairline)
+                        .background(NuvioTheme.colors.Border.copy(alpha = 0.8f))
+                )
+
+                SimklSettingsPanel(
+                    state = simklUiState,
+                    nowMillis = nowMillis,
+                    onConnect = simklViewModel::onConnect,
+                    onCancel = simklViewModel::onCancel,
+                    onRetry = simklViewModel::onRetryPolling,
+                    onSync = simklViewModel::onSyncNow,
+                    onDisconnect = { showSimklDisconnectConfirm = true }
+                )
+
+                if (
+                    uiState.mode == TraktConnectionMode.CONNECTED ||
+                    simklUiState.mode == SimklConnectionMode.CONNECTED
+                ) {
+                    SettingsActionRow(
+                        title = stringResource(R.string.trakt_library_source_title),
+                        subtitle = stringResource(R.string.trakt_library_source_subtitle),
+                        value = librarySourceFormatter(uiState.librarySourceMode),
+                        onClick = { showLibrarySourceDialog = true }
+                    )
+                    SettingsActionRow(
+                        title = stringResource(R.string.trakt_watch_progress_title),
+                        subtitle = stringResource(R.string.trakt_watch_progress_subtitle),
+                        value = watchProgressFormatter(uiState.watchProgressSource),
+                        onClick = { showWatchProgressDialog = true }
+                    )
+                }
             }
             SettingsVerticalScrollIndicators(state = contentScrollState)
             }
@@ -395,9 +438,15 @@ fun TraktScreen(
             title = stringResource(R.string.trakt_watch_progress_dialog_title),
             subtitle = stringResource(R.string.trakt_watch_progress_dialog_subtitle),
             options = listOf(
-                SettingsPickerOption(WatchProgressSource.TRAKT, stringResource(R.string.trakt_watch_progress_source_trakt)),
                 SettingsPickerOption(WatchProgressSource.NUVIO_SYNC, stringResource(R.string.trakt_watch_progress_source_nuvio))
-            ),
+            ) + buildList {
+                if (uiState.mode == TraktConnectionMode.CONNECTED) {
+                    add(SettingsPickerOption(WatchProgressSource.TRAKT, stringResource(R.string.trakt_watch_progress_source_trakt)))
+                }
+                if (simklUiState.mode == SimklConnectionMode.CONNECTED) {
+                    add(SettingsPickerOption(WatchProgressSource.SIMKL, "Simkl"))
+                }
+            },
             selectedValue = uiState.watchProgressSource,
             onOptionSelected = { source ->
                 viewModel.onWatchProgressSourceSelected(source)
@@ -414,9 +463,15 @@ fun TraktScreen(
             title = stringResource(R.string.trakt_library_source_dialog_title),
             subtitle = stringResource(R.string.trakt_library_source_dialog_subtitle),
             options = listOf(
-                SettingsPickerOption(LibrarySourceMode.TRAKT, stringResource(R.string.trakt_library_source_trakt)),
                 SettingsPickerOption(LibrarySourceMode.LOCAL, stringResource(R.string.trakt_library_source_nuvio))
-            ),
+            ) + buildList {
+                if (uiState.mode == TraktConnectionMode.CONNECTED) {
+                    add(SettingsPickerOption(LibrarySourceMode.TRAKT, stringResource(R.string.trakt_library_source_trakt)))
+                }
+                if (simklUiState.mode == SimklConnectionMode.CONNECTED) {
+                    add(SettingsPickerOption(LibrarySourceMode.SIMKL, "Simkl"))
+                }
+            },
             selectedValue = uiState.librarySourceMode,
             onOptionSelected = { mode ->
                 viewModel.onLibrarySourceModeSelected(mode)
@@ -518,6 +573,187 @@ fun TraktScreen(
                 }
             }
         }
+    }
+
+    if (showSimklDisconnectConfirm) {
+        NuvioDialog(
+            onDismiss = { showSimklDisconnectConfirm = false },
+            title = stringResource(R.string.simkl_disconnect_title),
+            subtitle = stringResource(R.string.simkl_disconnect_subtitle),
+            width = 520.dp,
+            suppressFirstKeyUp = false
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                Button(
+                    onClick = {
+                        showSimklDisconnectConfirm = false
+                        simklViewModel.onDisconnect()
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        contentColor = NuvioTheme.colors.TextPrimary
+                    )
+                ) {
+                    Text(stringResource(R.string.simkl_disconnect))
+                }
+                Button(
+                    onClick = { showSimklDisconnectConfirm = false },
+                    colors = ButtonDefaults.colors(
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        contentColor = NuvioTheme.colors.TextPrimary
+                    )
+                ) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimklSettingsPanel(
+    state: SimklSettingsUiState,
+    nowMillis: Long,
+    onConnect: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+    onSync: () -> Unit,
+    onDisconnect: () -> Unit
+) {
+    val context = LocalContext.current
+    val remaining = state.expiresAtEpochMs?.let { (it - nowMillis).coerceAtLeast(0L) } ?: 0L
+    val qrBitmap = remember(state.verificationUri) {
+        state.verificationUri?.let { uri ->
+            runCatching { QrCodeGenerator.generate(uri, 420) }.getOrNull()
+        }
+    }
+
+    Text(
+        text = stringResource(R.string.simkl_account_title),
+        style = MaterialTheme.typography.titleLarge,
+        color = NuvioTheme.colors.TextPrimary
+    )
+    Text(
+        text = stringResource(R.string.simkl_description),
+        style = MaterialTheme.typography.bodyMedium,
+        color = NuvioTheme.colors.TextSecondary
+    )
+
+    when (state.mode) {
+        SimklConnectionMode.AWAITING_APPROVAL -> {
+            Text(
+                text = stringResource(R.string.simkl_awaiting_instruction),
+                style = MaterialTheme.typography.bodyLarge,
+                color = NuvioTheme.colors.TextSecondary
+            )
+            Text(
+                text = state.userCode ?: "-",
+                color = NuvioTheme.colors.Primary,
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp
+            )
+            if (qrBitmap != null) {
+                Image(
+                    bitmap = qrBitmap.asImageBitmap(),
+                    contentDescription = stringResource(R.string.cd_simkl_qr),
+                    modifier = Modifier.size(180.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+            state.verificationUri?.let { uri ->
+                Text(
+                    text = uri,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NuvioTheme.colors.TextSecondary
+                )
+            }
+            Text(
+                text = stringResource(R.string.simkl_code_expires, formatDuration(remaining)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                Button(onClick = onRetry, enabled = !state.isLoading) {
+                    Text(stringResource(R.string.trakt_retry))
+                }
+                Button(onClick = onCancel) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        }
+        SimklConnectionMode.CONNECTED -> {
+            Text(
+                text = stringResource(
+                    R.string.simkl_connected_as,
+                    state.username ?: stringResource(R.string.simkl_user_fallback)
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFF7CFF9B)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                Button(onClick = onSync, enabled = !state.isLoading) {
+                    Text(stringResource(R.string.simkl_sync_now))
+                }
+                Button(
+                    onClick = onDisconnect,
+                    colors = ButtonDefaults.colors(
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        contentColor = NuvioTheme.colors.TextPrimary
+                    )
+                ) {
+                    Text(stringResource(R.string.simkl_disconnect))
+                }
+            }
+        }
+        SimklConnectionMode.DISCONNECTED -> {
+            Button(
+                onClick = onConnect,
+                enabled = state.credentialsConfigured && !state.isLoading,
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioTheme.colors.Primary,
+                    contentColor = Color.Black
+                )
+            ) {
+                Text(stringResource(R.string.simkl_connect))
+            }
+            if (!state.credentialsConfigured) {
+                Text(
+                    text = stringResource(R.string.simkl_missing_credentials),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFFFB74D)
+                )
+            }
+        }
+    }
+
+    Button(
+        onClick = {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SIMKL_WEBSITE_URL)))
+            }
+        },
+        colors = ButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            contentColor = NuvioTheme.colors.TextPrimary
+        )
+    ) {
+        Text(stringResource(R.string.simkl_visit))
+    }
+
+    state.statusMessage?.let { message ->
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = NuvioTheme.colors.TextSecondary
+        )
+    }
+    state.errorMessage?.let { message ->
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFFFF6E6E)
+        )
     }
 }
 
@@ -641,6 +877,8 @@ private fun formatDuration(valueMs: Long): String {
         else -> "${seconds}s"
     }
 }
+
+private const val SIMKL_WEBSITE_URL = "https://simkl.com"
 
 private fun formatContinueWatchingWindow(days: Int, allHistoryLabel: String, daysFormat: (Int) -> String): String {
     return if (days == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) {

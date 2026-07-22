@@ -120,6 +120,9 @@ import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.MetaDetailsSkeleton
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.components.TrailerPlayer
+import com.nuvio.tv.ui.components.posteroptions.TrackingRemovalConfirmationDialog
+import com.nuvio.tv.core.tracking.LOCAL_LIBRARY_LIST_KEY
+import com.nuvio.tv.core.tracking.supportsMembershipFor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.window.Dialog
@@ -475,6 +478,7 @@ fun MetaDetailsScreen(
                     showFullReleaseDate = uiState.showFullReleaseDate,
                     isMovieWatched = uiState.isMovieWatched,
                     isMovieWatchedPending = uiState.isMovieWatchedPending,
+                    simklSourceUrl = uiState.simklSourceUrl,
                     moreLikeThis = uiState.moreLikeThis,
                     moreLikeThisSource = uiState.moreLikeThisSource,
                     collection = uiState.collection,
@@ -609,6 +613,7 @@ fun MetaDetailsScreen(
                     onToggleLibrary = { viewModel.onEvent(MetaDetailsEvent.OnToggleLibrary) },
                     onLibraryLongPress = { viewModel.onEvent(MetaDetailsEvent.OnLibraryLongPress) },
                     onToggleMovieWatched = { viewModel.onEvent(MetaDetailsEvent.OnToggleMovieWatched) },
+                    onViewOnSimkl = { viewModel.onEvent(MetaDetailsEvent.OnViewOnSimkl) },
                     onToggleEpisodeWatched = { video ->
                         viewModel.onEvent(MetaDetailsEvent.OnToggleEpisodeWatched(video))
                     },
@@ -738,11 +743,15 @@ fun MetaDetailsScreen(
 
         if (uiState.showListPicker) {
             val nuvioListTab = LibraryListTab(
-                key = "local",
+                key = LOCAL_LIBRARY_LIST_KEY,
                 title = stringResource(R.string.trakt_library_source_nuvio),
                 type = LibraryListTab.Type.WATCHLIST
             )
-            val combinedTabs = listOf(nuvioListTab) + uiState.libraryListTabs
+            val contentType = uiState.meta?.apiType?.lowercase().orEmpty()
+            val providerTabs = uiState.libraryListTabs.filter { tab ->
+                tab.supportsMembershipFor(contentType)
+            }
+            val combinedTabs = listOf(nuvioListTab) + providerTabs
             LibraryListPickerDialog(
                 title = uiState.meta?.name ?: stringResource(R.string.detail_lists_fallback),
                 tabs = combinedTabs,
@@ -754,6 +763,16 @@ fun MetaDetailsScreen(
                 },
                 onSave = { viewModel.onEvent(MetaDetailsEvent.OnPickerSave) },
                 onDismiss = { viewModel.onEvent(MetaDetailsEvent.OnPickerDismiss) }
+            )
+        }
+
+        if (uiState.removalConfirmations.isNotEmpty()) {
+            TrackingRemovalConfirmationDialog(
+                itemTitle = uiState.meta?.name.orEmpty(),
+                confirmations = uiState.removalConfirmations,
+                isPending = uiState.pickerPending,
+                onConfirm = { viewModel.onEvent(MetaDetailsEvent.OnRemovalConfirmed) },
+                onDismiss = { viewModel.onEvent(MetaDetailsEvent.OnRemovalCancelled) }
             )
         }
 
@@ -833,6 +852,7 @@ private fun MetaDetailsContent(
     showFullReleaseDate: Boolean,
     isMovieWatched: Boolean,
     isMovieWatchedPending: Boolean,
+    simklSourceUrl: String?,
     moreLikeThis: List<MetaPreview>,
     moreLikeThisSource: MoreLikeThisSource?,
     collection: List<MetaPreview>,
@@ -865,6 +885,7 @@ private fun MetaDetailsContent(
     onToggleLibrary: () -> Unit,
     onLibraryLongPress: () -> Unit,
     onToggleMovieWatched: () -> Unit,
+    onViewOnSimkl: () -> Unit,
     onToggleEpisodeWatched: (Video) -> Unit,
     onMarkSeasonWatched: (Int) -> Unit,
     onMarkSeasonUnwatched: (Int) -> Unit,
@@ -1634,6 +1655,8 @@ private fun MetaDetailsContent(
                         isMovieWatched = isMovieWatched,
                         isMovieWatchedPending = isMovieWatchedPending,
                         onToggleMovieWatched = onToggleMovieWatched,
+                        simklSourceUrl = simklSourceUrl,
+                        onViewOnSimkl = onViewOnSimkl,
                         mdbListRatings = mdbListRatings,
                         hideMetaInfoImdb = showMdbListImdb,
                         tmdbRating = if (mdbListRatings?.isEmpty() != false) tmdbRating else null,

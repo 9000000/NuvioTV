@@ -1,7 +1,9 @@
 package com.nuvio.tv.domain.repository
 
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedItem
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Repository for managing watch progress data.
@@ -17,6 +19,9 @@ interface WatchProgressRepository {
      * Get items currently in progress (not completed, suitable for "Continue Watching")
      */
     val continueWatching: Flow<List<WatchProgress>>
+
+    val watchedItems: Flow<List<WatchedItem>>
+        get() = flowOf(emptyList())
     
     /**
      * Get watch progress for a specific content item (movie or series)

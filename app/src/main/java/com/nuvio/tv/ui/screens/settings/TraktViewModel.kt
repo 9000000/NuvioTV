@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.R
 import com.nuvio.tv.core.sync.StartupSyncService
 import com.nuvio.tv.core.sync.WatchedItemsSyncService
+import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.TraktAuthState
 import com.nuvio.tv.data.local.TraktSettingsDataStore
@@ -16,6 +17,7 @@ import com.nuvio.tv.data.local.WatchedSeriesStateHolder
 import com.nuvio.tv.data.repository.TraktAuthService
 import com.nuvio.tv.data.repository.TraktProgressService
 import com.nuvio.tv.data.repository.TraktTokenPollResult
+import com.nuvio.tv.data.simkl.SimklSyncRepository
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -62,6 +64,7 @@ class TraktViewModel @Inject constructor(
     private val traktAuthService: TraktAuthService,
     private val traktAuthDataStore: TraktAuthDataStore,
     private val traktProgressService: TraktProgressService,
+    private val simklSyncRepository: SimklSyncRepository,
     private val traktSettingsDataStore: TraktSettingsDataStore,
     private val startupSyncService: StartupSyncService,
     private val watchedItemsPreferences: WatchedItemsPreferences,
@@ -128,24 +131,32 @@ class TraktViewModel @Inject constructor(
             // Clear CW cache so stale items from the previous source don't flash on screen.
             cwEnrichmentCache.saveInProgressSnapshot(emptyList(), force = true)
             cwEnrichmentCache.saveNextUpSnapshot(emptyList(), force = true)
-            watchProgressPreferences.clearAllPreservingNonTraktIds { contentId ->
-                !com.nuvio.tv.data.repository.isTraktCompatibleId(contentId)
-            }
-            if (source == WatchProgressSource.TRAKT) {
-                watchedItemsPreferences.clearAll()
-                watchedSeriesStateHolder.update(emptySet())
-                traktProgressService.refreshNow()
-            } else {
-                repopulateWatchedItemsFromNuvioSync()
-                startupSyncService.requestSyncNow()
+            when (source) {
+                WatchProgressSource.TRAKT -> {
+                    watchProgressPreferences.clearAllPreservingNonTraktIds { contentId ->
+                        !com.nuvio.tv.data.repository.isTraktCompatibleId(contentId)
+                    }
+                    watchedItemsPreferences.clearAll()
+                    watchedSeriesStateHolder.update(emptySet())
+                    traktProgressService.refreshNow()
+                }
+                WatchProgressSource.SIMKL -> {
+                    watchedItemsPreferences.clearAll()
+                    watchedSeriesStateHolder.update(emptySet())
+                    simklSyncRepository.refresh(TrackingRefreshIntent.USER_INITIATED)
+                }
+                WatchProgressSource.NUVIO_SYNC -> {
+                    repopulateWatchedItemsFromNuvioSync()
+                    startupSyncService.requestSyncNow()
+                }
             }
             _uiState.update {
                 it.copy(
                     watchProgressSource = source,
-                    statusMessage = if (source == WatchProgressSource.TRAKT) {
-                        context.getString(R.string.trakt_watch_progress_trakt_selected)
-                    } else {
-                        context.getString(R.string.trakt_watch_progress_nuvio_selected)
+                    statusMessage = when (source) {
+                        WatchProgressSource.TRAKT -> context.getString(R.string.trakt_watch_progress_trakt_selected)
+                        WatchProgressSource.SIMKL -> context.getString(R.string.simkl_watch_progress_selected)
+                        WatchProgressSource.NUVIO_SYNC -> context.getString(R.string.trakt_watch_progress_nuvio_selected)
                     }
                 )
             }
@@ -155,13 +166,16 @@ class TraktViewModel @Inject constructor(
     fun onLibrarySourceModeSelected(mode: LibrarySourceMode) {
         viewModelScope.launch {
             traktSettingsDataStore.setLibrarySourceMode(mode)
+            if (mode == LibrarySourceMode.SIMKL) {
+                simklSyncRepository.refresh(TrackingRefreshIntent.USER_INITIATED)
+            }
             _uiState.update {
                 it.copy(
                     librarySourceMode = mode,
-                    statusMessage = if (mode == LibrarySourceMode.TRAKT) {
-                        context.getString(R.string.trakt_library_source_trakt_selected)
-                    } else {
-                        context.getString(R.string.trakt_library_source_nuvio_selected)
+                    statusMessage = when (mode) {
+                        LibrarySourceMode.TRAKT -> context.getString(R.string.trakt_library_source_trakt_selected)
+                        LibrarySourceMode.SIMKL -> context.getString(R.string.simkl_library_source_selected)
+                        LibrarySourceMode.LOCAL -> context.getString(R.string.trakt_library_source_nuvio_selected)
                     }
                 )
             }

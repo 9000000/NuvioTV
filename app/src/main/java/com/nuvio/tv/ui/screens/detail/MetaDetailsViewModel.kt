@@ -22,6 +22,9 @@ import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.LibraryEntryInput
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.ListMembershipChanges
+import com.nuvio.tv.core.tracking.TrackingMembershipRemovalConfirmation
+import com.nuvio.tv.core.tracking.TrackingProviderId
+import com.nuvio.tv.core.tracking.toggleTrackingMembershipSelection
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaTrailer
 import com.nuvio.tv.domain.model.NextToWatch
@@ -29,6 +32,7 @@ import com.nuvio.tv.domain.model.TmdbSettings
 import com.nuvio.tv.domain.model.TraktCommentReview
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.resolveTrackingAttribution
 import com.nuvio.tv.domain.repository.LibraryRepository
 import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.domain.repository.WatchProgressRepository
@@ -147,6 +151,7 @@ class MetaDetailsViewModel @Inject constructor(
         observeTrailerAutoplaySettings()
         observeTraktCommentsAvailability()
         observeLibraryState()
+        observeTrackingAttribution()
         observeWatchProgress()
         observeWatchedEpisodes()
         observeMovieWatched()
@@ -325,6 +330,9 @@ class MetaDetailsViewModel @Inject constructor(
             is MetaDetailsEvent.OnPickerMembershipToggled -> togglePickerMembership(event.listKey)
             MetaDetailsEvent.OnPickerSave -> savePickerMembership()
             MetaDetailsEvent.OnPickerDismiss -> dismissListPicker()
+            MetaDetailsEvent.OnRemovalConfirmed -> confirmPickerRemoval()
+            MetaDetailsEvent.OnRemovalCancelled -> cancelPickerRemoval()
+            MetaDetailsEvent.OnViewOnSimkl -> openSimklAttribution()
             MetaDetailsEvent.OnClearMessage -> clearMessage()
             MetaDetailsEvent.OnLifecyclePause -> handleLifecyclePause()
         }
@@ -402,6 +410,31 @@ class MetaDetailsViewModel @Inject constructor(
                         if (state.isInWatchlist == inWatchlist) state else state.copy(isInWatchlist = inWatchlist)
                     }
                 }
+        }
+    }
+
+    private fun observeTrackingAttribution() {
+        viewModelScope.launch {
+            combine(
+                libraryRepository.libraryItems,
+                watchProgressRepository.allProgress,
+                watchProgressRepository.watchedItems,
+                _effectiveContentId
+            ) { libraryItems, progressItems, watchedItems, contentId ->
+                resolveTrackingAttribution(
+                    contentId = contentId,
+                    providerId = TrackingProviderId.SIMKL.storageId,
+                    items = sequence {
+                        yieldAll(libraryItems)
+                        yieldAll(progressItems)
+                        yieldAll(watchedItems)
+                    }
+                )?.sourceUrl?.takeIf { url -> url.startsWith(SIMKL_SOURCE_URL_PREFIX) }
+            }.distinctUntilChanged().collectLatest { sourceUrl ->
+                _uiState.update { state ->
+                    if (state.simklSourceUrl == sourceUrl) state else state.copy(simklSourceUrl = sourceUrl)
+                }
+            }
         }
     }
 
@@ -1936,12 +1969,15 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun togglePickerMembership(listKey: String) {
-        val current = _uiState.value.pickerMembership[listKey] == true
-        _uiState.update {
-            it.copy(
-                pickerMembership = it.pickerMembership.toMutableMap().apply {
-                    this[listKey] = !current
-                },
+        _uiState.update { current ->
+            val updatedMembership = toggleTrackingMembershipSelection(
+                tabs = current.libraryListTabs,
+                membership = current.pickerMembership,
+                listKey = listKey,
+                contentType = current.meta?.apiType
+            ) ?: return@update current
+            current.copy(
+                pickerMembership = updatedMembership,
                 pickerError = null
             )
         }
@@ -1960,15 +1996,17 @@ class MetaDetailsViewModel @Inject constructor(
                         desiredMembership = _uiState.value.pickerMembership
                     )
                 )
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        pickerPending = false,
-                        showListPicker = false,
-                        pickerError = null
-                    )
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    _uiState.update {
+                        it.copy(
+                            pickerPending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                } else {
+                    completePickerSave()
                 }
-                showMessage(localizedContext.getString(R.string.detail_lists_updated))
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
@@ -1986,9 +2024,63 @@ class MetaDetailsViewModel @Inject constructor(
             it.copy(
                 showListPicker = false,
                 pickerPending = false,
-                pickerError = null
+                pickerError = null,
+                removalConfirmations = emptyList()
             )
         }
+    }
+
+    private fun confirmPickerRemoval() {
+        if (_uiState.value.pickerPending) return
+        val meta = _uiState.value.meta ?: return
+        val confirmations = _uiState.value.removalConfirmations
+        if (confirmations.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(pickerPending = true) }
+            runCatching {
+                libraryRepository.applyMembershipChanges(
+                    item = meta.toLibraryEntryInput(),
+                    changes = ListMembershipChanges(_uiState.value.pickerMembership),
+                    confirmedRemovalProviders = confirmations.mapTo(linkedSetOf(), TrackingMembershipRemovalConfirmation::providerId)
+                )
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    _uiState.update {
+                        it.copy(
+                            pickerPending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                } else {
+                    completePickerSave()
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        pickerPending = false,
+                        removalConfirmations = emptyList(),
+                        pickerError = error.message
+                            ?: context.getString(com.nuvio.tv.R.string.detail_error_update_lists_failed)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun cancelPickerRemoval() {
+        _uiState.update { it.copy(removalConfirmations = emptyList()) }
+    }
+
+    private fun completePickerSave() {
+        _uiState.update {
+            it.copy(
+                pickerPending = false,
+                showListPicker = false,
+                pickerError = null,
+                removalConfirmations = emptyList()
+            )
+        }
+        showMessage(localizedContext.getString(R.string.detail_lists_updated))
     }
 
     private fun toggleMovieWatched() {
@@ -2588,6 +2680,17 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
+    private fun openSimklAttribution() {
+        val url = _uiState.value.simklSourceUrl
+            ?.takeIf { value -> value.startsWith(SIMKL_SOURCE_URL_PREFIX) }
+            ?: return
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+
     private fun retrySharedTrailer() {
         _uiState.value.selectedSharedTrailer?.let(::handleSharedTrailerSelected)
     }
@@ -2630,3 +2733,5 @@ class MetaDetailsViewModel @Inject constructor(
         nextToWatchJob?.cancel()
     }
 }
+
+private const val SIMKL_SOURCE_URL_PREFIX = "https://simkl.com/"

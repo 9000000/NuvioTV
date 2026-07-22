@@ -7,6 +7,8 @@ import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.ListMembershipChanges
 import com.nuvio.tv.domain.model.ListMembershipSnapshot
 import com.nuvio.tv.domain.model.TraktListPrivacy
+import com.nuvio.tv.core.tracking.TrackingMembershipApplyResult
+import com.nuvio.tv.core.tracking.TrackingProviderId
 import kotlinx.coroutines.flow.Flow
 
 interface LibraryRepository {
@@ -20,7 +22,11 @@ interface LibraryRepository {
 
     suspend fun toggleDefault(item: LibraryEntryInput)
     suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot
-    suspend fun applyMembershipChanges(item: LibraryEntryInput, changes: ListMembershipChanges)
+    suspend fun applyMembershipChanges(
+        item: LibraryEntryInput,
+        changes: ListMembershipChanges,
+        confirmedRemovalProviders: Set<TrackingProviderId> = emptySet()
+    ): TrackingMembershipApplyResult
 
     suspend fun createPersonalList(
         name: String,

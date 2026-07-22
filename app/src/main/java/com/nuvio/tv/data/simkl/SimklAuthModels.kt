@@ -30,6 +30,8 @@ data class SimklAuthState(
     val isAuthenticated: Boolean = false,
     val username: String? = null,
     val accountId: Long? = null,
+    val hasFetchedUserSettings: Boolean = false,
+    val settingsActivityWatermark: String? = null,
     val pinSession: SimklPinSession? = null,
     val error: SimklAuthError? = null
 ) {
@@ -54,8 +56,28 @@ class SimklAuthException(val error: SimklAuthError, cause: Throwable? = null) : 
 internal data class SimklStoredAuthMetadata(
     val username: String? = null,
     val accountId: Long? = null,
+    val hasFetchedUserSettings: Boolean = false,
+    val settingsActivityWatermark: String? = null,
     val pinSession: SimklPinSession? = null
 )
+
+internal enum class SimklSettingsRefreshAction {
+    NONE,
+    RECORD_WATERMARK,
+    FETCH
+}
+
+internal fun simklSettingsRefreshAction(
+    state: SimklAuthState,
+    activityWatermark: String?
+): SimklSettingsRefreshAction = when {
+    activityWatermark.isNullOrBlank() -> SimklSettingsRefreshAction.NONE
+    activityWatermark == state.settingsActivityWatermark -> SimklSettingsRefreshAction.NONE
+    state.settingsActivityWatermark == null && state.hasFetchedUserSettings -> {
+        SimklSettingsRefreshAction.RECORD_WATERMARK
+    }
+    else -> SimklSettingsRefreshAction.FETCH
+}
 
 @Serializable
 internal data class SimklPinResponse(
