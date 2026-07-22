@@ -361,7 +361,9 @@ class FolderDetailViewModel @Inject constructor(
         val state = _uiState.value
         if (!hasAllTab) return
         val sourceTabs = state.tabs.drop(1) // skip the All tab
-        val anyLoading = sourceTabs.any { it.isLoading }
+        val anyLoading = sourceTabs.any { tab ->
+            tab.catalogRow?.isLoading == true || tab.isLoading
+        }
         // Only include real loaded rows (exclude placeholder shimmer rows)
         val loadedRows = sourceTabs.mapNotNull { tab ->
             tab.catalogRow?.takeIf { !it.isLoading }
@@ -369,20 +371,32 @@ class FolderDetailViewModel @Inject constructor(
 
         if (loadedRows.isEmpty()) return
 
+        val currentAllRow = state.tabs.getOrNull(0)?.catalogRow
+        if (anyLoading && currentAllRow != null && currentAllRow.items.isNotEmpty()) {
+            _uiState.update { s ->
+                val tabs = s.tabs.toMutableList()
+                tabs[0] = tabs[0].copy(isLoading = true)
+                s.copy(tabs = tabs)
+            }
+            return
+        }
+
         // Round-robin interleave items from all loaded catalog rows
         val mergedItems = roundRobinMerge(loadedRows.map { it.items })
         // Use the first loaded row as a template for the merged CatalogRow
         val templateRow = loadedRows.first()
+        val hasMore = sourceTabs.any { tab -> tab.catalogRow?.hasMore == true }
         val mergedRow = templateRow.copy(
             catalogName = "All",
-            items = mergedItems
+            items = mergedItems,
+            hasMore = hasMore
         )
 
         _uiState.update { s ->
             val tabs = s.tabs.toMutableList()
             tabs[0] = tabs[0].copy(
                 catalogRow = mergedRow,
-                isLoading = anyLoading
+                isLoading = false
             )
             s.copy(tabs = tabs)
         }
