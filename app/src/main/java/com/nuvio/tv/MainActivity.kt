@@ -125,6 +125,8 @@ import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSettingsSyncService
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
+import com.nuvio.tv.core.tracking.TrackingProgressRefreshCoordinator
+import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.AppOnboardingDataStore
 import com.nuvio.tv.data.local.AuthSessionNoticeDataStore
 import com.nuvio.tv.data.local.ExperienceModeDataStore
@@ -132,7 +134,6 @@ import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.data.local.ThemeDataStore
 import com.nuvio.tv.data.remote.supabase.AvatarRepository
-import com.nuvio.tv.data.repository.TraktProgressService
 import com.nuvio.tv.domain.model.AppFont
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.domain.model.AuthState
@@ -220,7 +221,7 @@ class MainActivity : ComponentActivity() {
     lateinit var addonRepository: AddonRepository
 
     @Inject
-    lateinit var traktProgressService: TraktProgressService
+    lateinit var trackingProgressRefreshCoordinator: TrackingProgressRefreshCoordinator
 
     @Inject
     lateinit var startupSyncService: StartupSyncService
@@ -901,12 +902,13 @@ class MainActivity : ComponentActivity() {
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
         startupSyncService.requestForegroundSync()
         lifecycleScope.launch {
-            if (isFirstResumeAfterCreate) {
+            val refreshIntent = if (isFirstResumeAfterCreate) {
                 isFirstResumeAfterCreate = false
-                traktProgressService.invalidateAndRefresh()
+                TrackingRefreshIntent.INVALIDATED
             } else {
-                traktProgressService.refreshNow()
+                TrackingRefreshIntent.AUTOMATIC
             }
+            trackingProgressRefreshCoordinator.refreshConnected(refreshIntent)
         }
     }
 

@@ -994,11 +994,13 @@ internal fun HomeViewModel.reconcilePosterStatusObserversPipeline(rows: List<Cat
         seriesWatchedObserverJob = viewModelScope.launch {
             combine(
                 fullyWatchedSeriesIds.fullyWatchedSeriesIds,
-                watchedItemsPreferences.allItems
+                watchProgressRepository.watchedItems
             ) { fullyWatched, watchedItems ->
                 fullyWatched to watchedItems
             }.collectLatest { (fullyWatched, watchedItems) ->
-                val effectiveFullyWatched = if (watchProgressRepository.isTraktProgressActive()) {
+                val effectiveFullyWatched = if (
+                    watchProgressRepository.activeProviderOwnsCompletedHistoryProjection()
+                ) {
                     fullyWatched
                 } else {
                     reconcileFullyWatchedFromLocalItems(

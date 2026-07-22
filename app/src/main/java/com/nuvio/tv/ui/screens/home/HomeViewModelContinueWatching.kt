@@ -7,8 +7,6 @@ import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.util.isEpisodeReleaseAired
 import com.nuvio.tv.core.util.parseEpisodeReleaseInstant
 import com.nuvio.tv.core.util.selectEpisodeReleaseValue
-import com.nuvio.tv.data.local.TraktSettingsDataStore
-import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.domain.model.ContinueWatchingSortMode
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.Meta
@@ -281,7 +279,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
             ) { daysCap, dismissedNextUp, showUnairedNextUp, nextUpFromFurthest, sortMode ->
                 arrayOf(daysCap, dismissedNextUp, showUnairedNextUp, nextUpFromFurthest, sortMode)
             },
-            watchedItemsPreferences.allItems.map { it.size },
+            watchProgressRepository.watchedItems.map { it.size },
             cwPipelineRefreshTrigger
         ) { progressSnapshot, settingsSnapshot, watchedItemsSize, _ ->
             val (items, nextUpSeeds, hasLoadedRemoteProgress) = progressSnapshot
@@ -308,7 +306,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
             try {
                 debug.markPhase("filter-snapshot")
                 val cycleStartMs = SystemClock.elapsedRealtime()
-                val useTraktProgress = watchProgressRepository.isTraktProgressActive()
+                val useTrackingProvider = watchProgressRepository.hasActiveTrackingProgressProvider()
                 val items = snapshot.items
                 val nextUpSeeds = snapshot.nextUpSeeds
                 val daysCap = snapshot.daysCap
@@ -316,12 +314,10 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 val showUnairedNextUp = snapshot.showUnairedNextUp
                 val nextUpFromFurthestEpisode = snapshot.nextUpFromFurthestEpisode
                 val continueWatchingSortMode = snapshot.continueWatchingSortMode
-                val cutoffMs = if (!useTraktProgress || daysCap == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) {
-                    null
-                } else {
-                    val windowMs = daysCap.toLong() * 24L * 60L * 60L * 1000L
-                    System.currentTimeMillis() - windowMs
-                }
+                val cutoffMs = watchProgressRepository.activeProviderContinueWatchingCutoffEpochMs(
+                    daysCap = daysCap,
+                    nowEpochMs = System.currentTimeMillis()
+                )
                 val recentItems = items
                     .asSequence()
                     .filter { progress -> cutoffMs == null || progress.lastWatched >= cutoffMs }
@@ -438,8 +434,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                             )
                         }
                     }
-                    // For Trakt: show cached in-progress until Trakt responds (items non-empty).
-                    if (liveInProgress.isEmpty() && useTraktProgress && cachedInProgress.isNotEmpty() && items.isEmpty()) {
+                    if (liveInProgress.isEmpty() && useTrackingProvider && cachedInProgress.isNotEmpty() && items.isEmpty()) {
                         cachedInProgress.forEach { cached ->
                             add(
                                 ContinueWatchingItem.InProgress(
@@ -660,7 +655,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 // Badge evaluation is handled exclusively by publishBadgeUpdate below,
                 // which uses getWatchedShowEpisodes() as the single source of truth.
                 // No seed-based heuristics here.
-                val allWatchedItems = watchedItemsPreferences.allItems.first()
+                val allWatchedItems = watchProgressRepository.watchedItems.first()
                 // --- Async badge evaluation ---
                 // Resolve meta for all series with watched episodes and evaluate badges.
                 // Uses getWatchedShowEpisodes() as the single source of truth.
@@ -1106,7 +1101,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 )
                 // Signal that the first CW cycle completed (items or confirmed empty).
                 if (!_initialCwResolved.value) {
-                    val hasRealData = normalItems.isNotEmpty() || !useTraktProgress || items.isNotEmpty()
+                    val hasRealData = normalItems.isNotEmpty() || !useTrackingProvider || items.isNotEmpty()
                     if (hasRealData) {
                         _initialCwResolved.value = true
                     }
@@ -1206,15 +1201,12 @@ private fun shouldTreatAsInProgressForContinueWatching(progress: WatchProgress):
         progress.source != WatchProgress.SOURCE_TRAKT_SHOW_PROGRESS
 }
 
-private fun shouldUseAsCompletedSeed(progress: WatchProgress): Boolean {
+private fun HomeViewModel.shouldUseAsCompletedSeed(progress: WatchProgress): Boolean {
     if (isMalformedNextUpSeedContentId(progress.contentId)) return false
-    if (!progress.isCompleted()) return false
-    if (progress.source != WatchProgress.SOURCE_TRAKT_PLAYBACK) return true
-    val explicitPercent = progress.progressPercent ?: return false
-    return explicitPercent >= 95f
+    return watchProgressRepository.shouldUseAsNextUpSeed(progress, System.currentTimeMillis())
 }
 
-private fun shouldTreatAsActiveInProgressForNextUpSuppression(
+private fun HomeViewModel.shouldTreatAsActiveInProgressForNextUpSuppression(
     progress: WatchProgress,
     latestCompletedAt: Long?
 ): Boolean {
@@ -1469,7 +1461,7 @@ private suspend fun HomeViewModel.buildLightweightNextUpItems(
                 processedContentIds.add(progress.contentId)
                 // Remap seed from Trakt numbering to addon numbering (for anime).
                 // Done here (after filters) so only ~5-10 seeds are remapped, not all 189.
-                val remappedProgress = watchProgressRepository.remapEpisodeSeed(progress)
+                val remappedProgress = watchProgressRepository.prepareNextUpSeed(progress)
                 val nextUp = buildNextUpItem(
                     progress = remappedProgress,
                     showUnairedNextUp = showUnairedNextUp,

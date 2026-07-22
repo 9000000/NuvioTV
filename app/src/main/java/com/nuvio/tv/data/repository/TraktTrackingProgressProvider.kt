@@ -5,6 +5,7 @@ import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
+import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.domain.model.WatchProgress
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +21,7 @@ class TraktTrackingProgressProvider @Inject constructor(
 ) : TrackingProgressProvider {
     override val providerId = TrackingProviderId.TRAKT
     override val isAuthenticated = authDataStore.isEffectivelyAuthenticated
+    override val ownsCompletedHistoryProjection = true
     override val allProgress = service.observeAllProgress()
     override val remoteProgressLoaded = service.observeRemoteProgressLoaded()
     override val watchedMovieIds = service.observeAllWatchedMovieIds()
@@ -78,7 +80,16 @@ class TraktTrackingProgressProvider @Inject constructor(
     override fun isHiddenFromProgress(contentId: String): Boolean =
         service.isShowHiddenFromProgress(contentId)
 
-    override suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress {
+    override fun continueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long? =
+        traktContinueWatchingCutoffEpochMs(daysCap, nowEpochMs)
+
+    override fun shouldUseAsNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean =
+        shouldUseTraktNextUpSeed(progress, nowEpochMs)
+
+    override fun normalizeParentContentId(parentContentId: String, videoId: String?): String =
+        resolveEffectiveContentId(parentContentId, videoId)
+
+    override suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress {
         val season = progress.season ?: return progress
         val episode = progress.episode ?: return progress
         return service.remapEpisodeSeedToAddon(
@@ -95,6 +106,19 @@ class TraktTrackingProgressProvider @Inject constructor(
             )
         } ?: progress
     }
+}
+
+internal fun traktContinueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long? {
+    if (daysCap == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) return null
+    return nowEpochMs - daysCap.toLong() * 24L * 60L * 60L * 1_000L
+}
+
+internal fun shouldUseTraktNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean {
+    if (!progress.isCompleted()) return false
+    if (progress.source != WatchProgress.SOURCE_TRAKT_PLAYBACK) return true
+    val explicitPercent = progress.progressPercent ?: return false
+    if (explicitPercent < 95f) return false
+    return nowEpochMs - progress.lastWatched in 0..3 * 60_000L
 }
 
 private fun WatchProgress.isRecentCompletedPlaybackSeed(nowEpochMs: Long): Boolean {

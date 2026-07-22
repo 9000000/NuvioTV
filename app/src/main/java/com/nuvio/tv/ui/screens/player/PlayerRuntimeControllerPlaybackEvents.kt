@@ -16,7 +16,6 @@ import com.nuvio.tv.data.repository.PlaybackIssueErrorInput
 import com.nuvio.tv.data.repository.PlaybackIssuePlaybackSettingsInput
 import com.nuvio.tv.data.repository.PlaybackIssueReportInput
 import com.nuvio.tv.data.repository.SkipInterval
-import com.nuvio.tv.data.repository.resolveEffectiveContentId
 import com.nuvio.tv.domain.model.WatchProgress
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
@@ -589,29 +588,21 @@ private fun PlayerRuntimeController.isShortPlaceholderStream(): Boolean {
 }
 
 internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, duration: Long, syncRemote: Boolean = true) {
-    if (contentId.isNullOrEmpty() || contentType.isNullOrEmpty()) return
+    val parentContentId = contentId?.takeIf { it.isNotEmpty() } ?: return
+    val parentContentType = contentType?.takeIf { it.isNotEmpty() } ?: return
 
     if (position < 1000) return
 
     val fallbackPercent = if (duration <= 0L) 5f else null
 
-    // If Trakt is the active CW source and contentId is not Trakt-resolvable
-    // but videoId contains a valid IMDB/TMDB, use the resolved ID to avoid
-    // duplicate CW entries (one local with garbage ID, one from Trakt with real ID).
-    val effectiveContentId = if (isTraktCwActive) {
-        resolveEffectiveContentId(contentId, currentVideoId)
-    } else {
-        contentId
-    }
-
     val progress = WatchProgress(
-        contentId = effectiveContentId,
-        contentType = contentType,
+        contentId = parentContentId,
+        contentType = parentContentType,
         name = contentName ?: title,
         poster = poster,
         backdrop = backdrop,
         logo = logo,
-        videoId = currentVideoId ?: contentId,
+        videoId = currentVideoId ?: parentContentId,
         season = currentSeason,
         episode = currentEpisode,
         episodeTitle = currentEpisodeTitle,
@@ -622,14 +613,19 @@ internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, d
     )
 
     scope.launch(kotlinx.coroutines.NonCancellable) {
-        if (progress.isCompleted() && !hasMarkedCurrentEpisodeCompleted) {
+        val effectiveContentId = watchProgressRepository.normalizeParentContentId(
+            parentContentId = progress.contentId,
+            videoId = progress.videoId
+        )
+        val normalizedProgress = progress.copy(contentId = effectiveContentId)
+        if (normalizedProgress.isCompleted() && !hasMarkedCurrentEpisodeCompleted) {
             hasMarkedCurrentEpisodeCompleted = true
-            // Don't send markAsWatched to Trakt from the player — the scrobble
-            // stop (≥80%) already causes Trakt to add the history entry.
-            // Local stores + Nuvio Sync are still updated.
-            watchProgressRepository.markAsCompleted(progress, syncRemoteToTrakt = false)
+            watchProgressRepository.markAsCompleted(
+                normalizedProgress,
+                broadcastTrackingHistory = false
+            )
         } else {
-            watchProgressRepository.saveProgress(progress, syncRemote = syncRemote)
+            watchProgressRepository.saveProgress(normalizedProgress, syncRemote = syncRemote)
         }
     }
 }

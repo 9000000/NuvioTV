@@ -14,6 +14,8 @@ interface TrackingProgressProvider {
     val remoteProgressLoaded: Flow<Boolean>
     val nextUpSeeds: Flow<List<WatchProgress>>
     val watchedMovieIds: Flow<Set<String>>
+    val ownsCompletedHistoryProjection: Boolean
+        get() = false
     val watchedItems: Flow<List<WatchedItem>>
         get() = flowOf(emptyList())
 
@@ -34,7 +36,11 @@ interface TrackingProgressProvider {
     fun clearOptimistic()
     fun preserveLocalProgressOnClear(contentId: String): Boolean = false
     fun isHiddenFromProgress(contentId: String): Boolean
-    suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress
+    fun continueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long? = null
+    fun shouldUseAsNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean =
+        progress.isCompleted()
+    fun normalizeParentContentId(parentContentId: String, videoId: String?): String = parentContentId
+    suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress
 }
 
 @Singleton

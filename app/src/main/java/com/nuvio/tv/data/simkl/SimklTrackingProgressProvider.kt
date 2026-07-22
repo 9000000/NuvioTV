@@ -166,7 +166,7 @@ class SimklTrackingProgressProvider @Inject constructor(
             entry.status == SimklListStatus.DROPPED && entry.matchesSimklContentId(contentId)
         }
 
-    override suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress = progress
+    override suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress = progress
 }
 
 private fun WatchedItem.toCompletedProgress(): WatchProgress = WatchProgress(

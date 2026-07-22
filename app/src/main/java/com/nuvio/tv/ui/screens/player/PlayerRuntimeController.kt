@@ -214,7 +214,6 @@ class PlayerRuntimeController(
     internal var currentVideoId: String? = videoId
     internal var currentSeason: Int? = initialSeason
     internal var currentEpisode: Int? = initialEpisode
-    @Volatile internal var isTraktCwActive: Boolean = false
     internal var currentEpisodeTitle: String? = initialEpisodeTitle
 
     internal val _uiState = MutableStateFlow(
@@ -551,7 +550,6 @@ class PlayerRuntimeController(
         observeTorrentSettings()
         observeStreamBadgeSettings()
         observeDeviceLocalAspectMode()
-        scope.launch { isTraktCwActive = watchProgressRepository.isTraktProgressActive() }
     }
 
     private fun observeTorrentSettings() {

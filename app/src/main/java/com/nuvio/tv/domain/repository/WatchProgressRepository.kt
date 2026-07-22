@@ -59,11 +59,7 @@ interface WatchProgressRepository {
      */
     fun observeOptimisticContinueWatchingUpdates(): Flow<WatchProgress>
 
-    /**
-     * Remap a Trakt episode seed to addon numbering (for anime with different season structure).
-     * Returns the remapped progress or the original if no remapping is needed.
-     */
-    suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress
+    suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress
 
 
     /**
@@ -96,20 +92,14 @@ interface WatchProgressRepository {
      */
     suspend fun saveProgressBatch(progressList: List<WatchProgress>, syncRemote: Boolean = true)
     
-    /**
-     * Remove watch progress (playback only, does not affect Trakt history)
-     */
     suspend fun removeProgress(contentId: String, season: Int? = null, episode: Int? = null)
 
-    /**
-     * Remove from watch history (marks as unwatched on Trakt)
-     */
     suspend fun removeFromHistory(contentId: String, videoId: String? = null, season: Int? = null, episode: Int? = null)
 
     /**
      * Mark content as completed
      */
-    suspend fun markAsCompleted(progress: WatchProgress, syncRemoteToTrakt: Boolean = true)
+    suspend fun markAsCompleted(progress: WatchProgress, broadcastTrackingHistory: Boolean = true)
 
     /**
      * Mark multiple episodes as completed in a single batch operation.
@@ -136,8 +126,9 @@ interface WatchProgressRepository {
      */
     fun isDroppedShow(contentId: String): Boolean
 
-    /**
-     * Returns true if Trakt is both configured AND authenticated as the active progress source.
-     */
-    suspend fun isTraktProgressActive(): Boolean
+    fun hasActiveTrackingProgressProvider(): Boolean
+    fun activeProviderOwnsCompletedHistoryProjection(): Boolean
+    fun activeProviderContinueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long?
+    fun shouldUseAsNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean
+    suspend fun normalizeParentContentId(parentContentId: String, videoId: String?): String
 }

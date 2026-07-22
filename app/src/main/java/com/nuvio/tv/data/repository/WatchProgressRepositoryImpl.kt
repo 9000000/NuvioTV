@@ -500,8 +500,8 @@ class WatchProgressRepositoryImpl @Inject constructor(
         return optimisticContinueWatchingUpdates
     }
 
-    override suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress {
-        return activeProgressProvider()?.remapEpisodeSeed(progress) ?: progress
+    override suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress {
+        return activeProgressProvider()?.prepareNextUpSeed(progress) ?: progress
     }
 
     @OptIn(FlowPreview::class)
@@ -725,7 +725,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         triggerRemoteSync(profileId = profileId)
     }
 
-    override suspend fun markAsCompleted(progress: WatchProgress, syncRemoteToTrakt: Boolean) {
+    override suspend fun markAsCompleted(progress: WatchProgress, broadcastTrackingHistory: Boolean) {
         val profileId = profileManager.activeProfileId.value
         if (progress.contentType.equals("series", ignoreCase = true) ||
             progress.contentType.equals("tv", ignoreCase = true)) {
@@ -744,7 +744,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         watchProgressPreferences.markAsCompleted(progress, profileId = profileId)
         val watchedItem = progress.toWatchedItem(watchedAt = now)
         watchedItemsPreferences.markAsWatched(watchedItem, profileId = profileId)
-        if (syncRemoteToTrakt) {
+        if (broadcastTrackingHistory) {
             broadcastHistoryAdd(profileId, listOf(completed.toTrackingHistoryItem(now)))
         }
         triggerRemoteSync(profileId = profileId)
@@ -878,8 +878,29 @@ class WatchProgressRepositoryImpl @Inject constructor(
             ?.isHiddenFromProgress(contentId) == true
     }
 
-    override suspend fun isTraktProgressActive(): Boolean =
-        activeProgressProvider()?.providerId == TrackingProviderId.TRAKT
+    override fun hasActiveTrackingProgressProvider(): Boolean =
+        activeProgressProviderId != null
+
+    override fun activeProviderOwnsCompletedHistoryProjection(): Boolean =
+        activeProgressProviderId
+            ?.let(trackingProgressProviders::provider)
+            ?.ownsCompletedHistoryProjection == true
+
+    override fun activeProviderContinueWatchingCutoffEpochMs(
+        daysCap: Int,
+        nowEpochMs: Long
+    ): Long? = activeProgressProviderId
+        ?.let(trackingProgressProviders::provider)
+        ?.continueWatchingCutoffEpochMs(daysCap, nowEpochMs)
+
+    override fun shouldUseAsNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean =
+        activeProgressProviderId
+            ?.let(trackingProgressProviders::provider)
+            ?.shouldUseAsNextUpSeed(progress, nowEpochMs)
+            ?: progress.isCompleted()
+
+    override suspend fun normalizeParentContentId(parentContentId: String, videoId: String?): String =
+        activeProgressProvider()?.normalizeParentContentId(parentContentId, videoId) ?: parentContentId
 
     private suspend fun hydrateProgressArtwork(items: List<WatchProgress>) {
         items.take(10).forEach { progress ->
