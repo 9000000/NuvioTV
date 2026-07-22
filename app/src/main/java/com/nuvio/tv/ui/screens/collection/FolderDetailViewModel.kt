@@ -648,7 +648,9 @@ class FolderDetailViewModel @Inject constructor(
                 }
             }
             val tab = _uiState.value.tabs.getOrNull(tabIndex)
-            val catalogName = catalog?.name ?: tab?.label?.takeIf { it != tab?.typeLabel } ?: source.catalogId
+            val catalogName = catalog?.name
+                ?: tab?.label?.takeIf { it.isNotBlank() }
+                ?: source.catalogId
 
             val supportsSkip = catalog?.supportsExtra("skip") ?: false
             val skipStep = catalog?.skipStep() ?: 100
