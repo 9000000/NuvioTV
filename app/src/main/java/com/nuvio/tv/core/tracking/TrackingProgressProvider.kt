@@ -35,6 +35,7 @@ interface TrackingProgressProvider {
     fun applyOptimisticRemoval(contentId: String, season: Int?, episode: Int?)
     fun clearOptimistic()
     fun retainsLocalProgress(contentId: String): Boolean = false
+    fun retainsLocalWatchedEpisode(item: WatchedItem): Boolean = false
     fun isHiddenFromProgress(contentId: String): Boolean
     fun continueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long? = null
     fun shouldUseAsNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean =

@@ -18,6 +18,7 @@ import com.nuvio.tv.core.tracking.TrackingMediaReference
 import com.nuvio.tv.core.tracking.TrackingProgressProvider
 import com.nuvio.tv.core.tracking.TrackingProgressProviderRegistry
 import com.nuvio.tv.core.tracking.mergeProgressProjectionWithRetainedLocal
+import com.nuvio.tv.core.tracking.mergeWatchedEpisodeProjection
 import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.core.tracking.buildTrackingMediaReference
@@ -544,8 +545,20 @@ class WatchProgressRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getWatchedShowEpisodes(): Map<String, Set<Pair<Int, Int>>> {
-        activeProgressProvider()?.let { return it.watchedShowEpisodes() }
-        return watchedItemsPreferences.allItems.first()
+        val profileId = profileManager.activeProfileId.value
+        val provider = activeProgressProvider()
+        if (provider != null) {
+            val providerEpisodes = provider.watchedShowEpisodes()
+            if (profileManager.activeProfileId.value != profileId) return emptyMap()
+            val localItems = watchedItemsPreferences.getAllItems(profileId)
+            if (profileManager.activeProfileId.value != profileId) return emptyMap()
+            return mergeWatchedEpisodeProjection(
+                providerEpisodes = providerEpisodes,
+                localItems = localItems,
+                retainsLocalWatchedEpisode = provider::retainsLocalWatchedEpisode
+            )
+        }
+        return watchedItemsPreferences.getAllItems(profileId)
             .filter { it.season != null && it.episode != null }
             .groupBy { it.contentId }
             .mapValues { (_, items) -> items.map { it.season!! to it.episode!! }.toSet() }

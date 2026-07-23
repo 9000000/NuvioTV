@@ -1,6 +1,7 @@
 package com.nuvio.tv.core.tracking
 
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedItem
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -35,6 +36,24 @@ class TrackingProgressProjectionTest {
         assertEquals(listOf(providerEntry), result)
     }
 
+    @Test
+    fun `watched episode projection unions only provider retained local episodes`() {
+        val providerEpisodes = mapOf("tt100" to setOf(1 to 1))
+        val retained = watchedItem("tt100", "series", 1, 2)
+        val retainedShow = watchedItem("tt200", "tv", 2, 3)
+        val excluded = watchedItem("tt300", "movie", null, null)
+
+        val result = mergeWatchedEpisodeProjection(
+            providerEpisodes = providerEpisodes,
+            localItems = listOf(retained, retainedShow, excluded),
+            retainsLocalWatchedEpisode = { item -> item.contentType != "movie" }
+        )
+
+        assertEquals(setOf(1 to 1, 1 to 2), result["tt100"])
+        assertEquals(setOf(2 to 3), result["tt200"])
+        assertEquals(null, result["tt300"])
+    }
+
     private fun progress(
         contentId: String,
         season: Int?,
@@ -55,5 +74,19 @@ class TrackingProgressProjectionTest {
         position = position,
         duration = 100L,
         lastWatched = lastWatched
+    )
+
+    private fun watchedItem(
+        contentId: String,
+        contentType: String,
+        season: Int?,
+        episode: Int?
+    ) = WatchedItem(
+        contentId = contentId,
+        contentType = contentType,
+        title = contentId,
+        season = season,
+        episode = episode,
+        watchedAt = 1L
     )
 }

@@ -7,6 +7,7 @@ import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedItem
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +78,9 @@ class TraktTrackingProgressProvider @Inject constructor(
     override fun retainsLocalProgress(contentId: String): Boolean =
         shouldRetainTraktLocalProgress(contentId)
 
+    override fun retainsLocalWatchedEpisode(item: WatchedItem): Boolean =
+        shouldRetainTraktLocalWatchedEpisode(item)
+
     override fun isHiddenFromProgress(contentId: String): Boolean =
         service.isShowHiddenFromProgress(contentId)
 
@@ -110,6 +114,12 @@ class TraktTrackingProgressProvider @Inject constructor(
 
 internal fun shouldRetainTraktLocalProgress(contentId: String): Boolean =
     !isTraktCompatibleId(contentId)
+
+internal fun shouldRetainTraktLocalWatchedEpisode(item: WatchedItem): Boolean =
+    item.season != null &&
+        item.episode != null &&
+        (item.contentType.equals("series", ignoreCase = true) ||
+            item.contentType.equals("tv", ignoreCase = true))
 
 internal fun traktContinueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long? {
     if (daysCap == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) return null

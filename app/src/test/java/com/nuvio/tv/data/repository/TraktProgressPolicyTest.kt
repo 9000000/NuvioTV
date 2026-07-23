@@ -2,6 +2,7 @@ package com.nuvio.tv.data.repository
 
 import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -85,6 +86,14 @@ class TraktProgressPolicyTest {
         assertFalse(shouldRetainTraktLocalProgress("trakt:456"))
     }
 
+    @Test
+    fun `Trakt retains locally completed series episodes`() {
+        assertTrue(shouldRetainTraktLocalWatchedEpisode(watchedItem("series", 1, 2)))
+        assertTrue(shouldRetainTraktLocalWatchedEpisode(watchedItem("TV", 1, 2)))
+        assertFalse(shouldRetainTraktLocalWatchedEpisode(watchedItem("movie", null, null)))
+        assertFalse(shouldRetainTraktLocalWatchedEpisode(watchedItem("series", null, null)))
+    }
+
     private fun progress(source: String, percent: Float, lastWatched: Long) = WatchProgress(
         contentId = "tt123",
         contentType = "series",
@@ -101,5 +110,14 @@ class TraktProgressPolicyTest {
         lastWatched = lastWatched,
         progressPercent = percent,
         source = source
+    )
+
+    private fun watchedItem(contentType: String, season: Int?, episode: Int?) = WatchedItem(
+        contentId = "tt123",
+        contentType = contentType,
+        title = "Series",
+        season = season,
+        episode = episode,
+        watchedAt = 1L
     )
 }
