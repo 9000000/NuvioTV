@@ -49,6 +49,7 @@ class SimklSettingsViewModel @Inject constructor(
         SimklSettingsUiState(credentialsConfigured = authRepository.hasRequiredCredentials())
     )
     val uiState: StateFlow<SimklSettingsUiState> = _uiState.asStateFlow()
+    private var connectJob: Job? = null
     private var pollJob: Job? = null
 
     init {
@@ -78,7 +79,7 @@ class SimklSettingsViewModel @Inject constructor(
     }
 
     fun onConnect() {
-        if (_uiState.value.isLoading) return
+        if (connectJob?.isActive == true || _uiState.value.isLoading) return
         if (!authRepository.hasRequiredCredentials()) {
             _uiState.update {
                 it.copy(
@@ -88,13 +89,12 @@ class SimklSettingsViewModel @Inject constructor(
             }
             return
         }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = null) }
+        _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = null) }
+        connectJob = viewModelScope.launch {
             try {
                 authRepository.startPinAuth()
                 _uiState.update {
                     it.copy(
-                        isLoading = false,
                         statusMessage = context.getString(R.string.simkl_status_enter_code)
                     )
                 }
@@ -102,8 +102,11 @@ class SimklSettingsViewModel @Inject constructor(
                 throw error
             } catch (error: Throwable) {
                 _uiState.update {
-                    it.copy(isLoading = false, errorMessage = error.toUserMessage())
+                    it.copy(errorMessage = error.toUserMessage())
                 }
+            } finally {
+                connectJob = null
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -111,10 +114,20 @@ class SimklSettingsViewModel @Inject constructor(
     fun onRetryPolling() = startPolling(true)
 
     fun onCancel() {
+        connectJob?.cancel()
+        connectJob = null
         pollJob?.cancel()
         pollJob = null
         authRepository.cancelPinAuth()
-        _uiState.update { it.copy(isPolling = false, statusMessage = null, errorMessage = null) }
+        _uiState.update {
+            it.copy(
+                mode = SimklConnectionMode.DISCONNECTED,
+                isLoading = false,
+                isPolling = false,
+                statusMessage = null,
+                errorMessage = null
+            )
+        }
     }
 
     fun onDisconnect() {

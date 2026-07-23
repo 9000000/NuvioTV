@@ -78,15 +78,17 @@ fun NuvioDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = NuvioTheme.colors.TextPrimary,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = titleTextAlign,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (title.isNotBlank()) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = NuvioTheme.colors.TextPrimary,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = titleTextAlign,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 if (subtitle != null) {
                     Text(
