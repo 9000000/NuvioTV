@@ -73,6 +73,7 @@ class SearchViewModel @Inject constructor(
     private var discoverJob: Job? = null
     private var catalogRowsUpdateJob: Job? = null
     private var suggestionJob: Job? = null
+    private var liveSearchJob: Job? = null
     private var hasRenderedFirstCatalog = false
     private var pendingCatalogResponses = 0
     private var revealBatchAfterNextDiscoverFetch = false
@@ -82,6 +83,12 @@ class SearchViewModel @Inject constructor(
         const val DISCOVER_INITIAL_LIMIT = 100
         const val DISCOVER_SHOW_MORE_BATCH = 50
         const val SUGGESTION_DEBOUNCE_MS = 150L
+
+        /**
+         * Live search fires while typing, but each run fans out to every enabled addon catalog, so
+         * it waits longer than the suggestion debounce to avoid a request storm per keystroke.
+         */
+        const val LIVE_SEARCH_DEBOUNCE_MS = 400L
         const val MAX_SUGGESTIONS = 8
         const val MAX_RECENT_SEARCHES = 8
     }
@@ -202,11 +209,23 @@ class SearchViewModel @Inject constructor(
             )
         }
 
-        // Search is explicit on submit only; stop any in-flight requests while editing.
+        // Drop in-flight requests for the previous keystroke before scheduling the next run.
         activeSearchJobs.forEach { it.cancel() }
         activeSearchJobs = emptyList()
 
-        fetchSuggestions(query.trim())
+        // Live search: results follow what you type, like mobile. Debounced because each run hits
+        // every enabled addon catalog. History is only written on an explicit submit, so typing
+        // "harry" doesn't leave "h", "ha", "har"... in recent searches.
+        liveSearchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.length >= 2) {
+            liveSearchJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(LIVE_SEARCH_DEBOUNCE_MS)
+                performSearch(query, saveToHistory = false)
+            }
+        }
+
+        fetchSuggestions(trimmed)
     }
 
     private fun fetchSuggestions(query: String) {
@@ -285,7 +304,9 @@ class SearchViewModel @Inject constructor(
     }
 
     private fun submitSearch() {
-        performSearch(_uiState.value.query)
+        // An explicit submit supersedes any debounced live run and is what gets remembered.
+        liveSearchJob?.cancel()
+        performSearch(_uiState.value.query, saveToHistory = true)
     }
 
     private fun clearRecentSearches() {
@@ -294,7 +315,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    private fun performSearch(rawQuery: String) {
+    private fun performSearch(rawQuery: String, saveToHistory: Boolean = true) {
         val query = rawQuery.trim()
         suggestionJob?.cancel()
         _uiState.update {
@@ -305,7 +326,7 @@ class SearchViewModel @Inject constructor(
             )
         }
 
-        if (query.length >= 2) {
+        if (saveToHistory && query.length >= 2) {
             viewModelScope.launch {
                 searchHistoryDataStore.saveRecentSearch(query, MAX_RECENT_SEARCHES)
             }
