@@ -434,7 +434,15 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                             )
                         }
                     }
-                    if (liveInProgress.isEmpty() && useTrackingProvider && cachedInProgress.isNotEmpty() && items.isEmpty()) {
+                    if (
+                        shouldRestoreCachedInProgress(
+                            hasLiveInProgress = liveInProgress.isNotEmpty(),
+                            hasActiveTrackingProvider = useTrackingProvider,
+                            hasCachedInProgress = cachedInProgress.isNotEmpty(),
+                            hasProviderItems = items.isNotEmpty(),
+                            hasLoadedRemoteProgress = snapshot.hasLoadedRemoteProgress
+                        )
+                    ) {
                         cachedInProgress.forEach { cached ->
                             add(
                                 ContinueWatchingItem.InProgress(

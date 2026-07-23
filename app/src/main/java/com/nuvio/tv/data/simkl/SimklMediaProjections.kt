@@ -210,7 +210,7 @@ private fun SimklLibraryEntry.toWatchedItem(
     trackingSourceUrl = buildSimklSourceUrl(mediaType, media)
 )
 
-private fun SimklPlaybackSession.toWatchProgress(): WatchProgress? {
+internal fun SimklPlaybackSession.toWatchProgress(): WatchProgress? {
     val media = media ?: return null
     val parentId = media.canonicalContentId() ?: return null
     val isMovie = mediaType == SimklMediaType.MOVIES
