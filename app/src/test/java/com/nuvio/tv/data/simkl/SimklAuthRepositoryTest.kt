@@ -73,6 +73,19 @@ class SimklAuthRepositoryTest {
     }
 
     @Test
+    fun `connected account can recover a missing normalized identity`() = runTest {
+        val harness = Harness(
+            response(200, """{"user":{"name":"  Actual Viewer  "},"account":{"id":42}}""")
+        )
+        harness.storage.completePinAuthorization("secret-token", harness.storage.currentScope())
+
+        assertEquals("Actual Viewer", harness.repository.refreshUserSettings())
+        assertEquals("Actual Viewer", harness.storage.state.value.username)
+        assertEquals(42L, harness.storage.state.value.accountId)
+        assertTrue(harness.storage.state.value.hasFetchedUserSettings)
+    }
+
+    @Test
     fun `fresh init response while polling invalidates original code`() = runTest {
         val harness = Harness(
             response(

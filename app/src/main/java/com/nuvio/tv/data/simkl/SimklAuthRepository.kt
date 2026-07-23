@@ -107,13 +107,14 @@ class SimklAuthRepository(
         )
         val settings = runCatching { json.decodeFromString<SimklUserSettingsResponse>(response.body) }.getOrNull()
             ?: return null
+        val username = settings.user?.name?.trim()?.takeIf(String::isNotBlank)
         val saved = storage.saveIdentity(
-            username = settings.user?.name,
+            username = username,
             accountId = settings.account?.id,
             settingsActivityWatermark = activityWatermark,
             scope = scope
         )
-        return settings.user?.name.takeIf { saved }
+        return username.takeIf { saved }
     }
 
     suspend fun synchronizeUserSettings(activityWatermark: String?) {

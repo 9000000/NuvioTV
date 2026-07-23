@@ -50,6 +50,7 @@ class SimklSettingsViewModel @Inject constructor(
     )
     val uiState: StateFlow<SimklSettingsUiState> = _uiState.asStateFlow()
     private var connectJob: Job? = null
+    private var identityRefreshJob: Job? = null
     private var pollJob: Job? = null
 
     init {
@@ -68,9 +69,27 @@ class SimklSettingsViewModel @Inject constructor(
                         errorMessage = state.error?.message()
                     )
                 }
+                if (
+                    shouldRefreshMissingSimklIdentity(
+                        state = state,
+                        isRefreshBlocked = identityRefreshJob?.isActive == true || pollJob?.isActive == true
+                    )
+                ) {
+                    identityRefreshJob = viewModelScope.launch {
+                        try {
+                            authRepository.refreshUserSettings()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Throwable) {
+                            Unit
+                        } finally {
+                            identityRefreshJob = null
+                        }
+                    }
+                }
                 if (state.mode == SimklConnectionMode.AWAITING_APPROVAL) {
                     startPolling(false)
-                } else {
+                } else if (shouldCancelSimklPolling(state.mode)) {
                     pollJob?.cancel()
                     pollJob = null
                 }
