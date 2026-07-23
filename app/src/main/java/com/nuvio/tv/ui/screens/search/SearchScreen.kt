@@ -93,6 +93,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.nuvio.tv.ui.components.CatalogRowSection
+import com.nuvio.tv.ui.components.SearchSkeletonRow
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.LoadingIndicator
@@ -108,6 +109,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
+
+/** Skeleton rows shown while a search is pending, matching the two mobile renders. */
+private const val SEARCH_SKELETON_ROW_COUNT = 2
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -614,19 +618,18 @@ fun SearchScreen(
                         }
                     }
 
-                    uiState.isSearching && uiState.catalogRows.isEmpty() -> {
-                        // Placeholder shimmer rows are emitted by the ViewModel,
-                        // so this branch only fires if search targets haven't
-                        // been resolved yet (very brief).
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 80.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                LoadingIndicator()
-                            }
+                    // Nothing to show yet, either still waiting on the debounce or on the first
+                    // responses. Mobile renders skeleton rows for both, so this does too. Unlike
+                    // mobile it only applies with an empty screen: mobile swaps results out for
+                    // skeletons on every keystroke, which on a remote reads as flicker because each
+                    // letter outlasts the debounce, so existing results are kept instead.
+                    (hasPendingUnsubmittedQuery || uiState.isSearching) && visibleCatalogRows.isEmpty() -> {
+                        items(SEARCH_SKELETON_ROW_COUNT) {
+                            SearchSkeletonRow(
+                                posterCardStyle = posterCardStyle,
+                                showAddonName = uiState.catalogAddonNameEnabled,
+                                modifier = Modifier.padding(bottom = 24.dp)
+                            )
                         }
                     }
 
@@ -736,6 +739,17 @@ fun SearchScreen(
                                     )
                                 }
                             )
+                        }
+
+                        // Results are up but more catalogs are still answering, as on mobile.
+                        if (uiState.isSearching || hasPendingUnsubmittedQuery) {
+                            item(key = "search_loading_more") {
+                                SearchSkeletonRow(
+                                    posterCardStyle = posterCardStyle,
+                                    showAddonName = uiState.catalogAddonNameEnabled,
+                                    modifier = Modifier.padding(bottom = 24.dp)
+                                )
+                            }
                         }
                     }
                 }
