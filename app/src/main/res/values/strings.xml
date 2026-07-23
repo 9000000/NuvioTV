@@ -2120,6 +2120,7 @@
     <string name="cd_trakt_qr">Trakt activation QR</string>
     <string name="cd_imdb">IMDb</string>
     <string name="cd_open_discover">Open discover</string>
+    <string name="cd_clear_search">Clear search</string>
     <string name="cd_voice_search">Voice search</string>
     <string name="cd_donation_qr">Donation QR code</string>
     <string name="cd_contributor_qr">Contributor support QR code</string>
