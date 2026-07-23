@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.focusGroup
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
@@ -579,18 +580,9 @@ fun SearchScreen(
                     )
                 }
 
-                if ((trimmedSubmittedQuery.length < 2 || hasPendingUnsubmittedQuery) && !showRecentSearches) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.search_keyboard_hint),
-                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                            color = NuvioTheme.colors.TextSecondary,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 52.dp)
-                        )
-                    }
-                }
+                // The "press Done to search" hint is gone: search now runs as you type, so the
+                // instruction is wrong, and it was re-appearing on every keystroke. Neither the
+                // mobile nor the desktop client shows an equivalent message.
 
                 when {
                     trimmedSubmittedQuery.length < 2 && !hasPendingUnsubmittedQuery -> {
@@ -1069,5 +1061,33 @@ private fun SearchInputField(
                 cursorColor = NuvioTheme.colors.FocusRing
             )
         )
+
+        // Clear button, requested in review. Placed beside the field rather than as a trailing
+        // icon so it is reachable with the D-pad, matching the voice button's treatment.
+        if (query.isNotEmpty()) {
+            var isClearButtonFocused by remember { mutableStateOf(false) }
+            Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
+            IconButton(
+                onClick = { onQueryChanged("") },
+                modifier = Modifier
+                    .onFocusChanged { isClearButtonFocused = it.isFocused }
+                    .size(NuvioTheme.spacing.huge)
+                    .border(
+                        width = if (isClearButtonFocused) NuvioTheme.spacing.xxs else NuvioTheme.spacing.hairline,
+                        color = if (isClearButtonFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.Border,
+                        shape = RoundedCornerShape(NuvioTheme.radii.md)
+                    )
+                    .background(
+                        color = NuvioTheme.colors.BackgroundCard,
+                        shape = RoundedCornerShape(NuvioTheme.radii.md)
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.cd_clear_search),
+                    tint = NuvioTheme.colors.TextPrimary
+                )
+            }
+        }
     }
 }

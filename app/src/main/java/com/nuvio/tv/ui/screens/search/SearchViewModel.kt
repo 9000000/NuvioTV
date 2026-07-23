@@ -88,7 +88,10 @@ class SearchViewModel @Inject constructor(
          * Live search fires while typing, but each run fans out to every enabled addon catalog, so
          * it waits longer than the suggestion debounce to avoid a request storm per keystroke.
          */
-        const val LIVE_SEARCH_DEBOUNCE_MS = 400L
+        const val LIVE_SEARCH_DEBOUNCE_MS = 350L
+
+        /** Shimmer rows shown while a typed query is still waiting to run, as on mobile. */
+        const val PENDING_PLACEHOLDER_ROWS = 2
         const val MAX_SUGGESTIONS = 8
         const val MAX_RECENT_SEARCHES = 8
     }
@@ -197,6 +200,47 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Generic shimmer rows for the window between a keystroke and the search running. The real
+     * per-catalog placeholders replace these once the search targets are resolved; both use the
+     * same `__placeholder_` item convention that [CatalogRowSection] renders as shimmer.
+     */
+    private fun pendingSearchPlaceholderRows(): List<CatalogRow> =
+        (0 until PENDING_PLACEHOLDER_ROWS).map { rowIndex ->
+            val key = "pending_search_$rowIndex"
+            CatalogRow(
+                addonId = key,
+                addonName = " ",
+                addonBaseUrl = "",
+                catalogId = key,
+                catalogName = " ",
+                type = ContentType.fromString("movie"),
+                rawType = "movie",
+                items = (0 until 8).map { i ->
+                    MetaPreview(
+                        id = "__placeholder_${key}_$i",
+                        type = ContentType.fromString("movie"),
+                        rawType = "movie",
+                        name = " ",
+                        poster = "placeholder://empty",
+                        posterShape = PosterShape.POSTER,
+                        background = null,
+                        logo = null,
+                        description = null,
+                        releaseInfo = " ",
+                        imdbRating = null,
+                        genres = emptyList()
+                    )
+                },
+                isLoading = true,
+                hasMore = false,
+                currentPage = 0,
+                supportsSkip = false,
+                skipStep = 0,
+                extraArgs = emptyMap()
+            )
+        }
+
     private fun onQueryChanged(query: String) {
         _uiState.update {
             val trimmedInput = query.trim()
@@ -205,7 +249,17 @@ class SearchViewModel @Inject constructor(
                 query = query,
                 error = null,
                 isSearching = false,
-                catalogRows = if (trimmedInput == submitted) it.catalogRows else emptyList()
+                // Keep whatever is on screen while a keystroke is still waiting to run. Swapping to
+                // an empty list flashed the no-results state on every letter, and swapping to
+                // shimmer flashed a different row set instead: on a remote each letter outlasts the
+                // debounce, so every one of those swaps was a visible rebuild. Only the first query
+                // of a session, with nothing to keep, gets the shimmer rows mobile shows.
+                catalogRows = when {
+                    trimmedInput == submitted -> it.catalogRows
+                    trimmedInput.length < 2 -> emptyList()
+                    it.catalogRows.isEmpty() -> pendingSearchPlaceholderRows()
+                    else -> it.catalogRows
+                }
             )
         }
 
@@ -214,14 +268,13 @@ class SearchViewModel @Inject constructor(
         activeSearchJobs = emptyList()
 
         // Live search: results follow what you type, like mobile. Debounced because each run hits
-        // every enabled addon catalog. History is only written on an explicit submit, so typing
-        // "harry" doesn't leave "h", "ha", "har"... in recent searches.
+        // every enabled addon catalog.
         liveSearchJob?.cancel()
         val trimmed = query.trim()
         if (trimmed.length >= 2) {
             liveSearchJob = viewModelScope.launch {
                 kotlinx.coroutines.delay(LIVE_SEARCH_DEBOUNCE_MS)
-                performSearch(query, saveToHistory = false)
+                performSearch(query)
             }
         }
 
@@ -304,9 +357,9 @@ class SearchViewModel @Inject constructor(
     }
 
     private fun submitSearch() {
-        // An explicit submit supersedes any debounced live run and is what gets remembered.
+        // An explicit submit just skips the remaining debounce; the live run would land anyway.
         liveSearchJob?.cancel()
-        performSearch(_uiState.value.query, saveToHistory = true)
+        performSearch(_uiState.value.query)
     }
 
     private fun clearRecentSearches() {
@@ -315,7 +368,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    private fun performSearch(rawQuery: String, saveToHistory: Boolean = true) {
+    private fun performSearch(rawQuery: String) {
         val query = rawQuery.trim()
         suggestionJob?.cancel()
         _uiState.update {
@@ -324,12 +377,6 @@ class SearchViewModel @Inject constructor(
                 query = rawQuery,
                 suggestions = emptyList()
             )
-        }
-
-        if (saveToHistory && query.length >= 2) {
-            viewModelScope.launch {
-                searchHistoryDataStore.saveRecentSearch(query, MAX_RECENT_SEARCHES)
-            }
         }
 
         // Cancel any in-flight work from the previous query.
@@ -355,7 +402,9 @@ class SearchViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSearching = true, error = null, catalogRows = emptyList()) }
+            // Rows are left alone here. Clearing them produced an empty frame between the old
+            // results and the placeholders below, which is the flash this screen used to show.
+            _uiState.update { it.copy(isSearching = true, error = null) }
 
             val addons = try {
                 addonRepository.getInstalledAddons().first().enabledAddons()
@@ -434,7 +483,15 @@ class SearchViewModel @Inject constructor(
                     extraArgs = emptyMap()
                 )
             }
-            _uiState.update { it.copy(catalogRows = placeholderRows) }
+            // Only shimmer when there is nothing real to look at. If the previous query's results
+            // are still up, they stay until this query's results replace them, so refining a search
+            // is a single swap rather than results -> shimmer -> results on every letter.
+            _uiState.update { state ->
+                val showingRealRows = state.catalogRows.any { row ->
+                    row.items.firstOrNull()?.id?.startsWith("__placeholder_") != true
+                }
+                if (showingRealRows) state else state.copy(catalogRows = placeholderRows)
+            }
 
             val jobs = searchTargets.map { (addon, catalog) ->
                 viewModelScope.launch {
@@ -453,6 +510,13 @@ class SearchViewModel @Inject constructor(
                 } finally {
                     if (uiState.value.submittedQuery.trim() == query) {
                         _uiState.update { it.copy(isSearching = false) }
+                        // Remembered once it has actually returned something, so backing out still
+                        // saves what you typed while typos that match nothing never get recorded.
+                        if (catalogsMap.values.any { row -> row.items.isNotEmpty() }) {
+                            viewModelScope.launch {
+                                searchHistoryDataStore.saveRecentSearch(query, MAX_RECENT_SEARCHES)
+                            }
+                        }
                     }
                 }
             }
