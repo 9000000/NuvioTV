@@ -210,7 +210,7 @@ class SimklApiClientTest {
         val client = SimklApiClient(
             engine = engine.also { it.now = { now } },
             configuration = SimklApiConfiguration("client-id", "nuvio", "1.0"),
-            accessToken = { "token" },
+            authorization = { testSimklAuthorization() },
             onUnauthorized = { wasUnauthorized = true },
             nowEpochMs = { now },
             sleep = { delay -> sleeps += delay; now += delay },

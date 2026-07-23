@@ -139,7 +139,7 @@ class SimklMutationServiceTest {
         val client = SimklApiClient(
             engine = engine,
             configuration = configuration,
-            accessToken = { "token" },
+            authorization = { testSimklAuthorization() },
             onUnauthorized = {},
             nowEpochMs = { now },
             sleep = { duration -> now += duration },
@@ -217,7 +217,7 @@ class SimklMutationServiceTest {
         SimklApiClient(
             engine = engine,
             configuration = configuration,
-            accessToken = { "token" },
+            authorization = { testSimklAuthorization() },
             onUnauthorized = {},
             nowEpochMs = now,
             sleep = {},

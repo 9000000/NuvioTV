@@ -30,6 +30,7 @@ class SimklAuthRepository(
     fun hasRequiredCredentials(): Boolean = configuration.clientId.isNotBlank()
 
     suspend fun startPinAuth(): SimklPinSession = mutex.withLock {
+        val authScope = storage.currentScope()
         if (!hasRequiredCredentials()) throw SimklAuthException(SimklAuthError.MISSING_CLIENT_ID)
         val response = executeAuthRequest(SimklApiRequest(SimklHttpMethod.GET, "/oauth/pin", requiresAuthentication = false))
         val payload = decodePinResponse(response.body)
@@ -48,18 +49,21 @@ class SimklAuthRepository(
             expiresAtEpochMs = nowEpochMs() + expiresIn * 1_000L,
             intervalSeconds = interval
         )
-        storage.savePinSession(session)
+        if (!storage.savePinSession(session, authScope)) {
+            throw SimklAuthException(SimklAuthError.PIN_INVALIDATED)
+        }
         session
     }
 
     suspend fun pollPin(): SimklPinPollResult = mutex.withLock {
+        val authScope = storage.currentScope()
         val session = storage.state.value.pinSession ?: return@withLock SimklPinPollResult.Invalidated
         if (nowEpochMs() >= session.expiresAtEpochMs) {
-            storage.clearPinSession(SimklAuthError.PIN_EXPIRED)
+            storage.clearPinSession(SimklAuthError.PIN_EXPIRED, authScope)
             return@withLock SimklPinPollResult.Expired
         }
         if (!PIN_PATTERN.matches(session.userCode)) {
-            storage.clearPinSession(SimklAuthError.PIN_INVALIDATED)
+            storage.clearPinSession(SimklAuthError.PIN_INVALIDATED, authScope)
             return@withLock SimklPinPollResult.Invalidated
         }
         val response = executeAuthRequest(
@@ -71,15 +75,16 @@ class SimklAuthRepository(
         )
         val payload = decodePinResponse(response.body)
         if (!payload.deviceCode.isNullOrBlank()) {
-            storage.clearPinSession(SimklAuthError.PIN_INVALIDATED)
+            storage.clearPinSession(SimklAuthError.PIN_INVALIDATED, authScope)
             return@withLock SimklPinPollResult.Invalidated
         }
         val token = payload.accessToken?.trim()?.takeIf(String::isNotBlank)
         if (payload.result == "OK" && token != null) {
-            storage.saveAccessToken(token)
-            storage.clearPinSession()
+            if (!storage.completePinAuthorization(token, authScope)) {
+                return@withLock SimklPinPollResult.Invalidated
+            }
             try {
-                refreshUserSettings()
+                refreshUserSettings(scope = authScope)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
@@ -91,24 +96,36 @@ class SimklAuthRepository(
         throw SimklAuthException(SimklAuthError.INVALID_PIN_RESPONSE)
     }
 
-    suspend fun refreshUserSettings(activityWatermark: String? = null): String? {
-        if (!storage.state.value.isAuthenticated) return null
-        val response = apiClient.execute(SimklApiRequest(SimklHttpMethod.POST, "/users/settings"))
+    suspend fun refreshUserSettings(
+        activityWatermark: String? = null,
+        scope: SimklAuthScope = storage.currentScope()
+    ): String? {
+        if (!storage.isCurrent(scope) || !storage.state.value.isAuthenticated) return null
+        val response = apiClient.execute(
+            request = SimklApiRequest(SimklHttpMethod.POST, "/users/settings"),
+            expectedAuthScope = scope
+        )
         val settings = runCatching { json.decodeFromString<SimklUserSettingsResponse>(response.body) }.getOrNull()
             ?: return null
-        storage.saveIdentity(settings.user?.name, settings.account?.id, activityWatermark)
-        return settings.user?.name
+        val saved = storage.saveIdentity(
+            username = settings.user?.name,
+            accountId = settings.account?.id,
+            settingsActivityWatermark = activityWatermark,
+            scope = scope
+        )
+        return settings.user?.name.takeIf { saved }
     }
 
     suspend fun synchronizeUserSettings(activityWatermark: String?) {
+        val authScope = storage.currentScope()
         if (!storage.state.value.isAuthenticated) return
         try {
             when (simklSettingsRefreshAction(storage.state.value, activityWatermark)) {
                 SimklSettingsRefreshAction.NONE -> Unit
                 SimklSettingsRefreshAction.RECORD_WATERMARK -> {
-                    storage.recordSettingsActivityWatermark(requireNotNull(activityWatermark))
+                    storage.recordSettingsActivityWatermark(requireNotNull(activityWatermark), authScope)
                 }
-                SimklSettingsRefreshAction.FETCH -> refreshUserSettings(activityWatermark)
+                SimklSettingsRefreshAction.FETCH -> refreshUserSettings(activityWatermark, authScope)
             }
         } catch (error: CancellationException) {
             throw error

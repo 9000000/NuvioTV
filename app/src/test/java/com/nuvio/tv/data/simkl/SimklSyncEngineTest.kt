@@ -150,7 +150,7 @@ class SimklSyncEngineTest {
                 SimklRawHttpResponse(200, "{}")
             },
             configuration = SimklApiConfiguration("client-id", "nuvio", "1.0"),
-            accessToken = { "token" },
+            authorization = { testSimklAuthorization() },
             onUnauthorized = {},
             nowEpochMs = { now },
             sleep = { duration -> now += duration },
@@ -179,7 +179,7 @@ class SimklSyncEngineTest {
             val client = SimklApiClient(
                 engine = SimklHttpEngine { _, _, _, _ -> SimklRawHttpResponse(200, body) },
                 configuration = SimklApiConfiguration("client-id", "nuvio", "1.0"),
-                accessToken = { "token" },
+                authorization = { testSimklAuthorization() },
                 onUnauthorized = {},
                 nowEpochMs = { 0L },
                 sleep = {},

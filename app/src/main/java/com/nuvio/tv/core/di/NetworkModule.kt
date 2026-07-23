@@ -184,8 +184,14 @@ object NetworkModule {
     ): SimklApiClient = SimklApiClient(
         engine = OkHttpSimklEngine(okHttpClient),
         configuration = configuration,
-        accessToken = storage::accessToken,
-        onUnauthorized = { storage.clearAuth(SimklAuthError.AUTHORIZATION_REVOKED) }
+        authorization = storage::authorization,
+        onUnauthorized = { authorization ->
+            storage.clearAuth(
+                error = SimklAuthError.AUTHORIZATION_REVOKED,
+                scope = authorization.scope,
+                expectedAccessToken = authorization.accessToken
+            )
+        }
     )
 
     @Provides

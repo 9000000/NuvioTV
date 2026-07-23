@@ -113,7 +113,7 @@ class SimklAuthRepositoryTest {
     @Test
     fun `disconnect removes identity pin and access token`() {
         val harness = Harness()
-        harness.storage.saveAccessToken("token")
+        harness.storage.completePinAuthorization("token", harness.storage.currentScope())
         harness.storage.saveIdentity("viewer", 42)
         harness.storage.savePinSession(session())
 
@@ -121,6 +121,39 @@ class SimklAuthRepositoryTest {
 
         assertNull(harness.storage.accessToken())
         assertEquals(SimklAuthState(), harness.storage.state.value)
+    }
+
+    @Test
+    fun `approved pin is discarded when the active profile changes during polling`() = runTest {
+        val harness = Harness(response(200, """{"result":"OK","access_token":"profile-one-token"}"""))
+        harness.storage.savePinSession(session())
+        harness.engine.beforeResponse = { harness.storage.switchProfile(2) }
+
+        assertEquals(SimklPinPollResult.Invalidated, harness.repository.pollPin())
+        assertNull(harness.storage.accessToken())
+
+        harness.storage.switchProfile(1)
+
+        assertNull(harness.storage.accessToken())
+        assertFalse(harness.storage.state.value.isAuthenticated)
+    }
+
+    @Test
+    fun `delayed unauthorized response cannot disconnect the newly active profile`() {
+        val harness = Harness(response(401))
+        harness.storage.completePinAuthorization("profile-one-token", harness.storage.currentScope())
+        harness.storage.switchProfile(2)
+        harness.storage.completePinAuthorization("profile-two-token", harness.storage.currentScope())
+        harness.storage.switchProfile(1)
+        harness.engine.beforeResponse = { harness.storage.switchProfile(2) }
+
+        assertThrows(SimklApiException::class.java) {
+            kotlinx.coroutines.runBlocking { harness.repository.refreshUserSettings() }
+        }
+
+        assertEquals("profile-two-token", harness.storage.accessToken())
+        assertTrue(harness.storage.state.value.isAuthenticated)
+        assertNull(harness.storage.state.value.error)
     }
 
     private class Harness(
@@ -133,8 +166,14 @@ class SimklAuthRepositoryTest {
         val client = SimklApiClient(
             engine = engine,
             configuration = configuration,
-            accessToken = storage::accessToken,
-            onUnauthorized = { storage.clearAuth(SimklAuthError.AUTHORIZATION_REVOKED) },
+            authorization = storage::authorization,
+            onUnauthorized = { authorization ->
+                storage.clearAuth(
+                    error = SimklAuthError.AUTHORIZATION_REVOKED,
+                    scope = authorization.scope,
+                    expectedAccessToken = authorization.accessToken
+                )
+            },
             nowEpochMs = { now },
             sleep = { now += it },
             retryJitterMs = { 0L }
@@ -143,52 +182,126 @@ class SimklAuthRepositoryTest {
     }
 
     private class FakeStorage : SimklAuthStorage {
+        private val profiles = mutableMapOf(1 to StoredProfile())
         private val mutableState = MutableStateFlow(SimklAuthState())
-        private var token: String? = null
+        private var activeProfileId = 1
+        private var generation = 0L
         override val state: StateFlow<SimklAuthState> = mutableState
 
-        override fun accessToken(): String? = token
+        override fun currentScope() = SimklAuthScope(activeProfileId, generation)
 
-        override fun savePinSession(session: SimklPinSession) {
-            mutableState.value = mutableState.value.copy(pinSession = session, error = null)
+        override fun isCurrent(scope: SimklAuthScope): Boolean = scope == currentScope()
+
+        override fun authorization(): SimklAuthorization? {
+            val token = currentProfile().token ?: return null
+            return SimklAuthorization(currentScope(), token)
         }
 
-        override fun clearPinSession(error: SimklAuthError?) {
-            mutableState.value = mutableState.value.copy(pinSession = null, error = error)
-        }
+        override fun savePinSession(session: SimklPinSession, scope: SimklAuthScope): Boolean =
+            mutate(scope) { profile ->
+                profile.state = profile.state.copy(pinSession = session, error = null)
+            }
 
-        override fun saveAccessToken(token: String) {
-            this.token = token
-            mutableState.value = mutableState.value.copy(isAuthenticated = true, error = null)
-        }
+        override fun clearPinSession(error: SimklAuthError?, scope: SimklAuthScope): Boolean =
+            mutate(scope) { profile ->
+                profile.state = profile.state.copy(pinSession = null, error = error)
+            }
 
-        override fun saveIdentity(username: String?, accountId: Long?, settingsActivityWatermark: String?) {
-            mutableState.value = mutableState.value.copy(
+        override fun completePinAuthorization(token: String, scope: SimklAuthScope): Boolean =
+            mutate(scope) { profile ->
+                profile.token = token
+                profile.state = profile.state.copy(
+                    isAuthenticated = true,
+                    pinSession = null,
+                    error = null
+                )
+            }
+
+        override fun saveIdentity(
+            username: String?,
+            accountId: Long?,
+            settingsActivityWatermark: String?,
+            scope: SimklAuthScope
+        ): Boolean = mutate(scope) { profile ->
+            profile.state = profile.state.copy(
                 username = username,
                 accountId = accountId,
                 hasFetchedUserSettings = true,
                 settingsActivityWatermark = settingsActivityWatermark
-                    ?: mutableState.value.settingsActivityWatermark
+                    ?: profile.state.settingsActivityWatermark
             )
         }
 
-        override fun recordSettingsActivityWatermark(watermark: String) {
-            mutableState.value = mutableState.value.copy(settingsActivityWatermark = watermark)
+        override fun recordSettingsActivityWatermark(
+            watermark: String,
+            scope: SimklAuthScope
+        ): Boolean = mutate(scope) { profile ->
+            profile.state = profile.state.copy(settingsActivityWatermark = watermark)
         }
 
-        override fun clearAuth(error: SimklAuthError?) {
-            token = null
-            mutableState.value = SimklAuthState(error = error)
+        override fun clearAuth(
+            error: SimklAuthError?,
+            scope: SimklAuthScope,
+            expectedAccessToken: String?
+        ): Boolean {
+            if (!isCurrent(scope)) return false
+            val profile = currentProfile()
+            if (expectedAccessToken != null && profile.token != expectedAccessToken) return false
+            profile.token = null
+            profile.state = SimklAuthState(error = error)
+            generation += 1L
+            publish()
+            return true
         }
 
-        override fun removeProfile(profileId: Int) = Unit
+        override fun removeProfile(profileId: Int) {
+            profiles.remove(profileId)
+            if (profileId == activeProfileId) {
+                generation += 1L
+                profiles[profileId] = StoredProfile()
+                publish()
+            }
+        }
 
-        override fun clearAllProfiles() = clearAuth()
+        override fun clearAllProfiles() {
+            profiles.clear()
+            generation += 1L
+            profiles[activeProfileId] = StoredProfile()
+            publish()
+        }
+
+        fun switchProfile(profileId: Int) {
+            if (profileId != activeProfileId) {
+                activeProfileId = profileId
+                generation += 1L
+            }
+            profiles.getOrPut(profileId, ::StoredProfile)
+            publish()
+        }
+
+        private fun currentProfile(): StoredProfile = profiles.getOrPut(activeProfileId, ::StoredProfile)
+
+        private fun mutate(scope: SimklAuthScope, block: (StoredProfile) -> Unit): Boolean {
+            if (!isCurrent(scope)) return false
+            block(currentProfile())
+            publish()
+            return true
+        }
+
+        private fun publish() {
+            mutableState.value = currentProfile().state
+        }
+
+        private data class StoredProfile(
+            var token: String? = null,
+            var state: SimklAuthState = SimklAuthState()
+        )
     }
 
     private class RecordingEngine(vararg responses: SimklRawHttpResponse) : SimklHttpEngine {
         private val responses = ArrayDeque(responses.toList())
         val requests = mutableListOf<Request>()
+        var beforeResponse: ((Int) -> Unit)? = null
 
         override suspend fun execute(
             method: String,
@@ -197,6 +310,7 @@ class SimklAuthRepositoryTest {
             body: String
         ): SimklRawHttpResponse {
             requests += Request(method, url, headers, body)
+            beforeResponse?.invoke(requests.size)
             return responses.removeFirst()
         }
     }

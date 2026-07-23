@@ -65,8 +65,8 @@ fun interface SimklHttpEngine {
 class SimklApiClient(
     private val engine: SimklHttpEngine,
     private val configuration: SimklApiConfiguration,
-    private val accessToken: () -> String?,
-    private val onUnauthorized: () -> Unit,
+    private val authorization: () -> SimklAuthorization?,
+    private val onUnauthorized: (SimklAuthorization) -> Unit,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
     private val retryJitterMs: () -> Long = { Random.nextLong(RETRY_JITTER_BOUND_MS + 1L) }
@@ -76,13 +76,26 @@ class SimklApiClient(
     private var nextGetAtEpochMs = 0L
     private var nextPostAtEpochMs = 0L
 
-    suspend fun execute(request: SimklApiRequest): SimklApiResponse = requestMutex.withLock {
-        val token = if (request.requiresAuthentication) {
-            accessToken()?.takeIf(String::isNotBlank)
+    suspend fun execute(
+        request: SimklApiRequest,
+        expectedAuthScope: SimklAuthScope? = null
+    ): SimklApiResponse = requestMutex.withLock {
+        val requestAuthorization = if (request.requiresAuthentication) {
+            authorization()?.takeIf { it.accessToken.isNotBlank() }
+                ?.also { current ->
+                    if (expectedAuthScope != null && current.scope != expectedAuthScope) {
+                        throw SimklApiException(
+                            409,
+                            "auth_scope_changed",
+                            "Simkl authentication profile changed"
+                        )
+                    }
+                }
                 ?: throw SimklApiException(401, "authentication_required", "Simkl authentication is required")
         } else {
             null
         }
+        val token = requestAuthorization?.accessToken
         val maxAttempts = if (request.retryPolicy == SimklRetryPolicy.NEVER) 1 else MAX_ATTEMPTS
         var syncWriteLockRetried = false
         repeat(maxAttempts) { attempt ->
@@ -125,7 +138,7 @@ class SimklApiClient(
                 SimklResponseAction.SUCCESS -> return@withLock response.toApiResponse()
                 SimklResponseAction.SOFT_SUCCESS -> return@withLock response.toApiResponse(true)
                 SimklResponseAction.REAUTHENTICATE -> {
-                    if (request.requiresAuthentication) onUnauthorized()
+                    requestAuthorization?.let(onUnauthorized)
                     throw response.toApiException(json)
                 }
                 SimklResponseAction.FAIL -> throw response.toApiException(json)

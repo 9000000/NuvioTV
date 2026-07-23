@@ -21,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -34,65 +35,100 @@ class AndroidSimklAuthStorage @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(SimklAuthState())
-    private var activeProfileId = 1
-    private var currentAccessToken: String? = null
+    private val stateLock = Any()
+    @Volatile
+    private var activeCredentials = ActiveCredentials(profileId = 1, generation = 0L, accessToken = null)
 
     override val state: StateFlow<SimklAuthState> = _state.asStateFlow()
 
     init {
-        load(activeProfileId)
+        load(1)
         scope.launch {
-            profileDataStore.activeProfileId.collect { profileId ->
-                activeProfileId = profileId
-                load(profileId)
-            }
+            profileDataStore.activeProfileId
+                .distinctUntilChanged()
+                .collect { profileId ->
+                    if (profileId != currentScope().profileId) load(profileId)
+                }
         }
     }
 
-    override fun accessToken(): String? = currentAccessToken
+    override fun currentScope(): SimklAuthScope = activeCredentials.scope()
 
-    override fun savePinSession(session: SimklPinSession) {
-        val metadata = metadata().copy(pinSession = session)
-        saveMetadata(metadata)
-        publish(metadata = metadata)
+    override fun isCurrent(scope: SimklAuthScope): Boolean = activeCredentials.scope() == scope
+
+    override fun authorization(): SimklAuthorization? {
+        val current = activeCredentials
+        val token = current.accessToken?.takeIf(String::isNotBlank) ?: return null
+        return SimklAuthorization(scope = current.scope(), accessToken = token)
     }
 
-    override fun clearPinSession(error: SimklAuthError?) {
-        val metadata = metadata().copy(pinSession = null)
-        saveMetadata(metadata)
-        publish(metadata = metadata, error = error)
+    override fun savePinSession(session: SimklPinSession, scope: SimklAuthScope): Boolean =
+        mutate(scope) { current ->
+            val metadata = metadata().copy(pinSession = session)
+            saveMetadata(metadata, current.profileId)
+            publish(metadata = metadata)
+        }
+
+    override fun clearPinSession(error: SimklAuthError?, scope: SimklAuthScope): Boolean =
+        mutate(scope) { current ->
+            val metadata = metadata().copy(pinSession = null)
+            saveMetadata(metadata, current.profileId)
+            publish(metadata = metadata, error = error)
+        }
+
+    override fun completePinAuthorization(token: String, scope: SimklAuthScope): Boolean {
+        val normalized = token.trim().takeIf(String::isNotBlank) ?: return false
+        return mutate(scope) { current ->
+            val metadata = metadata().copy(pinSession = null)
+            activeCredentials = current.copy(accessToken = normalized)
+            saveEncrypted(TOKEN_KEY, normalized, current.profileId)
+            saveMetadata(metadata, current.profileId)
+            publish(metadata = metadata)
+        }
     }
 
-    override fun saveAccessToken(token: String) {
-        currentAccessToken = token.trim().takeIf(String::isNotBlank)
-        saveEncrypted(TOKEN_KEY, currentAccessToken)
-        publish()
-    }
-
-    override fun saveIdentity(username: String?, accountId: Long?, settingsActivityWatermark: String?) {
-        val current = metadata()
-        val metadata = current.copy(
+    override fun saveIdentity(
+        username: String?,
+        accountId: Long?,
+        settingsActivityWatermark: String?,
+        scope: SimklAuthScope
+    ): Boolean = mutate(scope) { current ->
+        val stored = metadata()
+        val metadata = stored.copy(
             username = username,
             accountId = accountId,
             hasFetchedUserSettings = true,
-            settingsActivityWatermark = settingsActivityWatermark ?: current.settingsActivityWatermark
+            settingsActivityWatermark = settingsActivityWatermark ?: stored.settingsActivityWatermark
         )
-        saveMetadata(metadata)
+        saveMetadata(metadata, current.profileId)
         publish(metadata = metadata)
     }
 
-    override fun recordSettingsActivityWatermark(watermark: String) {
+    override fun recordSettingsActivityWatermark(
+        watermark: String,
+        scope: SimklAuthScope
+    ): Boolean = mutate(scope) { current ->
         val metadata = metadata().copy(settingsActivityWatermark = watermark)
-        saveMetadata(metadata)
+        saveMetadata(metadata, current.profileId)
         publish(metadata = metadata)
     }
 
-    override fun clearAuth(error: SimklAuthError?) {
-        currentAccessToken = null
-        saveEncrypted(TOKEN_KEY, null)
+    override fun clearAuth(
+        error: SimklAuthError?,
+        scope: SimklAuthScope,
+        expectedAccessToken: String?
+    ): Boolean = synchronized(stateLock) {
+        val current = activeCredentials
+        if (current.scope() != scope) return@synchronized false
+        if (expectedAccessToken != null && current.accessToken != expectedAccessToken) {
+            return@synchronized false
+        }
+        activeCredentials = current.copy(generation = current.generation + 1L, accessToken = null)
+        saveEncrypted(TOKEN_KEY, null, current.profileId)
         val metadata = SimklStoredAuthMetadata()
-        saveMetadata(metadata)
+        saveMetadata(metadata, current.profileId)
         publish(metadata = metadata, error = error)
+        true
     }
 
     override fun removeProfile(profileId: Int) {
@@ -100,24 +136,39 @@ class AndroidSimklAuthStorage @Inject constructor(
             .remove(profileKey(METADATA_KEY, profileId))
             .remove(profileKey(TOKEN_KEY, profileId))
             .apply()
-        if (profileId == activeProfileId) {
-            currentAccessToken = null
-            publish(metadata = SimklStoredAuthMetadata())
+        synchronized(stateLock) {
+            val current = activeCredentials
+            if (profileId == current.profileId) {
+                activeCredentials = current.copy(generation = current.generation + 1L, accessToken = null)
+                publish(metadata = SimklStoredAuthMetadata())
+            }
         }
     }
 
     override fun clearAllProfiles() {
         preferences.edit().clear().apply()
-        currentAccessToken = null
-        publish(metadata = SimklStoredAuthMetadata())
+        synchronized(stateLock) {
+            val current = activeCredentials
+            activeCredentials = current.copy(generation = current.generation + 1L, accessToken = null)
+            publish(metadata = SimklStoredAuthMetadata())
+        }
     }
 
     private fun load(profileId: Int) {
         val metadata = preferences.getString(profileKey(METADATA_KEY, profileId), null)
             ?.let { runCatching { json.decodeFromString<SimklStoredAuthMetadata>(it) }.getOrNull() }
             ?: SimklStoredAuthMetadata()
-        currentAccessToken = loadEncrypted(TOKEN_KEY, profileId)
-        publish(metadata = metadata)
+        val accessToken = loadEncrypted(TOKEN_KEY, profileId)
+        synchronized(stateLock) {
+            val current = activeCredentials
+            val generation = if (profileId == current.profileId) {
+                current.generation
+            } else {
+                current.generation + 1L
+            }
+            activeCredentials = ActiveCredentials(profileId, generation, accessToken)
+            publish(metadata = metadata)
+        }
     }
 
     private fun metadata(): SimklStoredAuthMetadata = SimklStoredAuthMetadata(
@@ -133,7 +184,7 @@ class AndroidSimklAuthStorage @Inject constructor(
         error: SimklAuthError? = null
     ) {
         _state.value = SimklAuthState(
-            isAuthenticated = !currentAccessToken.isNullOrBlank(),
+            isAuthenticated = !activeCredentials.accessToken.isNullOrBlank(),
             username = metadata.username,
             accountId = metadata.accountId,
             hasFetchedUserSettings = metadata.hasFetchedUserSettings,
@@ -143,9 +194,9 @@ class AndroidSimklAuthStorage @Inject constructor(
         )
     }
 
-    private fun saveMetadata(metadata: SimklStoredAuthMetadata) {
+    private fun saveMetadata(metadata: SimklStoredAuthMetadata, profileId: Int) {
         preferences.edit()
-            .putString(profileKey(METADATA_KEY, activeProfileId), json.encodeToString(metadata))
+            .putString(profileKey(METADATA_KEY, profileId), json.encodeToString(metadata))
             .apply()
     }
 
@@ -157,11 +208,21 @@ class AndroidSimklAuthStorage @Inject constructor(
             .getOrNull()
     }
 
-    private fun saveEncrypted(key: String, value: String?) {
-        val scopedKey = profileKey(key, activeProfileId)
+    private fun saveEncrypted(key: String, value: String?, profileId: Int) {
+        val scopedKey = profileKey(key, profileId)
         val editor = preferences.edit()
         if (value.isNullOrBlank()) editor.remove(scopedKey) else editor.putString(scopedKey, encrypt(value))
         editor.apply()
+    }
+
+    private fun mutate(
+        scope: SimklAuthScope,
+        block: (ActiveCredentials) -> Unit
+    ): Boolean = synchronized(stateLock) {
+        val current = activeCredentials
+        if (current.scope() != scope) return@synchronized false
+        block(current)
+        true
     }
 
     private fun encrypt(value: String): String {
@@ -204,6 +265,14 @@ class AndroidSimklAuthStorage @Inject constructor(
     private fun ByteArray.toBase64(): String = Base64.encodeToString(this, Base64.NO_WRAP)
 
     private fun String.fromBase64(): ByteArray = Base64.decode(this, Base64.NO_WRAP)
+
+    private data class ActiveCredentials(
+        val profileId: Int,
+        val generation: Long,
+        val accessToken: String?
+    ) {
+        fun scope() = SimklAuthScope(profileId = profileId, generation = generation)
+    }
 
     private companion object {
         const val PREFERENCES_NAME = "nuvio_simkl_auth"
