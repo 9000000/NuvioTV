@@ -562,6 +562,7 @@
     <string name="action_apply">Apply</string>
     <string name="sub_opacity">Opacity</string>
     <string name="action_none">None</string>
+    <string name="action_back">Back</string>
     <string name="action_close">Close</string>
 
     <string name="supporters_contributors_title">Supporters &amp; Contributors</string>
@@ -2565,6 +2566,13 @@
     <string name="simkl_code_expires">Code expires in %1$s</string>
     <string name="simkl_sync_now">Sync now</string>
     <string name="simkl_visit">Visit Simkl</string>
+    <string name="simkl_sync_info_action">How syncing works</string>
+    <string name="simkl_sync_info_title">How Simkl syncing works</string>
+    <string name="simkl_sync_info_description">Nuvio automatically checks Simkl at most once every %1$d minutes. Changes made through another app or the Simkl website may take that long to appear.</string>
+    <string name="simkl_sync_info_activity">Each refresh first checks whether Simkl reports any changes and downloads only the updates. This follows Simkl’s API rules, reduces unnecessary data use, and helps keep the service stable.</string>
+    <string name="simkl_sync_info_manual">Changes made in Nuvio are sent to Simkl immediately. Use Sync now whenever you want Nuvio to check for remote changes sooner.</string>
+    <string name="simkl_sync_info_docs">Read the Simkl sync guide</string>
+    <string name="error_open_browser_failed">Failed to open browser</string>
     <string name="simkl_missing_credentials">Missing SIMKL_CLIENT_ID</string>
     <string name="simkl_status_enter_code">Enter the code on Simkl to finish connecting</string>
     <string name="simkl_status_waiting">Waiting for Simkl approval…</string>

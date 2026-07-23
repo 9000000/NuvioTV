@@ -4,6 +4,8 @@ package com.nuvio.tv.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,13 +25,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -51,9 +59,11 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.core.qr.QrCodeGenerator
 import com.nuvio.tv.data.repository.TraktProgressService
+import com.nuvio.tv.data.simkl.SIMKL_AUTOMATIC_REFRESH_INTERVAL_MINUTES
 import com.nuvio.tv.data.simkl.SimklConnectionMode
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.NuvioDialog
+import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
@@ -142,33 +152,86 @@ internal fun SimklAccountDialog(
 ) {
     val context = LocalContext.current
     val logo = rememberRawSvgPainter(R.raw.simkl_tv_wordmark, 220.dp)
+    var showSyncInfo by rememberSaveable { mutableStateOf(false) }
+    var browserError by rememberSaveable { mutableStateOf(false) }
     if (state.mode == SimklConnectionMode.CONNECTED) {
         val glyph = rememberRawSvgPainter(R.raw.simkl_tv_glyph, 150.dp)
         ConnectedTrackingAccountDialog(
             brand = TrackingDialogBrand.SIMKL,
             glyph = glyph,
-            onDismiss = onDismiss
+            onDismiss = {
+                if (showSyncInfo) {
+                    browserError = false
+                    showSyncInfo = false
+                } else {
+                    onDismiss()
+                }
+            }
         ) {
-            ConnectedTrackingAccountContent(
-                brand = TrackingDialogBrand.SIMKL,
-                logo = logo,
-                logoContentDescription = stringResource(R.string.cd_simkl_logo),
-                connectedLabel = stringResource(
-                    R.string.simkl_connected_as,
-                    state.username ?: stringResource(R.string.simkl_user_fallback)
-                ),
-                connectedDescription = stringResource(R.string.simkl_description),
-                statusMessage = state.statusMessage,
-                errorMessage = state.errorMessage,
-                isLoading = state.isLoading,
-                onSync = onSync,
-                onDisconnect = onDisconnect,
-                onVisit = {
-                    runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SIMKL_WEBSITE_URL)))
+            Crossfade(
+                targetState = showSyncInfo,
+                animationSpec = tween(NuvioMotion.tokens.durations.fast),
+                label = "SimklSyncInfo"
+            ) { infoVisible ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    if (infoVisible) {
+                        SimklSyncInfoContent(
+                            logo = logo,
+                            browserError = browserError,
+                            onOpenGuide = {
+                                browserError = false
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse(SIMKL_SYNC_GUIDE_URL)
+                                        )
+                                    )
+                                }.onFailure {
+                                    browserError = true
+                                }
+                            },
+                            onBack = {
+                                browserError = false
+                                showSyncInfo = false
+                            }
+                        )
+                    } else {
+                        ConnectedTrackingAccountContent(
+                            brand = TrackingDialogBrand.SIMKL,
+                            logo = logo,
+                            logoContentDescription = stringResource(R.string.cd_simkl_logo),
+                            connectedLabel = stringResource(
+                                R.string.simkl_connected_as,
+                                state.username ?: stringResource(R.string.simkl_user_fallback)
+                            ),
+                            connectedDescription = stringResource(R.string.simkl_description),
+                            statusMessage = state.statusMessage,
+                            errorMessage = state.errorMessage,
+                            isLoading = state.isLoading,
+                            onSync = onSync,
+                            onDisconnect = onDisconnect,
+                            onVisit = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse(SIMKL_WEBSITE_URL)
+                                        )
+                                    )
+                                }
+                            },
+                            onInfo = {
+                                browserError = false
+                                showSyncInfo = true
+                            }
+                        )
                     }
                 }
-            )
+            }
         }
     } else {
         NuvioDialog(
@@ -426,7 +489,8 @@ private fun ConnectedTrackingAccountContent(
     tokenRefreshText: String? = null,
     stats: TraktProgressService.TraktCachedStats? = null,
     isStatsLoading: Boolean = false,
-    onVisit: (() -> Unit)? = null
+    onVisit: (() -> Unit)? = null,
+    onInfo: (() -> Unit)? = null
 ) {
     TrackingConnectedWordmark(
         brand = brand,
@@ -479,20 +543,99 @@ private fun ConnectedTrackingAccountContent(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val hasMultipleActions = onVisit != null || onInfo != null
         if (onVisit != null) {
             TrackingBrandFooterButton(
                 text = stringResource(R.string.simkl_visit),
                 onClick = onVisit,
-                modifier = Modifier.weight(0.95f),
-                fillContentWidth = true
+                modifier = if (hasMultipleActions) Modifier.weight(0.95f) else Modifier,
+                fillContentWidth = hasMultipleActions
             )
         }
         TrackingBrandFooterButton(
             text = stringResource(R.string.trakt_disconnect),
             onClick = onDisconnect,
             enabled = !isLoading,
-            modifier = if (onVisit != null) Modifier.weight(1.05f) else Modifier,
-            fillContentWidth = onVisit != null
+            modifier = if (hasMultipleActions) Modifier.weight(1.05f) else Modifier,
+            fillContentWidth = hasMultipleActions
+        )
+        if (onInfo != null) {
+            TrackingBrandFooterButton(
+                text = stringResource(R.string.simkl_sync_info_action),
+                onClick = onInfo,
+                modifier = Modifier.weight(1.55f),
+                fillContentWidth = true
+            )
+        }
+    }
+}
+
+@Composable
+private fun SimklSyncInfoContent(
+    logo: Painter,
+    browserError: Boolean,
+    onOpenGuide: () -> Unit,
+    onBack: () -> Unit
+) {
+    val backFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(80L)
+        runCatching { backFocusRequester.requestFocus() }
+    }
+
+    TrackingConnectedWordmark(
+        brand = TrackingDialogBrand.SIMKL,
+        logo = logo,
+        contentDescription = stringResource(R.string.cd_simkl_logo)
+    )
+    Text(
+        text = stringResource(R.string.simkl_sync_info_title),
+        style = MaterialTheme.typography.titleLarge,
+        color = Color.White,
+        fontWeight = FontWeight.SemiBold
+    )
+    Text(
+        text = stringResource(
+            R.string.simkl_sync_info_description,
+            SIMKL_AUTOMATIC_REFRESH_INTERVAL_MINUTES
+        ),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color.White.copy(alpha = 0.78f)
+    )
+    Text(
+        text = stringResource(R.string.simkl_sync_info_activity),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color.White.copy(alpha = 0.78f)
+    )
+    Text(
+        text = stringResource(R.string.simkl_sync_info_manual),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color.White.copy(alpha = 0.78f)
+    )
+    if (browserError) {
+        TrackingBrandMessage(
+            text = stringResource(R.string.error_open_browser_failed),
+            isError = true
+        )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TrackingBrandFooterButton(
+            text = stringResource(R.string.action_back),
+            onClick = onBack,
+            modifier = Modifier
+                .weight(0.8f)
+                .focusRequester(backFocusRequester),
+            fillContentWidth = true
+        )
+        TrackingBrandFooterButton(
+            text = stringResource(R.string.simkl_sync_info_docs),
+            onClick = onOpenGuide,
+            modifier = Modifier.weight(1.8f),
+            fillContentWidth = true
         )
     }
 }
@@ -760,5 +903,6 @@ internal fun formatTrackingDuration(valueMs: Long): String {
 
 private const val TRAKT_ACTIVATION_URL = "https://trakt.tv/activate"
 private const val SIMKL_WEBSITE_URL = "https://simkl.com"
+private const val SIMKL_SYNC_GUIDE_URL = "https://api.simkl.org/guides/sync"
 private val TrackingBrandButtonContent = Color(0xFF171717)
 private val TrackingBrandError = Color(0xFFFFDAD6)
