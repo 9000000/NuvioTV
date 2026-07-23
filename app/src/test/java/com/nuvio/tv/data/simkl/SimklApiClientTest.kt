@@ -56,7 +56,7 @@ class SimklApiClientTest {
         assertTrue("app-version=1.0" in request.url)
         assertEquals("Bearer token", request.headers["Authorization"])
         assertEquals("application/json", request.headers["Accept"])
-        assertEquals("nuvio/1.0", request.headers["User-Agent"])
+        assertEquals("NuvioTV/1.0", request.headers["User-Agent"])
     }
 
     @Test

@@ -31,7 +31,7 @@ fun simklRequestHeaders(
     accessToken: String? = null,
     contentTypeJson: Boolean = false
 ): Map<String, String> = buildMap {
-    put("User-Agent", "${configuration.appName}/${configuration.appVersion}")
+    put("User-Agent", "$SIMKL_USER_AGENT_APP_NAME/${configuration.appVersion}")
     put("Accept", "application/json")
     accessToken?.trim()?.takeIf(String::isNotBlank)?.let { token ->
         put("Authorization", "Bearer $token")
@@ -46,3 +46,4 @@ fun defaultSimklApiConfiguration(): SimklApiConfiguration = SimklApiConfiguratio
 )
 
 private val SIMKL_REQUIRED_QUERY_KEYS = setOf("client_id", "app-name", "app-version")
+private const val SIMKL_USER_AGENT_APP_NAME = "NuvioTV"
