@@ -17,6 +17,7 @@ import com.nuvio.tv.core.tracking.TrackingHistoryWriterRegistry
 import com.nuvio.tv.core.tracking.TrackingMediaReference
 import com.nuvio.tv.core.tracking.TrackingProgressProvider
 import com.nuvio.tv.core.tracking.TrackingProgressProviderRegistry
+import com.nuvio.tv.core.tracking.mergeProgressProjectionWithRetainedLocal
 import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.core.tracking.buildTrackingMediaReference
@@ -331,9 +332,14 @@ class WatchProgressRepositoryImpl @Inject constructor(
                             } else {
                                 combine(
                                     provider.allProgress,
+                                    watchProgressPreferences.allProgress,
                                     metadataState
-                                ) { items, metadata ->
-                                    items.map { progress -> enrichWithMetadata(progress, metadata) }
+                                ) { items, localItems, metadata ->
+                                    mergeProgressProjectionWithRetainedLocal(
+                                        providerEntries = items,
+                                        localEntries = localItems,
+                                        retainsLocalProgress = provider::retainsLocalProgress
+                                    ).map { progress -> enrichWithMetadata(progress, metadata) }
                                         .sortedByDescending(WatchProgress::lastWatched)
                                 }.onEach { items ->
                                     val needsMetadata = items.filter { progress ->
@@ -865,7 +871,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         if (provider != null) {
             provider.clearOptimistic()
             watchProgressPreferences.clearAllPreservingNonTraktIds(
-                isNonTraktId = provider::preserveLocalProgressOnClear
+                isNonTraktId = provider::retainsLocalProgress
             )
             return
         }

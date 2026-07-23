@@ -74,8 +74,8 @@ class TraktTrackingProgressProvider @Inject constructor(
 
     override fun clearOptimistic() = service.clearOptimistic()
 
-    override fun preserveLocalProgressOnClear(contentId: String): Boolean =
-        !isTraktCompatibleId(contentId)
+    override fun retainsLocalProgress(contentId: String): Boolean =
+        shouldRetainTraktLocalProgress(contentId)
 
     override fun isHiddenFromProgress(contentId: String): Boolean =
         service.isShowHiddenFromProgress(contentId)
@@ -107,6 +107,9 @@ class TraktTrackingProgressProvider @Inject constructor(
         } ?: progress
     }
 }
+
+internal fun shouldRetainTraktLocalProgress(contentId: String): Boolean =
+    !isTraktCompatibleId(contentId)
 
 internal fun traktContinueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long? {
     if (daysCap == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) return null

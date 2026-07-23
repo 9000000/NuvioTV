@@ -75,6 +75,16 @@ class TraktProgressPolicyTest {
         assertEquals("wrapped", resolveEffectiveContentId("wrapped", "kitsu:44"))
     }
 
+    @Test
+    fun `Trakt retains progress whose ids cannot be represented remotely`() {
+        assertTrue(shouldRetainTraktLocalProgress("kitsu:44"))
+        assertTrue(shouldRetainTraktLocalProgress("mal:21"))
+        assertTrue(shouldRetainTraktLocalProgress("anilist:101"))
+        assertFalse(shouldRetainTraktLocalProgress("tt7821582"))
+        assertFalse(shouldRetainTraktLocalProgress("tmdb:123"))
+        assertFalse(shouldRetainTraktLocalProgress("trakt:456"))
+    }
+
     private fun progress(source: String, percent: Float, lastWatched: Long) = WatchProgress(
         contentId = "tt123",
         contentType = "series",
