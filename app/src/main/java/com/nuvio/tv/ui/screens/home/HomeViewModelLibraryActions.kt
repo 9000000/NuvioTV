@@ -52,7 +52,7 @@ internal fun HomeViewModel.observeLibraryState() {
     }
 
     viewModelScope.launch {
-        libraryRepository.listTabs
+        libraryRepository.membershipListTabs
             .distinctUntilChanged()
             .collectLatest { tabs ->
                 _uiState.update { state ->

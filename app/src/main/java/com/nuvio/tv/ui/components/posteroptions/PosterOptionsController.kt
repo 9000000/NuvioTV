@@ -86,7 +86,7 @@ class PosterOptionsController @Inject constructor(
             }
             .launchIn(scope)
 
-        libraryRepository.listTabs
+        libraryRepository.membershipListTabs
             .distinctUntilChanged()
             .onEach { tabs ->
                 _state.update { current ->

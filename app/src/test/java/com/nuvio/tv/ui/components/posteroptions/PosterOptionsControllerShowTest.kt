@@ -97,6 +97,7 @@ class PosterOptionsControllerShowTest {
         val libraryRepository = mockk<LibraryRepository>(relaxed = true) {
             every { sourceMode } returns flowOf(LibrarySourceMode.LOCAL)
             every { listTabs } returns flowOf(emptyList())
+            every { membershipListTabs } returns flowOf(emptyList())
             every { isInLibrary(any(), any()) } returns flowOf(false)
         }
         val watchProgressRepository = mockk<WatchProgressRepository>(relaxed = true) {
@@ -139,6 +140,7 @@ class PosterOptionsControllerShowTest {
         val libraryRepository = mockk<LibraryRepository>(relaxed = true) {
             every { sourceMode } returns flowOf(LibrarySourceMode.LOCAL)
             every { listTabs } returns flowOf(emptyList())
+            every { membershipListTabs } returns flowOf(emptyList())
             // The item is stored under the canonical IMDB id; a query under the
             // raw TMDB id would miss.
             every { isInLibrary(tmdbId, any()) } returns flowOf(false)
@@ -177,6 +179,7 @@ class PosterOptionsControllerShowTest {
         val libraryRepository = mockk<LibraryRepository>(relaxed = true) {
             every { sourceMode } returns flowOf(LibrarySourceMode.LOCAL)
             every { listTabs } returns flowOf(emptyList())
+            every { membershipListTabs } returns flowOf(emptyList())
             every { isInLibrary(any(), any()) } returns flowOf(isInLibrary)
         }
         val watchProgressRepository = mockk<WatchProgressRepository>(relaxed = true) {

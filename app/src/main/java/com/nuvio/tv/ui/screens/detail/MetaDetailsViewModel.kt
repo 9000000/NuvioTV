@@ -354,7 +354,7 @@ class MetaDetailsViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            libraryRepository.listTabs
+            libraryRepository.membershipListTabs
                 .distinctUntilChanged()
                 .collectLatest { tabs ->
                 _uiState.update { state ->

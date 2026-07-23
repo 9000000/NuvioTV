@@ -16,6 +16,7 @@ interface LibraryRepository {
     val isSyncing: Flow<Boolean>
     val libraryItems: Flow<List<LibraryEntry>>
     val listTabs: Flow<List<LibraryListTab>>
+    val membershipListTabs: Flow<List<LibraryListTab>>
 
     fun isInLibrary(itemId: String, itemType: String): Flow<Boolean>
     fun isInWatchlist(itemId: String, itemType: String): Flow<Boolean>

@@ -133,7 +133,16 @@ class LibraryRepositoryImpl @Inject constructor(
         }
         .distinctUntilChanged()
 
-    override val listTabs: Flow<List<LibraryListTab>> = combine(
+    override val listTabs: Flow<List<LibraryListTab>> = sourceMode
+        .flatMapLatest { mode ->
+            mode.providerId
+                ?.let(trackingProviders::provider)
+                ?.tabs
+                ?: flowOf(emptyList())
+        }
+        .distinctUntilChanged()
+
+    override val membershipListTabs: Flow<List<LibraryListTab>> = combine(
         trackingProviders.providers().map { provider ->
             provider.isAuthenticated.flatMapLatest { authenticated ->
                 if (authenticated) provider.tabs else flowOf(emptyList())
