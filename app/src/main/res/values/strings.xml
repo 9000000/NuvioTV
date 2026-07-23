@@ -984,6 +984,8 @@
     <string name="mdblist_audience_subtitle">Show audience score</string>
     <string name="mdblist_metacritic_title">Metacritic</string>
     <string name="mdblist_metacritic_subtitle">Show Metacritic score</string>
+    <string name="mdblist_mal_title">MyAnimeList</string>
+    <string name="mdblist_mal_subtitle">Show MyAnimeList rating</string>
     <string name="mdblist_dialog_title">MDBList API Key</string>
     <string name="mdblist_dialog_subtitle">Enter your API key to fetch external ratings</string>
     <string name="mdblist_dialog_placeholder">Enter MDBList API key</string>
