@@ -183,7 +183,6 @@ fun TrackingSettingsScreen(
                 state = traktState,
                 onStartConnection = traktViewModel::onConnectClick,
                 onRetryPolling = traktViewModel::onRetryPolling,
-                onSync = traktViewModel::onSyncNow,
                 onDisconnect = {
                     activeProvider = null
                     dismissOnConnected = null

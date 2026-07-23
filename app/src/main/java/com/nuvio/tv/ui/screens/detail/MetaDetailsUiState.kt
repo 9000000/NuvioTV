@@ -53,7 +53,6 @@ data class MetaDetailsUiState(
     val pickerPending: Boolean = false,
     val pickerError: String? = null,
     val removalConfirmations: List<TrackingMembershipRemovalConfirmation> = emptyList(),
-    val simklSourceUrl: String? = null,
     val isMovieWatched: Boolean = false,
     val isMovieWatchedPending: Boolean = false,
     val watchedEpisodes: Set<Pair<Int, Int>> = emptySet(),
@@ -117,7 +116,6 @@ sealed class MetaDetailsEvent {
     data object OnPickerDismiss : MetaDetailsEvent()
     data object OnRemovalConfirmed : MetaDetailsEvent()
     data object OnRemovalCancelled : MetaDetailsEvent()
-    data object OnViewOnSimkl : MetaDetailsEvent()
     data object OnClearMessage : MetaDetailsEvent()
     data object OnLifecyclePause : MetaDetailsEvent()
 }

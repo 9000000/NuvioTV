@@ -2563,7 +2563,6 @@
     <string name="simkl_code_expires">Code expires in %1$s</string>
     <string name="simkl_sync_now">Sync now</string>
     <string name="simkl_visit">Visit Simkl</string>
-    <string name="details_view_on_simkl">View on Simkl</string>
     <string name="simkl_missing_credentials">Missing SIMKL_CLIENT_ID</string>
     <string name="simkl_status_enter_code">Enter the code on Simkl to finish connecting</string>
     <string name="simkl_status_waiting">Waiting for Simkl approval…</string>

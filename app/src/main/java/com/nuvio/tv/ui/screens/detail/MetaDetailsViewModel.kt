@@ -23,7 +23,6 @@ import com.nuvio.tv.domain.model.LibraryEntryInput
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.ListMembershipChanges
 import com.nuvio.tv.core.tracking.TrackingMembershipRemovalConfirmation
-import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.toggleTrackingMembershipSelection
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaTrailer
@@ -32,7 +31,6 @@ import com.nuvio.tv.domain.model.TmdbSettings
 import com.nuvio.tv.domain.model.TraktCommentReview
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.domain.model.WatchProgress
-import com.nuvio.tv.domain.model.resolveTrackingAttribution
 import com.nuvio.tv.domain.repository.LibraryRepository
 import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.domain.repository.WatchProgressRepository
@@ -151,7 +149,6 @@ class MetaDetailsViewModel @Inject constructor(
         observeTrailerAutoplaySettings()
         observeTraktCommentsAvailability()
         observeLibraryState()
-        observeTrackingAttribution()
         observeWatchProgress()
         observeWatchedEpisodes()
         observeMovieWatched()
@@ -332,7 +329,6 @@ class MetaDetailsViewModel @Inject constructor(
             MetaDetailsEvent.OnPickerDismiss -> dismissListPicker()
             MetaDetailsEvent.OnRemovalConfirmed -> confirmPickerRemoval()
             MetaDetailsEvent.OnRemovalCancelled -> cancelPickerRemoval()
-            MetaDetailsEvent.OnViewOnSimkl -> openSimklAttribution()
             MetaDetailsEvent.OnClearMessage -> clearMessage()
             MetaDetailsEvent.OnLifecyclePause -> handleLifecyclePause()
         }
@@ -410,31 +406,6 @@ class MetaDetailsViewModel @Inject constructor(
                         if (state.isInWatchlist == inWatchlist) state else state.copy(isInWatchlist = inWatchlist)
                     }
                 }
-        }
-    }
-
-    private fun observeTrackingAttribution() {
-        viewModelScope.launch {
-            combine(
-                libraryRepository.libraryItems,
-                watchProgressRepository.allProgress,
-                watchProgressRepository.watchedItems,
-                _effectiveContentId
-            ) { libraryItems, progressItems, watchedItems, contentId ->
-                resolveTrackingAttribution(
-                    contentId = contentId,
-                    providerId = TrackingProviderId.SIMKL.storageId,
-                    items = sequence {
-                        yieldAll(libraryItems)
-                        yieldAll(progressItems)
-                        yieldAll(watchedItems)
-                    }
-                )?.sourceUrl?.takeIf { url -> url.startsWith(SIMKL_SOURCE_URL_PREFIX) }
-            }.distinctUntilChanged().collectLatest { sourceUrl ->
-                _uiState.update { state ->
-                    if (state.simklSourceUrl == sourceUrl) state else state.copy(simklSourceUrl = sourceUrl)
-                }
-            }
         }
     }
 
@@ -2672,17 +2643,6 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
-    private fun openSimklAttribution() {
-        val url = _uiState.value.simklSourceUrl
-            ?.takeIf { value -> value.startsWith(SIMKL_SOURCE_URL_PREFIX) }
-            ?: return
-        runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        }
-    }
-
     private fun retrySharedTrailer() {
         _uiState.value.selectedSharedTrailer?.let(::handleSharedTrailerSelected)
     }
@@ -2725,5 +2685,3 @@ class MetaDetailsViewModel @Inject constructor(
         nextToWatchJob?.cancel()
     }
 }
-
-private const val SIMKL_SOURCE_URL_PREFIX = "https://simkl.com/"

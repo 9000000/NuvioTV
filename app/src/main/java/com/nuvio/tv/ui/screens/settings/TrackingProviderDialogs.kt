@@ -9,20 +9,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -31,8 +40,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
@@ -50,29 +63,30 @@ internal fun TraktAccountDialog(
     state: TraktUiState,
     onStartConnection: () -> Unit,
     onRetryPolling: () -> Unit,
-    onSync: () -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val logo = painterResource(R.drawable.trakt_logo_wordmark)
-    NuvioDialog(
-        onDismiss = onDismiss,
-        title = "",
-        width = 720.dp,
-        titleTextAlign = TextAlign.Center,
-        suppressFirstKeyUp = false
-    ) {
-        if (state.mode == TraktConnectionMode.CONNECTED) {
+    if (state.mode == TraktConnectionMode.CONNECTED) {
+        val glyph = rememberRawSvgPainter(R.raw.trakt_tv_favicon, 150.dp)
+        ConnectedTrackingAccountDialog(
+            brand = TrackingDialogBrand.TRAKT,
+            glyph = glyph,
+            onDismiss = onDismiss
+        ) {
             ConnectedTrackingAccountContent(
+                brand = TrackingDialogBrand.TRAKT,
                 logo = logo,
                 logoContentDescription = stringResource(R.string.cd_trakt_logo),
-                username = state.username ?: stringResource(R.string.trakt_user_fallback),
+                connectedLabel = stringResource(
+                    R.string.trakt_connected_as,
+                    state.username ?: stringResource(R.string.trakt_user_fallback)
+                ),
+                connectedDescription = stringResource(R.string.trakt_description),
                 statusMessage = state.statusMessage,
                 errorMessage = state.errorMessage,
                 isLoading = state.isLoading,
-                onSync = onSync,
                 onDisconnect = onDisconnect,
-                onDismiss = onDismiss,
                 tokenRefreshText = state.tokenExpiresAtMillis?.let { expiresAt ->
                     stringResource(
                         R.string.trakt_token_refreshes,
@@ -82,7 +96,15 @@ internal fun TraktAccountDialog(
                 stats = state.connectedStats,
                 isStatsLoading = state.isStatsLoading
             )
-        } else {
+        }
+    } else {
+        NuvioDialog(
+            onDismiss = onDismiss,
+            title = "",
+            width = 720.dp,
+            titleTextAlign = TextAlign.Center,
+            suppressFirstKeyUp = false
+        ) {
             val displayUrl = state.verificationUrl ?: TRAKT_ACTIVATION_URL
             val qrUrl = state.deviceUserCode?.let { "$TRAKT_ACTIVATION_URL/$it" } ?: displayUrl
             TrackingDeviceAuthContent(
@@ -120,31 +142,42 @@ internal fun SimklAccountDialog(
 ) {
     val context = LocalContext.current
     val logo = rememberRawSvgPainter(R.raw.simkl_tv_wordmark, 220.dp)
-    NuvioDialog(
-        onDismiss = onDismiss,
-        title = "",
-        width = 720.dp,
-        titleTextAlign = TextAlign.Center,
-        suppressFirstKeyUp = false
-    ) {
-        if (state.mode == SimklConnectionMode.CONNECTED) {
+    if (state.mode == SimklConnectionMode.CONNECTED) {
+        val glyph = rememberRawSvgPainter(R.raw.simkl_tv_glyph, 150.dp)
+        ConnectedTrackingAccountDialog(
+            brand = TrackingDialogBrand.SIMKL,
+            glyph = glyph,
+            onDismiss = onDismiss
+        ) {
             ConnectedTrackingAccountContent(
+                brand = TrackingDialogBrand.SIMKL,
                 logo = logo,
                 logoContentDescription = stringResource(R.string.cd_simkl_logo),
-                username = state.username ?: stringResource(R.string.simkl_user_fallback),
+                connectedLabel = stringResource(
+                    R.string.simkl_connected_as,
+                    state.username ?: stringResource(R.string.simkl_user_fallback)
+                ),
+                connectedDescription = stringResource(R.string.simkl_description),
                 statusMessage = state.statusMessage,
                 errorMessage = state.errorMessage,
                 isLoading = state.isLoading,
                 onSync = onSync,
                 onDisconnect = onDisconnect,
-                onDismiss = onDismiss,
                 onVisit = {
                     runCatching {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SIMKL_WEBSITE_URL)))
                     }
                 }
             )
-        } else {
+        }
+    } else {
+        NuvioDialog(
+            onDismiss = onDismiss,
+            title = "",
+            width = 720.dp,
+            titleTextAlign = TextAlign.Center,
+            suppressFirstKeyUp = false
+        ) {
             TrackingDeviceAuthContent(
                 providerName = stringResource(R.string.simkl_name),
                 logo = logo,
@@ -345,81 +378,262 @@ private fun TrackingDeviceAuthContent(
 }
 
 @Composable
+private fun ConnectedTrackingAccountDialog(
+    brand: TrackingDialogBrand,
+    glyph: Painter,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    NuvioDialog(
+        onDismiss = onDismiss,
+        title = "",
+        width = 720.dp,
+        suppressFirstKeyUp = false,
+        containerBrush = brand.cardBrush(),
+        containerBorderColor = Color.White.copy(alpha = 0.2f),
+        containerBorderWidth = 0.5.dp,
+        containerCornerRadius = 24.dp,
+        contentPadding = 20.dp,
+        contentSpacing = 14.dp,
+        backgroundContent = {
+            Image(
+                painter = glyph,
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(12.dp)
+                    .size(150.dp)
+                    .alpha(0.08f),
+                contentScale = ContentScale.Fit
+            )
+        },
+        content = content
+    )
+}
+
+@Composable
 private fun ConnectedTrackingAccountContent(
+    brand: TrackingDialogBrand,
     logo: Painter,
     logoContentDescription: String,
-    username: String,
+    connectedLabel: String,
+    connectedDescription: String,
     statusMessage: String?,
     errorMessage: String?,
     isLoading: Boolean,
-    onSync: () -> Unit,
     onDisconnect: () -> Unit,
-    onDismiss: () -> Unit,
+    onSync: (() -> Unit)? = null,
     tokenRefreshText: String? = null,
     stats: TraktProgressService.TraktCachedStats? = null,
     isStatsLoading: Boolean = false,
     onVisit: (() -> Unit)? = null
 ) {
-    TrackingProviderWordmark(logo, logoContentDescription)
+    TrackingConnectedWordmark(
+        brand = brand,
+        logo = logo,
+        contentDescription = logoContentDescription
+    )
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        TrackingConnectionBadge()
         Text(
-            text = username,
-            style = MaterialTheme.typography.titleMedium,
-            color = NuvioTheme.colors.TextPrimary,
-            textAlign = TextAlign.Center
+            text = connectedLabel,
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = connectedDescription,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.76f)
         )
         if (!tokenRefreshText.isNullOrBlank()) {
             Text(
                 text = tokenRefreshText,
                 style = MaterialTheme.typography.bodySmall,
-                color = NuvioTheme.colors.TextTertiary,
-                textAlign = TextAlign.Center
+                color = Color.White.copy(alpha = 0.6f)
             )
         }
     }
     if (stats != null || isStatsLoading) {
         TraktConnectedStatsStrip(stats, isStatsLoading)
     }
-    val visibleStatus = errorMessage ?: statusMessage
-    if (!visibleStatus.isNullOrBlank()) {
-        Text(
-            text = visibleStatus,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (errorMessage == null) {
-                NuvioTheme.colors.TextSecondary
-            } else {
-                NuvioTheme.colors.Error
-            },
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
+    if (onSync != null) {
+        TrackingBrandPrimaryButton(
+            label = stringResource(R.string.simkl_sync_now),
+            loading = isLoading,
+            enabled = !isLoading,
+            onClick = onSync
         )
     }
-    SettingsDialogActionRow(horizontalAlignment = Alignment.CenterHorizontally) {
-        SettingsDialogActionButton(
-            text = stringResource(R.string.action_close),
-            onClick = onDismiss
+    val visibleStatus = errorMessage ?: statusMessage
+    if (!visibleStatus.isNullOrBlank()) {
+        TrackingBrandMessage(
+            text = visibleStatus,
+            isError = errorMessage != null
         )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         if (onVisit != null) {
-            SettingsDialogActionButton(
+            TrackingBrandFooterButton(
                 text = stringResource(R.string.simkl_visit),
-                onClick = onVisit
+                onClick = onVisit,
+                modifier = Modifier.weight(0.95f),
+                fillContentWidth = true
             )
         }
-        SettingsDialogActionButton(
+        TrackingBrandFooterButton(
             text = stringResource(R.string.trakt_disconnect),
             onClick = onDisconnect,
-            enabled = !isLoading
+            enabled = !isLoading,
+            modifier = if (onVisit != null) Modifier.weight(1.05f) else Modifier,
+            fillContentWidth = onVisit != null
         )
-        SettingsDialogActionButton(
-            text = stringResource(R.string.simkl_sync_now),
-            onClick = onSync,
-            primary = true,
-            enabled = !isLoading
+    }
+}
+
+@Composable
+private fun TrackingConnectedWordmark(
+    brand: TrackingDialogBrand,
+    logo: Painter,
+    contentDescription: String
+) {
+    Image(
+        painter = logo,
+        contentDescription = contentDescription,
+        modifier = when (brand) {
+            TrackingDialogBrand.TRAKT -> Modifier
+                .width(86.dp)
+                .height(38.dp)
+            TrackingDialogBrand.SIMKL -> Modifier
+                .width(124.dp)
+                .height(30.dp)
+        },
+        contentScale = ContentScale.Fit,
+        alignment = Alignment.CenterStart
+    )
+}
+
+@Composable
+private fun TrackingBrandPrimaryButton(
+    label: String,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        colors = ButtonDefaults.colors(
+            containerColor = Color.White,
+            focusedContainerColor = Color.White,
+            contentColor = TrackingBrandButtonContent,
+            focusedContentColor = TrackingBrandButtonContent,
+            disabledContainerColor = Color.White.copy(alpha = 0.34f),
+            disabledContentColor = Color.White.copy(alpha = 0.7f)
+        ),
+        scale = ButtonDefaults.scale(focusedScale = 1.02f),
+        shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (loading) {
+                LoadingIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = TrackingBrandButtonContent
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrackingBrandFooterButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    fillContentWidth: Boolean = false
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        colors = ButtonDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.White.copy(alpha = 0.18f),
+            contentColor = Color.White.copy(alpha = 0.84f),
+            focusedContentColor = Color.White,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = Color.White.copy(alpha = 0.38f)
+        ),
+        scale = ButtonDefaults.scale(focusedScale = 1.02f),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Box(
+            modifier = if (fillContentWidth) Modifier.fillMaxWidth() else Modifier,
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrackingBrandMessage(
+    text: String,
+    isError: Boolean
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isError) {
+                    TrackingBrandError.copy(alpha = 0.14f)
+                } else {
+                    Color.White.copy(alpha = 0.1f)
+                }
+            )
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isError) {
+                TrackingBrandError
+            } else {
+                Color.White.copy(alpha = 0.82f)
+            }
         )
     }
 }
@@ -439,29 +653,18 @@ private fun TrackingProviderWordmark(
     )
 }
 
-@Composable
-private fun TrackingConnectionBadge() {
-    Row(
-        modifier = Modifier
-            .background(
-                NuvioTheme.colors.Success.copy(alpha = 0.12f),
-                RoundedCornerShape(999.dp)
-            )
-            .padding(horizontal = NuvioTheme.spacing.md, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .background(NuvioTheme.colors.Success, RoundedCornerShape(999.dp))
-        )
-        Text(
-            text = stringResource(R.string.tracking_status_connected),
-            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-            color = NuvioTheme.colors.Success
-        )
-    }
+private enum class TrackingDialogBrand {
+    TRAKT,
+    SIMKL
+}
+
+private fun TrackingDialogBrand.cardBrush(): Brush = when (this) {
+    TrackingDialogBrand.TRAKT -> Brush.linearGradient(
+        colors = listOf(Color(0xFF7D279B), Color(0xFFD61F56), Color(0xFFF22125))
+    )
+    TrackingDialogBrand.SIMKL -> Brush.linearGradient(
+        colors = listOf(Color(0xFF050505), Color(0xFF292929), Color(0xFF111111))
+    )
 }
 
 @Composable
@@ -487,19 +690,23 @@ private fun TraktConnectedStatsStrip(
     )
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {
         Text(
             text = stringResource(R.string.trakt_cached_label),
             style = MaterialTheme.typography.labelMedium,
-            color = NuvioTheme.colors.TextTertiary
+            color = Color.White.copy(alpha = 0.6f)
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(NuvioTheme.spacing.hairline)
-                .background(NuvioTheme.colors.Border)
+                .background(Color.White.copy(alpha = 0.18f))
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -513,14 +720,14 @@ private fun TraktConnectedStatsStrip(
                     Text(
                         text = value,
                         style = MaterialTheme.typography.titleMedium,
-                        color = NuvioTheme.colors.TextPrimary,
+                        color = Color.White,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
                     Text(
                         text = labels[index],
                         style = MaterialTheme.typography.bodySmall,
-                        color = NuvioTheme.colors.TextSecondary,
+                        color = Color.White.copy(alpha = 0.76f),
                         textAlign = TextAlign.Center
                     )
                 }
@@ -529,7 +736,7 @@ private fun TraktConnectedStatsStrip(
                         modifier = Modifier
                             .width(NuvioTheme.spacing.hairline)
                             .height(44.dp)
-                            .background(NuvioTheme.colors.Border)
+                            .background(Color.White.copy(alpha = 0.18f))
                     )
                 }
             }
@@ -553,3 +760,5 @@ internal fun formatTrackingDuration(valueMs: Long): String {
 
 private const val TRAKT_ACTIVATION_URL = "https://trakt.tv/activate"
 private const val SIMKL_WEBSITE_URL = "https://simkl.com"
+private val TrackingBrandButtonContent = Color(0xFF171717)
+private val TrackingBrandError = Color(0xFFFFDAD6)
