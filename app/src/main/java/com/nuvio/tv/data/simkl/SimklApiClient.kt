@@ -99,18 +99,19 @@ class SimklApiClient(
         val maxAttempts = if (request.retryPolicy == SimklRetryPolicy.NEVER) 1 else MAX_ATTEMPTS
         var syncWriteLockRetried = false
         repeat(maxAttempts) { attempt ->
-            awaitRateLimit(request.method)
             val response = try {
-                engine.execute(
-                    method = request.method.name,
-                    url = buildSimklApiUrl(configuration, request.path, request.query),
-                    headers = simklRequestHeaders(
-                        configuration = configuration,
-                        accessToken = token,
-                        contentTypeJson = request.method != SimklHttpMethod.GET
-                    ),
-                    body = request.body
-                )
+                executeRateLimited(request.method) {
+                    engine.execute(
+                        method = request.method.name,
+                        url = buildSimklApiUrl(configuration, request.path, request.query),
+                        headers = simklRequestHeaders(
+                            configuration = configuration,
+                            accessToken = token,
+                            contentTypeJson = request.method != SimklHttpMethod.GET
+                        ),
+                        body = request.body
+                    )
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -157,17 +158,36 @@ class SimklApiClient(
         error("Simkl request loop completed without a response")
     }
 
+    private suspend fun <T> executeRateLimited(
+        method: SimklHttpMethod,
+        block: suspend () -> T
+    ): T {
+        awaitRateLimit(method)
+        return try {
+            block()
+        } finally {
+            recordRateLimitCompletion(method)
+        }
+    }
+
     private suspend fun awaitRateLimit(method: SimklHttpMethod) {
         val now = nowEpochMs()
         val scheduledAt = when (method) {
-            SimklHttpMethod.GET -> max(now, nextGetAtEpochMs)
-            SimklHttpMethod.POST, SimklHttpMethod.DELETE -> max(now, nextPostAtEpochMs)
+            SimklHttpMethod.GET -> nextGetAtEpochMs
+            SimklHttpMethod.POST, SimklHttpMethod.DELETE -> nextPostAtEpochMs
         }
         if (scheduledAt > now) sleep(scheduledAt - now)
-        val requestAt = max(scheduledAt, nowEpochMs())
+    }
+
+    private fun recordRateLimitCompletion(method: SimklHttpMethod) {
+        val completedAt = nowEpochMs()
         when (method) {
-            SimklHttpMethod.GET -> nextGetAtEpochMs = requestAt + GET_INTERVAL_MS
-            SimklHttpMethod.POST, SimklHttpMethod.DELETE -> nextPostAtEpochMs = requestAt + POST_INTERVAL_MS
+            SimklHttpMethod.GET -> {
+                nextGetAtEpochMs = max(nextGetAtEpochMs, completedAt + GET_INTERVAL_MS)
+            }
+            SimklHttpMethod.POST, SimklHttpMethod.DELETE -> {
+                nextPostAtEpochMs = max(nextPostAtEpochMs, completedAt + POST_INTERVAL_MS)
+            }
         }
     }
 
