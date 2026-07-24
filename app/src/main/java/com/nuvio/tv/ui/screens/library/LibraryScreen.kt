@@ -355,7 +355,7 @@ fun LibraryScreen(
                 )
             }
 
-            if (uiState.sourceMode != LibrarySourceMode.LOCAL && uiState.isTrackingAuthenticated) {
+            if (uiState.sourceMode == LibrarySourceMode.TRAKT && uiState.isTrackingAuthenticated) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     LibraryActionsRow(
                         pending = uiState.pendingOperation,
