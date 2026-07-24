@@ -141,6 +141,83 @@ class SimklProjectionsTest {
     }
 
     @Test
+    fun `next up projection applies furthest preference before collapsing episode history`() {
+        val show = entry(
+            SimklMediaType.SHOWS,
+            SimklListStatus.WATCHING,
+            2090,
+            "tt1520211",
+            seasons = listOf(
+                SimklSeason(
+                    1,
+                    listOf(
+                        SimklEpisode(3, "2023-11-15T00:13:20Z"),
+                        SimklEpisode(8, "2023-11-14T23:13:20Z")
+                    )
+                )
+            )
+        )
+
+        val furthest = SimklSyncSnapshot(entries = listOf(show))
+            .toSimklNextUpSeeds(preferFurthestEpisode = true)
+            .single()
+        val recent = SimklSyncSnapshot(entries = listOf(show))
+            .toSimklNextUpSeeds(preferFurthestEpisode = false)
+            .single()
+
+        assertEquals(8, furthest.episode)
+        assertEquals(parseSimklUtcEpochMs("2023-11-14T23:13:20Z"), furthest.lastWatched)
+        assertEquals(3, recent.episode)
+        assertEquals(parseSimklUtcEpochMs("2023-11-15T00:13:20Z"), recent.lastWatched)
+    }
+
+    @Test
+    fun `next up projection resolves equal timestamps by furthest episode`() {
+        val show = entry(
+            SimklMediaType.SHOWS,
+            SimklListStatus.WATCHING,
+            2090,
+            "tt1520211",
+            seasons = listOf(
+                SimklSeason(
+                    1,
+                    listOf(
+                        SimklEpisode(1, "2023-11-15T00:13:20Z"),
+                        SimklEpisode(8, "2023-11-15T00:13:20Z")
+                    )
+                )
+            )
+        )
+
+        val seed = SimklSyncSnapshot(entries = listOf(show))
+            .toSimklNextUpSeeds(preferFurthestEpisode = true)
+            .single()
+
+        assertEquals(8, seed.episode)
+    }
+
+    @Test
+    fun `next up projection excludes dropped shows`() {
+        val dropped = entry(
+            SimklMediaType.SHOWS,
+            SimklListStatus.DROPPED,
+            2090,
+            "tt1520211",
+            seasons = listOf(
+                SimklSeason(
+                    1,
+                    listOf(SimklEpisode(3, "2023-11-15T00:13:20Z"))
+                )
+            )
+        )
+
+        val seeds = SimklSyncSnapshot(entries = listOf(dropped))
+            .toSimklNextUpSeeds(preferFurthestEpisode = true)
+
+        assertTrue(seeds.isEmpty())
+    }
+
+    @Test
     fun `playback projection preserves session identity percentage and eighty percent completion`() {
         val session = SimklPlaybackSession(
             id = 12345,
