@@ -2477,7 +2477,6 @@
     <string name="trakt_comments_error_request_failed">Požiadavka Trakt komentárov zlyhala</string>
     <string name="trakt_library_error_fetch_list_items">Nepodarilo sa načítať položky zoznamu</string>
 
-    <resources>
 <string name="hero_synopsis_read_more">Čítaj viac</string>
 <string name="hero_synopsis_dismiss_hint">Stlač späť na zatvorenie</string>
 <string name="appearance_settings_style">Štýl nastavení</string>
