@@ -612,6 +612,11 @@ private fun SimklSyncInfoContent(
         style = MaterialTheme.typography.bodyMedium,
         color = Color.White.copy(alpha = 0.78f)
     )
+    Text(
+        text = stringResource(R.string.simkl_sync_info_library_statuses),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color.White.copy(alpha = 0.78f)
+    )
     if (browserError) {
         TrackingBrandMessage(
             text = stringResource(R.string.error_open_browser_failed),
