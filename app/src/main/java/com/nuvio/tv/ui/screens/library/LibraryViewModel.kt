@@ -307,7 +307,7 @@ class LibraryViewModel @Inject constructor(
     fun onRefresh() {
         if (_uiState.value.isSyncing) return
         viewModelScope.launch {
-            setTransientMessage(context.getString(R.string.library_syncing))
+            setTransientMessage(context.getString(R.string.library_syncing_library))
             runCatching {
                 libraryRepository.refreshNow()
                 setTransientMessage(context.getString(R.string.library_synced))

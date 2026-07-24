@@ -50,6 +50,31 @@ class LibraryRepositoryTabsTest {
         assertEquals(listOf(traktTab, simklTab), repository.membershipListTabs.first())
     }
 
+    @Test
+    fun `manual refresh targets only the active tracking provider`() = runTest {
+        val sourceMode = MutableStateFlow(LibrarySourceMode.SIMKL)
+        val trakt = FakeLibraryProvider(
+            TrackingProviderId.TRAKT,
+            tab("trakt:watchlist", TrackingProviderId.TRAKT)
+        )
+        val simkl = FakeLibraryProvider(
+            TrackingProviderId.SIMKL,
+            tab("simkl:plantowatch", TrackingProviderId.SIMKL)
+        )
+        val repository = repository(sourceMode, setOf(trakt, simkl))
+
+        repository.refreshNow()
+
+        assertEquals(emptyList<TrackingRefreshIntent>(), trakt.refreshIntents)
+        assertEquals(listOf(TrackingRefreshIntent.USER_INITIATED), simkl.refreshIntents)
+
+        sourceMode.value = LibrarySourceMode.TRAKT
+        repository.refreshNow()
+
+        assertEquals(listOf(TrackingRefreshIntent.USER_INITIATED), trakt.refreshIntents)
+        assertEquals(listOf(TrackingRefreshIntent.USER_INITIATED), simkl.refreshIntents)
+    }
+
     private fun repository(
         sourceMode: MutableStateFlow<LibrarySourceMode>,
         providers: Set<TrackingLibraryProvider>
@@ -81,6 +106,7 @@ class LibraryRepositoryTabsTest {
         override val providerId: TrackingProviderId,
         tab: LibraryListTab
     ) : TrackingLibraryProvider {
+        val refreshIntents = mutableListOf<TrackingRefreshIntent>()
         override val isAuthenticated = flowOf(true)
         override val isRefreshing = flowOf(false)
         override val items = flowOf(emptyList<LibraryEntry>())
@@ -101,6 +127,8 @@ class LibraryRepositoryTabsTest {
             destructiveRemovalConfirmed: Boolean
         ) = Unit
 
-        override suspend fun refresh(intent: TrackingRefreshIntent) = Unit
+        override suspend fun refresh(intent: TrackingRefreshIntent) {
+            refreshIntents += intent
+        }
     }
 }

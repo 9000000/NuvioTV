@@ -219,7 +219,7 @@ fun LibraryScreen(
             ) {
                 LoadingIndicator()
                 Text(
-                    text = stringResource(R.string.library_syncing),
+                    text = stringResource(R.string.library_syncing_library),
                     style = MaterialTheme.typography.bodyMedium,
                     color = NuvioTheme.colors.TextSecondary
                 )
