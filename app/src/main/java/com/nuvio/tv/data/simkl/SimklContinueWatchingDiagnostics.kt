@@ -11,6 +11,7 @@ internal enum class SimklSeedDiagnosticFlag {
     COMPLETED_STATUS,
     DROPPED_STATUS,
     NO_EXACT_EPISODE_HISTORY,
+    ON_HOLD_STATUS,
     PLAYBACK_PRESENT,
     SEED_BEHIND_FURTHEST,
     SEED_MISSING,
@@ -187,7 +188,14 @@ internal fun buildSimklSeedDiagnosticReport(
                 if (entry.status == SimklListStatus.DROPPED) {
                     add(SimklSeedDiagnosticFlag.DROPPED_STATUS)
                 }
-                if (selected == null && exact.isNotEmpty() && entry.status != SimklListStatus.DROPPED) {
+                if (entry.status == SimklListStatus.ON_HOLD) {
+                    add(SimklSeedDiagnosticFlag.ON_HOLD_STATUS)
+                }
+                if (
+                    selected == null &&
+                    exact.isNotEmpty() &&
+                    !entry.status.hidesContinueWatching()
+                ) {
                     add(SimklSeedDiagnosticFlag.SEED_MISSING)
                 }
                 if (selected != null && !selectedInHistory) {

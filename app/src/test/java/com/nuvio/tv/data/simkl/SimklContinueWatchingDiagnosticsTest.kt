@@ -120,6 +120,39 @@ class SimklContinueWatchingDiagnosticsTest {
     }
 
     @Test
+    fun `on hold history is reported without a missing seed warning`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                completedEntry(
+                    watchedCount = 1,
+                    totalCount = 4,
+                    status = SimklListStatus.ON_HOLD,
+                    lastWatched = "S01E01",
+                    nextToWatch = "S01E02",
+                    seasons = listOf(
+                        SimklSeason(
+                            number = 1,
+                            episodes = listOf(
+                                SimklEpisode(1, "2026-07-24T09:00:00Z")
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val record = buildSimklSeedDiagnosticReport(
+            snapshot = snapshot,
+            seeds = snapshot.toSimklNextUpSeeds(preferFurthestEpisode = true),
+            preferFurthestEpisode = true,
+            aliasFor = { "cw-test" }
+        ).records.single()
+
+        assertTrue(SimklSeedDiagnosticFlag.ON_HOLD_STATUS in record.flags)
+        assertFalse(SimklSeedDiagnosticFlag.SEED_MISSING in record.flags)
+    }
+
+    @Test
     fun `formatted diagnostics omit media identity title and timestamps`() {
         val snapshot = SimklSyncSnapshot(
             entries = listOf(

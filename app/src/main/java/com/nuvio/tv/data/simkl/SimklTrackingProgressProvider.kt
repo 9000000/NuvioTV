@@ -175,7 +175,7 @@ class SimklTrackingProgressProvider @Inject constructor(
     override fun clearOptimistic() = Unit
 
     override fun isHiddenFromProgress(contentId: String): Boolean =
-        syncRepository.state.value.snapshot.isDroppedContent(contentId)
+        syncRepository.state.value.snapshot.isHiddenFromContinueWatching(contentId)
 
     override suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress = progress
 }
@@ -192,7 +192,7 @@ private fun SimklSyncSnapshot.toSimklNextUpSeeds(
     preferFurthestEpisode: Boolean
 ): List<WatchProgress> = selectPreferredTrackingNextUpSeeds(
     candidates = watchedProjection.items
-        .filterNot { item -> isDroppedContent(item.contentId) }
+        .filterNot { item -> isHiddenFromContinueWatching(item.contentId) }
         .filter { item -> item.season != null && item.episode != null && item.season != 0 }
         .map(WatchedItem::toCompletedProgress),
     preferFurthestEpisode = preferFurthestEpisode

@@ -218,6 +218,27 @@ class SimklProjectionsTest {
     }
 
     @Test
+    fun `next up projection excludes on hold shows`() {
+        val onHold = entry(
+            SimklMediaType.SHOWS,
+            SimklListStatus.ON_HOLD,
+            2090,
+            "tt1520211",
+            seasons = listOf(
+                SimklSeason(
+                    1,
+                    listOf(SimklEpisode(3, "2023-11-15T00:13:20Z"))
+                )
+            )
+        )
+
+        val seeds = SimklSyncSnapshot(entries = listOf(onHold))
+            .toSimklNextUpSeeds(preferFurthestEpisode = true)
+
+        assertTrue(seeds.isEmpty())
+    }
+
+    @Test
     fun `playback projection preserves session identity percentage and eighty percent completion`() {
         val session = SimklPlaybackSession(
             id = 12345,
