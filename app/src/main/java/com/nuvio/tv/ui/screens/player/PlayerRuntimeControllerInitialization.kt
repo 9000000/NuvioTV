@@ -66,6 +66,7 @@ import com.nuvio.tv.core.player.DolbyVisionConversionStats
 import com.nuvio.tv.core.player.DolbyVisionExtractorsFactory
 import com.nuvio.tv.core.player.DoviBridge
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
+import com.nuvio.tv.core.tracking.TrackingScrobbleAction
 import com.nuvio.tv.ui.screens.settings.MemoryBudget
 import com.nuvio.tv.data.local.AddonSubtitleStartupMode
 import com.nuvio.tv.data.local.AudioLanguageOption
@@ -1145,7 +1146,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                             if (playbackState == Player.STATE_BUFFERING) {
                                 saveWatchProgressIfNeeded()
                             } else {
-                                emitStopScrobbleForCurrentProgress()
+                                when (trackingActionForNonPlayingState(playbackState)) {
+                                    TrackingScrobbleAction.PAUSE -> emitPauseScrobbleForCurrentProgress()
+                                    TrackingScrobbleAction.STOP -> emitStopScrobbleForCurrentProgress()
+                                    TrackingScrobbleAction.START, null -> Unit
+                                }
                                 saveWatchProgress()
                             }
                         }

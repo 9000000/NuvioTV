@@ -25,6 +25,8 @@ class TrackingScrobbleCoordinatorTest {
 
         assertEquals(1, successful.callCount)
         assertEquals(1, failing.callCount)
+        assertEquals(listOf(TrackingScrobbleAction.PAUSE), successful.actions)
+        assertEquals(listOf(TrackingScrobbleAction.PAUSE), failing.actions)
         assertEquals(listOf(TrackingProviderId.SIMKL), failures.map { it.providerId })
     }
 
@@ -59,10 +61,12 @@ class TrackingScrobbleCoordinatorTest {
         private val seekPolicy: TrackingSeekScrobblePolicy = TrackingSeekScrobblePolicy.NONE
     ) : TrackingScrobbler {
         var callCount = 0
+        val actions = mutableListOf<TrackingScrobbleAction>()
         override val seekScrobblePolicy = seekPolicy
 
         override suspend fun scrobble(action: TrackingScrobbleAction, event: TrackingScrobbleEvent) {
             callCount += 1
+            actions += action
             failure?.let { throw it }
         }
     }

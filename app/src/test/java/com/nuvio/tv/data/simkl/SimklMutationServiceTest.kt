@@ -198,6 +198,21 @@ class SimklMutationServiceTest {
     }
 
     @Test
+    fun `successful pause uses pause endpoint`() = runBlocking {
+        val engine = RecordingEngine(response(201, """{"action":"pause","progress":45}"""))
+        var committed = 0
+        val service = SimklMutationService(client(engine)) { committed += 1 }
+
+        service.scrobble(
+            TrackingScrobbleAction.PAUSE,
+            TrackingScrobbleEvent(movie(), 45.0)
+        )
+
+        assertEquals(listOf("/scrobble/pause"), engine.paths)
+        assertEquals(1, committed)
+    }
+
+    @Test
     fun `invalid mutation identity fails before network access`() {
         val engine = RecordingEngine(response(200))
         val service = SimklMutationService(client(engine))

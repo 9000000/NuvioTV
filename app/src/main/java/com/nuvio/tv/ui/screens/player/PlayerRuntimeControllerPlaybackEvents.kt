@@ -714,17 +714,17 @@ internal fun PlayerRuntimeController.emitScrobbleStop(progressPercent: Float? = 
     hasSentScrobbleStartForCurrentItem = false
 }
 
-internal fun PlayerRuntimeController.emitPauseScrobbleStop(progressPercent: Float) {
-    if (progressPercent < 1f || progressPercent >= 80f) return
+internal fun PlayerRuntimeController.emitScrobblePause(progressPercent: Float? = null) {
     if (isShortPlaceholderStream()) return
     val item = currentScrobbleItem
     if (item == null) return
-    if (!hasRequestedScrobbleStartForCurrentItem) return
 
+    val percent = progressPercent ?: currentPlaybackProgressPercent()
+    if (!shouldSendPauseScrobble(hasRequestedScrobbleStartForCurrentItem, percent)) return
     scope.launch(kotlinx.coroutines.NonCancellable) {
         trackingScrobbleCoordinator.scrobble(
-            action = TrackingScrobbleAction.STOP,
-            event = TrackingScrobbleEvent(item, progressPercent.toDouble())
+            action = TrackingScrobbleAction.PAUSE,
+            event = TrackingScrobbleEvent(item, percent.toDouble())
         )
     }
     scrobbleStartRequestGeneration++
@@ -740,8 +740,15 @@ internal fun PlayerRuntimeController.emitCompletionScrobbleStop(progressPercent:
 
 internal fun PlayerRuntimeController.emitStopScrobbleForCurrentProgress() {
     val progressPercent = currentPlaybackProgressPercent()
-    emitPauseScrobbleStop(progressPercent = progressPercent)
+    if (progressPercent >= 1f && progressPercent < 80f) {
+        emitScrobbleStop(progressPercent = progressPercent)
+        return
+    }
     emitCompletionScrobbleStop(progressPercent = progressPercent)
+}
+
+internal fun PlayerRuntimeController.emitPauseScrobbleForCurrentProgress() {
+    emitScrobblePause(progressPercent = currentPlaybackProgressPercent())
 }
 
 internal fun PlayerRuntimeController.emitSeekScrobbleRestart(progressPercent: Float) {
@@ -926,7 +933,7 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                     setPlaybackPaused(true)
                     stopProgressUpdates()
                     stopWatchProgressSaving()
-                    emitStopScrobbleForCurrentProgress()
+                    emitPauseScrobbleForCurrentProgress()
                     schedulePauseOverlay()
                 } else {
                     userPausedManually = false
