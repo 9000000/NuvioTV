@@ -29,28 +29,28 @@ val simklLibraryStatusDefinitions = listOf(
         "simkl:status:watching",
         "Watching",
         TrackingListStatus.WATCHING,
-        setOf("series")
+        setOf("series", "anime")
     ),
     SimklLibraryStatusDefinition(
         SimklListStatus.PLAN_TO_WATCH,
         "simkl:status:plantowatch",
         "Plan to Watch",
         TrackingListStatus.PLAN_TO_WATCH,
-        setOf("movie", "series")
+        setOf("movie", "series", "anime")
     ),
     SimklLibraryStatusDefinition(
         SimklListStatus.ON_HOLD,
         "simkl:status:hold",
         "On Hold",
         TrackingListStatus.ON_HOLD,
-        setOf("series")
+        setOf("series", "anime")
     ),
     SimklLibraryStatusDefinition(
         SimklListStatus.COMPLETED,
         "simkl:status:completed",
         "Completed",
         TrackingListStatus.COMPLETED,
-        setOf("movie", "series"),
+        setOf("movie", "series", "anime"),
         isMembershipDestination = false
     ),
     SimklLibraryStatusDefinition(
@@ -58,7 +58,7 @@ val simklLibraryStatusDefinitions = listOf(
         "simkl:status:dropped",
         "Dropped",
         TrackingListStatus.DROPPED,
-        setOf("movie", "series")
+        setOf("movie", "series", "anime")
     )
 )
 
@@ -108,9 +108,14 @@ private fun SimklLibraryEntry.toLibraryEntry(
     val media = media ?: return null
     val contentId = media.canonicalContentId() ?: return null
     val simklId = media.ids.simklIdValue()?.toLongOrNull()
+    val entryType = when (mediaType) {
+        SimklMediaType.MOVIES -> "movie"
+        SimklMediaType.ANIME -> "anime"
+        SimklMediaType.SHOWS -> "series"
+    }
     return LibraryEntry(
         id = contentId,
-        type = if (mediaType == SimklMediaType.MOVIES) "movie" else "series",
+        type = entryType,
         name = media.title?.takeIf(String::isNotBlank) ?: contentId,
         poster = simklPosterUrl(media.poster),
         posterShape = PosterShape.POSTER,

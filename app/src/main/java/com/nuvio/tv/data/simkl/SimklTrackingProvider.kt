@@ -30,11 +30,10 @@ class SimklTrackingScrobbler @Inject constructor(
     ) {
         if (!authRepository.state.value.isAuthenticated) return
         syncRepository.ensureLoaded()
+        val enriched = syncRepository.state.value.snapshot.enrichMediaReference(event.media)
         mutationService.scrobble(
             action = action,
-            event = event.copy(
-                media = syncRepository.state.value.snapshot.enrichMediaReference(event.media)
-            )
+            event = event.copy(media = enriched.resolveAnimeEpisodeForSimkl())
         )
     }
 }

@@ -279,6 +279,69 @@ private fun daysInMonths(year: Int): IntArray = if (year.isLeapYear()) {
     intArrayOf(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 }
 
+/**
+ * For anime with per-season MAL/Kitsu/AniDB/AniList video IDs, resolves both the
+ * anime-specific IDs and the episode number to match Simkl's anime-native format
+ * (Path B: flat episode numbering per MAL/Kitsu entry, no season).
+ *
+ * Example: video ID "mal:42203:7" means episode 7 of mal:42203. Even if the UI shows
+ * this as "Season 2 Episode 20" of the franchise, Simkl needs:
+ * - ids with mal=42203 (not the franchise parent mal)
+ * - episode number=7 (not 20)
+ * - no season (flat/absolute numbering)
+ *
+ * Returns the reference unchanged if:
+ * - Not anime
+ * - No catalog videoId
+ * - VideoId doesn't have an anime-tracker prefix with episode number
+ */
+fun TrackingMediaReference.resolveAnimeEpisodeForSimkl(): TrackingMediaReference {
+    if (kind != TrackingMediaKind.ANIME) return this
+    val videoId = catalog?.videoId ?: return this
+    val parsed = parseSimklAnimeVideoId(videoId) ?: return this
+    val videoEpisodeNumber = parsed.episodeNumber ?: return this
+
+    // Override IDs: anime-specific ID from videoId takes priority
+    val videoIds = parseTrackingExternalIds("${parsed.prefix}:${parsed.id}")
+    val overriddenIds = TrackingExternalIds(
+        imdb = ids.imdb,
+        tmdb = ids.tmdb,
+        tvdb = ids.tvdb,
+        trakt = ids.trakt,
+        simkl = ids.simkl,
+        mal = videoIds.mal ?: ids.mal,
+        anidb = videoIds.anidb ?: ids.anidb,
+        anilist = videoIds.anilist ?: ids.anilist,
+        kitsu = videoIds.kitsu ?: ids.kitsu
+    )
+
+    // Override episode: use absolute number from videoId, drop season
+    return copy(
+        ids = overriddenIds,
+        episode = episode?.copy(season = null, number = videoEpisodeNumber)
+            ?: TrackingEpisode(season = null, number = videoEpisodeNumber)
+    )
+}
+
+private val SIMKL_ANIME_VIDEO_ID_PREFIXES = setOf("mal", "anidb", "anilist", "kitsu")
+
+private data class SimklAnimeVideoIdParts(
+    val prefix: String,
+    val id: Long,
+    val episodeNumber: Int?
+)
+
+private fun parseSimklAnimeVideoId(videoId: String): SimklAnimeVideoIdParts? {
+    val trimmed = videoId.trim()
+    if (trimmed.isBlank()) return null
+    val prefix = trimmed.substringBefore(':').lowercase()
+    if (prefix !in SIMKL_ANIME_VIDEO_ID_PREFIXES) return null
+    val afterPrefix = trimmed.substringAfter(':', "")
+    val idValue = afterPrefix.substringBefore(':').toLongOrNull() ?: return null
+    val episodePart = afterPrefix.substringAfter(':', "").substringBefore(':')
+    return SimklAnimeVideoIdParts(prefix, idValue, episodePart.toIntOrNull())
+}
+
 private val SIMKL_UTC_PATTERN = Regex(
     "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,9}))?Z$",
     RegexOption.IGNORE_CASE
