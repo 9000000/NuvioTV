@@ -1045,10 +1045,8 @@ public class MatroskaExtractor implements Extractor {
             Track track = tracks.valueAt(i);
             track.maybeAddThumbnailMetadata(
                 perTrackCues, durationUs, segmentContentPosition, segmentContentSize);
-            if (!track.waitingForDtsAnalysis) {
-              track.assertOutputInitialized();
-              track.output.format(checkNotNull(track.format));
-            }
+            track.assertOutputInitialized();
+            track.output.format(checkNotNull(track.format));
           }
           maybeEndTracks();
         }
@@ -2528,11 +2526,6 @@ public class MatroskaExtractor implements Extractor {
   private void maybeEndTracks() {
     if (!pendingEndTracks) {
       return;
-    }
-    for (int i = 0; i < tracks.size(); i++) {
-      if (tracks.valueAt(i).waitingForDtsAnalysis) {
-        return;
-      }
     }
     checkNotNull(extractorOutput).endTracks();
     pendingEndTracks = false;
