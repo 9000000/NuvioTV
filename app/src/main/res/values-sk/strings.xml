@@ -2713,7 +2713,7 @@
 <string name="debrid_picker_preferred_languages_title">Preferované jazyky</string>
 <string name="debrid_picker_preferred_languages_subtitle">Zoraď preferované zvukové jazyky najskôr.</string>
 <string name="debrid_picker_required_languages_title">Požadované jazyky</string>
-<string name="debrid_picker_required_languages_subtitle">Zobraz iba streamy s vybranými jazykmi.
+<string name="debrid_picker_required_languages_subtitle">Zobraz iba streamy s vybranými jazykmi.</string>
 <string name="debrid_picker_excluded_languages_title">Vylúčené jazyky</string>
 <string name="debrid_picker_excluded_languages_subtitle">Skry streamy, kde je každý jazyk vylúčený.</string>
 <string name="debrid_picker_required_release_groups_title">Požadované skupiny vydania</string>
