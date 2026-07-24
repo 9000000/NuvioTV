@@ -43,6 +43,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Collections
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val CW_MAX_RECENT_PROGRESS_ITEMS = 300
@@ -754,6 +755,8 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 // --- CW next-up injection ---
                 // Discover next-up items for older seeds and inject release alerts into CW.
                 // Hidden (dropped) shows are already filtered out by observeWatchedShowSeeds().
+                val conclusivelyProcessedOlderContentIds = ConcurrentHashMap.newKeySet<String>()
+                val resolvedOlderNextUpContentIds = ConcurrentHashMap.newKeySet<String>()
                 if (true) {
                     val recentSeedContentIds = recentNextUpSeeds
                         .filter { isSeriesTypeCW(it.contentType) && it.season != null && it.episode != null }
@@ -827,8 +830,22 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                     val item = buildNextUpItem(
                                         progress = seed,
                                         showUnairedNextUp = showUnairedNextUp
-                                    )
+                                    ).also { resolved ->
+                                        logSimklAsyncNextUpResolution(
+                                            seed = seed,
+                                            resolved = resolved,
+                                            watchedItems = allWatchedItems
+                                        )
+                                    }
                                     if (item != null) {
+                                        conclusivelyProcessedOlderContentIds += seed.contentId
+                                        if (
+                                            cutoffMs == null ||
+                                            item.info.sortTimestamp >= cutoffMs ||
+                                            item.info.isReleaseAlert
+                                        ) {
+                                            resolvedOlderNextUpContentIds += seed.contentId
+                                        }
                                         // Same mid-season case as the lightweight path.
                                         if (seed.contentId in fullyWatchedSeriesIds.fullyWatchedSeriesIds.value &&
                                             fullyWatchedNextUpAction(item.info.hasAired) ==
@@ -855,33 +872,15 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                                 discoveredNextUpItems.toList()
                                             }
                                             if (partialToInject.isNotEmpty()) {
-                                                synchronized(discoveredOlderNextUpItems) {
-                                                    discoveredOlderNextUpItems.removeAll { old ->
-                                                        partialToInject.any { it.info.contentId == old.info.contentId }
-                                                    }
-                                                    discoveredOlderNextUpItems.addAll(partialToInject)
-                                                }
-                                                _uiState.update { state ->
-                                                    val existingContentIds = (state.continueWatchingItems + state.upcomingItems)
-                                                        .map {
-                                                            when (it) {
-                                                                is ContinueWatchingItem.NextUp -> it.info.contentId
-                                                                is ContinueWatchingItem.InProgress -> it.progress.contentId
-                                                            }
-                                                        }
-                                                        .toSet()
-                                                    val newItems = partialToInject.filter {
-                                                        it.info.contentId !in existingContentIds &&
-                                                            nextUpDismissKey(it.info.contentId, it.info.seedSeason, it.info.seedEpisode) !in dismissedNextUp
-                                                    }
-                                                    if (newItems.isEmpty()) return@update state
-                                                    val merged = sortContinueWatchingItems(
-                                                        state.continueWatchingItems + state.upcomingItems + newItems,
-                                                        continueWatchingSortMode
-                                                    )
-                                                    val (splitMain, splitUpcoming) = splitUpcomingItems(merged, continueWatchingSortMode)
-                                                    state.copy(continueWatchingItems = splitMain, upcomingItems = splitUpcoming)
-                                                }
+                                                applyConclusiveOlderNextUpResults(
+                                                    resolvedItems = partialToInject,
+                                                    conclusivelyProcessedContentIds =
+                                                        conclusivelyProcessedOlderContentIds.toSet(),
+                                                    dismissedNextUpKeys = dismissedNextUp,
+                                                    sortMode = continueWatchingSortMode,
+                                                    pipelineProfileId = pipelineProfileId,
+                                                    persistSnapshot = false
+                                                )
                                             }
                                         }
                                     } else {
@@ -895,6 +894,24 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                                 ?: cwMetaCache["tv:${seed.contentId}"]
                                         } != null
                                         if (metaWasResolved) {
+                                            conclusivelyProcessedOlderContentIds += seed.contentId
+                                            val resolvedItemsToRetain = if (cutoffMs != null) {
+                                                discoveredNextUpItems.filter { resolvedItem ->
+                                                    resolvedItem.info.sortTimestamp >= cutoffMs ||
+                                                        resolvedItem.info.isReleaseAlert
+                                                }
+                                            } else {
+                                                discoveredNextUpItems.toList()
+                                            }
+                                            applyConclusiveOlderNextUpResults(
+                                                resolvedItems = resolvedItemsToRetain,
+                                                conclusivelyProcessedContentIds =
+                                                    conclusivelyProcessedOlderContentIds.toSet(),
+                                                dismissedNextUpKeys = dismissedNextUp,
+                                                sortMode = continueWatchingSortMode,
+                                                pipelineProfileId = pipelineProfileId,
+                                                persistSnapshot = false
+                                            )
                                             val nextContentMs = cwBadgeNextSeasonMs[seed.contentId]
                                             val deadline = nextContentMs
                                                 ?: (System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000)
@@ -915,9 +932,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                 val asyncWatchedEpisodes = watchProgressRepository.getWatchedShowEpisodes()
                                 publishBadgeUpdate(asyncWatchedEpisodes)
 
-                                if (discoveredNextUpItems.isNotEmpty()) {
-                                    // Items within the daysCap window are injected normally.
-                                    // Items outside the window are only injected if they're release alerts.
+                                if (conclusivelyProcessedOlderContentIds.isNotEmpty()) {
                                     val itemsToInject = if (cutoffMs != null) {
                                         discoveredNextUpItems.filter { item ->
                                             item.info.sortTimestamp >= cutoffMs || item.info.isReleaseAlert
@@ -925,60 +940,15 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                     } else {
                                         discoveredNextUpItems.toList()
                                     }
-                                    synchronized(discoveredOlderNextUpItems) {
-                                        discoveredOlderNextUpItems.removeAll { old ->
-                                            itemsToInject.any { it.info.contentId == old.info.contentId }
-                                        }
-                                        discoveredOlderNextUpItems.addAll(itemsToInject)
-                                    }
-                                    _uiState.update { state ->
-                                        val existingContentIds = (state.continueWatchingItems + state.upcomingItems)
-                                            .map {
-                                                when (it) {
-                                                    is ContinueWatchingItem.NextUp -> it.info.contentId
-                                                    is ContinueWatchingItem.InProgress -> it.progress.contentId
-                                                }
-                                            }
-                                            .toSet()
-                                        val newItems = itemsToInject.filter {
-                                            it.info.contentId !in existingContentIds &&
-                                                nextUpDismissKey(it.info.contentId, it.info.seedSeason, it.info.seedEpisode) !in dismissedNextUp
-                                        }
-                                        if (newItems.isEmpty()) return@update state
-                                        val merged = sortContinueWatchingItems(
-                                            state.continueWatchingItems + state.upcomingItems + newItems,
-                                            continueWatchingSortMode
-                                        )
-                                        val (splitMain, splitUpcoming) = splitUpcomingItems(merged, continueWatchingSortMode)
-                                        state.copy(continueWatchingItems = splitMain, upcomingItems = splitUpcoming)
-                                    }
-                                    // Persist updated CW snapshot
-                                    viewModelScope.launch(Dispatchers.IO) {
-                                        val currentItems = _uiState.value.continueWatchingItems + _uiState.value.upcomingItems
-                                        val brokenUrls = com.nuvio.tv.ui.components.brokenImageUrls
-                                        val nextUpSnap = currentItems.mapNotNull { item ->
-                                            val nu = item as? ContinueWatchingItem.NextUp ?: return@mapNotNull null
-                                            val info = nu.info
-                                            com.nuvio.tv.data.local.CachedNextUpItem(
-                                                contentId = info.contentId, contentType = info.contentType, name = info.name,
-                                                poster = info.poster, backdrop = info.backdrop, logo = info.logo,
-                                                videoId = info.videoId, season = info.season, episode = info.episode,
-                                                episodeTitle = info.episodeTitle, episodeDescription = info.episodeDescription,
-                                                thumbnail = info.thumbnail?.takeIf { it !in brokenUrls },
-                                                released = info.released, hasAired = info.hasAired, airDateLabel = info.airDateLabel,
-                                                lastWatched = info.lastWatched, imdbRating = info.imdbRating, genres = info.genres,
-                                                releaseInfo = info.releaseInfo, sortTimestamp = info.sortTimestamp,
-                                                releaseTimestamp = info.releaseTimestamp, isReleaseAlert = info.isReleaseAlert,
-                                                isNewSeasonRelease = info.isNewSeasonRelease, seedSeason = info.seedSeason,
-                                                seedEpisode = info.seedEpisode, contentLanguage = info.contentLanguage
-                                            )
-                                        }
-                                        runCatching {
-                                            if (profileManager.activeProfileId.value == pipelineProfileId) {
-                                                cwEnrichmentCache.saveNextUpSnapshot(nextUpSnap)
-                                            }
-                                        }
-                                    }
+                                    applyConclusiveOlderNextUpResults(
+                                        resolvedItems = itemsToInject,
+                                        conclusivelyProcessedContentIds =
+                                            conclusivelyProcessedOlderContentIds.toSet(),
+                                        dismissedNextUpKeys = dismissedNextUp,
+                                        sortMode = continueWatchingSortMode,
+                                        pipelineProfileId = pipelineProfileId,
+                                        persistSnapshot = true
+                                    )
                                 }
                             }
                         }
@@ -1041,6 +1011,10 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                             (!snapshot.hasLoadedRemoteProgress || it.info.contentId in activeSeedContentIds || isCachedFromDisk) &&
                             it.info.contentId !in recentIds &&
                             it.info.contentId !in inProgressIds &&
+                            (
+                                it.info.contentId !in conclusivelyProcessedOlderContentIds ||
+                                    it.info.contentId in resolvedOlderNextUpContentIds
+                            ) &&
                             // Reject items the fresh pipeline evaluated but produced no
                             // next-up for (e.g. fully watched series).  Cached-from-disk
                             // items survive only until the fresh pipeline processes their
@@ -1056,6 +1030,10 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 val freshContentIds = allNextUpItems.map { it.info.contentId }.toSet()
                 val retainedFromCache = cachedNextUpItems.filter {
                     it.info.contentId !in freshContentIds &&
+                        (
+                            it.info.contentId !in conclusivelyProcessedOlderContentIds ||
+                                it.info.contentId in resolvedOlderNextUpContentIds
+                        ) &&
                         it.info.contentId !in rejectedByFreshPipeline &&
                         nextUpDismissKey(it.info.contentId, it.info.seedSeason, it.info.seedEpisode) !in dismissedNextUp
                 }
@@ -1103,6 +1081,19 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                         state.copy(continueWatchingItems = normalMain, upcomingItems = normalUpcoming)
                     }
                 }
+                SimklContinueWatchingDisplayLogger.log(
+                    buildSimklCwDisplayDiagnosticReport(
+                        displayedItems = _uiState.value.continueWatchingItems + _uiState.value.upcomingItems,
+                        liveProgress = items,
+                        nextUpSeeds = nextUpSeeds,
+                        watchedItems = allWatchedItems,
+                        freshNextUpItems = nextUpItems,
+                        olderResolvedNextUpItems = persistedOlderItems,
+                        cachedNextUpItems = cachedNextUpItems,
+                        preferFurthestEpisode = nextUpFromFurthestEpisode,
+                        hasLoadedRemoteProgress = snapshot.hasLoadedRemoteProgress
+                    )
+                )
                 debug.recordLightweightRendered(
                     count = normalItems.size,
                     elapsedMs = SystemClock.elapsedRealtime() - cycleStartMs
@@ -1596,7 +1587,19 @@ private suspend fun HomeViewModel.enrichVisibleContinueWatchingItems(
     }
 
     _uiState.update { state ->
-        val (enrichedMain, enrichedUpcoming) = splitUpcomingItems(sortedEnrichedItems, continueWatchingSortMode)
+        val mergedEnrichedItems = mergeConcurrentContinueWatchingEnrichment(
+            currentItems = state.continueWatchingItems + state.upcomingItems,
+            originalItems = finalItems,
+            enrichedItems = enrichedItems
+        )
+        val sortedMergedItems = sortContinueWatchingItems(
+            mergedEnrichedItems,
+            continueWatchingSortMode
+        )
+        val (enrichedMain, enrichedUpcoming) = splitUpcomingItems(
+            sortedMergedItems,
+            continueWatchingSortMode
+        )
         if (state.continueWatchingItems == enrichedMain && state.upcomingItems == enrichedUpcoming) {
             state
         } else {

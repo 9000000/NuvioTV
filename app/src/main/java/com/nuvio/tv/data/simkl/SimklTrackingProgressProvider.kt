@@ -38,7 +38,18 @@ class SimklTrackingProgressProvider @Inject constructor(
         syncRepository.state,
         layoutPreferences.nextUpFromFurthestEpisode
     ) { state, preferFurthestEpisode ->
-        state.snapshot.toSimklNextUpSeeds(preferFurthestEpisode)
+        val watchedProjection = state.snapshot.toSimklWatchedProjection()
+        val seeds = state.snapshot.toSimklNextUpSeeds(
+            watchedProjection = watchedProjection,
+            preferFurthestEpisode = preferFurthestEpisode
+        )
+        SimklContinueWatchingProjectionLogger.log(
+            snapshot = state.snapshot,
+            watchedProjection = watchedProjection,
+            seeds = seeds,
+            preferFurthestEpisode = preferFurthestEpisode
+        )
+        seeds
     }.distinctUntilChanged()
     override val watchedMovieIds = syncRepository.state.map { state ->
         val watched = state.snapshot.toSimklWatchedProjection().items
@@ -171,8 +182,16 @@ class SimklTrackingProgressProvider @Inject constructor(
 
 internal fun SimklSyncSnapshot.toSimklNextUpSeeds(
     preferFurthestEpisode: Boolean
+): List<WatchProgress> = toSimklNextUpSeeds(
+    watchedProjection = toSimklWatchedProjection(),
+    preferFurthestEpisode = preferFurthestEpisode
+)
+
+private fun SimklSyncSnapshot.toSimklNextUpSeeds(
+    watchedProjection: SimklWatchedProjection,
+    preferFurthestEpisode: Boolean
 ): List<WatchProgress> = selectPreferredTrackingNextUpSeeds(
-    candidates = toSimklWatchedProjection().items
+    candidates = watchedProjection.items
         .filterNot { item -> isDroppedContent(item.contentId) }
         .filter { item -> item.season != null && item.episode != null && item.season != 0 }
         .map(WatchedItem::toCompletedProgress),
