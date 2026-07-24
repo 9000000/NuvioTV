@@ -31,7 +31,9 @@ class SimklTrackingProgressProvider @Inject constructor(
         state.hasLoaded && state.errorMessage == null
     }.distinctUntilChanged()
     override val nextUpSeeds = syncRepository.state.map { state ->
-        state.snapshot.toSimklWatchedProjection().items
+        val snapshot = state.snapshot
+        snapshot.toSimklWatchedProjection().items
+            .filterNot { item -> snapshot.isDroppedContent(item.contentId) }
             .filter { item -> item.season != null && item.episode != null && item.season != 0 }
             .groupBy(WatchedItem::contentId)
             .mapNotNull { (_, items) -> items.maxByOrNull(WatchedItem::watchedAt) }
@@ -162,9 +164,7 @@ class SimklTrackingProgressProvider @Inject constructor(
     override fun clearOptimistic() = Unit
 
     override fun isHiddenFromProgress(contentId: String): Boolean =
-        syncRepository.state.value.snapshot.entries.any { entry ->
-            entry.status == SimklListStatus.DROPPED && entry.matchesSimklContentId(contentId)
-        }
+        syncRepository.state.value.snapshot.isDroppedContent(contentId)
 
     override suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress = progress
 }

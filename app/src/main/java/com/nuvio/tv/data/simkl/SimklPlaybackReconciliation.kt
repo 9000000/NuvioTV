@@ -4,16 +4,22 @@ import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.model.WatchedItem
 
 internal fun SimklSyncSnapshot.reconcileWatchedPlayback(): SimklSyncSnapshot {
-    if (entries.isEmpty() || playback.isEmpty()) return this
+    if (playback.isEmpty()) return this
     val watchedItems = toSimklWatchedProjection().items
-    if (watchedItems.isEmpty()) return this
     val retainedPlayback = playback.filterNot { session ->
         session.toWatchProgress()?.let { progress ->
-            watchedItems.any { watched -> watched.supersedes(progress) }
+            entries.any { entry -> entry.hidesPlayback(progress) } ||
+                watchedItems.any { watched -> watched.supersedes(progress) }
         } == true
     }
     return if (retainedPlayback.size == playback.size) this else copy(playback = retainedPlayback)
 }
+
+internal fun SimklSyncSnapshot.isDroppedContent(contentId: String): Boolean =
+    entries.any { entry ->
+        entry.status == SimklListStatus.DROPPED &&
+            entry.matchesContent(contentId = contentId, trackingProviderItemId = null)
+    }
 
 private fun WatchedItem.supersedes(progress: WatchProgress): Boolean {
     if (!contentType.equals(progress.contentType, ignoreCase = true)) return false
@@ -23,4 +29,33 @@ private fun WatchedItem.supersedes(progress: WatchProgress): Boolean {
         ?.equals(progress.trackingProviderItemId, ignoreCase = true) == true
     val sameContent = contentId.equals(progress.contentId, ignoreCase = true)
     return (sameProviderItem || sameContent) && watchedAt >= progress.lastWatched
+}
+
+private fun SimklLibraryEntry.hidesPlayback(progress: WatchProgress): Boolean {
+    if (
+        !matchesContent(
+            contentId = progress.contentId,
+            trackingProviderItemId = progress.trackingProviderItemId
+        )
+    ) {
+        return false
+    }
+    return when (status) {
+        SimklListStatus.DROPPED -> true
+        SimklListStatus.COMPLETED ->
+            parseSimklUtcEpochMs(lastWatchedAt)?.let { completedAt ->
+                completedAt >= progress.lastWatched
+            } == true
+        else -> false
+    }
+}
+
+private fun SimklLibraryEntry.matchesContent(
+    contentId: String,
+    trackingProviderItemId: String?
+): Boolean {
+    val providerItemId = media?.simklTrackingProviderItemId()
+    val sameProviderItem = providerItemId != null &&
+        providerItemId.equals(trackingProviderItemId, ignoreCase = true)
+    return sameProviderItem || matchesSimklContentId(contentId)
 }

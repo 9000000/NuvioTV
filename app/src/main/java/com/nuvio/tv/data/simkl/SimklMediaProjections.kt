@@ -249,7 +249,7 @@ private fun simklProgressKey(progress: WatchProgress): String = progress.simklPl
     ?.let { "simkl-playback:$it" }
     ?: "${progress.contentId}:${progress.season ?: -1}:${progress.episode ?: -1}"
 
-private fun SimklMedia.simklTrackingProviderItemId(): String? = ids.simklIdValue()
+internal fun SimklMedia.simklTrackingProviderItemId(): String? = ids.simklIdValue()
     ?.toLongOrNull()
     ?.takeIf { it > 0L }
     ?.let { id -> "simkl:$id" }
