@@ -2879,5 +2879,4 @@
 <string name="stream_test_error_prefix">Chyba: %1$s</string>
 <string name="stream_test_video_bitrate">Priemerný bitrate videa: %1$s</string>
 <string name="stream_test_error_connection">Pripojenie zlyhalo. Odkaz na posledný prehrávaný stream možno vypršal alebo je nedostupný. Prosím, prehraj video znova a skús znova.</string>
-
 </resources>
