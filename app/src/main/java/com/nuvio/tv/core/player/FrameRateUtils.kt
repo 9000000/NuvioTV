@@ -440,10 +440,10 @@ object FrameRateUtils {
 
     private val probeHttpClient by lazy {
         com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking.playbackHttpClient.newBuilder()
-            .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
-            .callTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
