@@ -111,6 +111,11 @@ class SimklMutationServiceTest {
         assertTrue("movie" in movieBody)
         assertFalse("show" in movieBody)
 
+        val earlyPauseBody = buildSimklScrobbleBody(
+            TrackingScrobbleEvent(movie(), 0.42984203)
+        ).asObject()
+        assertEquals(0.43, earlyPauseBody.getValue("progress").jsonPrimitive.content.toDouble(), 0.0)
+
         val seasonalAnime = buildSimklScrobbleBody(
             TrackingScrobbleEvent(anime(TrackingEpisode(2, 4)), 42.236)
         ).asObject()

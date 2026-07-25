@@ -40,8 +40,22 @@ class PlayerScrobblePolicyTest {
     }
 
     @Test
-    fun `pause requires active scrobble and meaningful progress`() {
+    fun `pause requires active scrobble and accepts early progress`() {
         assertFalse(shouldSendPauseScrobble(hasActiveScrobble = false, progressPercent = 45f))
-        assertFalse(shouldSendPauseScrobble(hasActiveScrobble = true, progressPercent = 0.5f))
+        assertTrue(shouldSendPauseScrobble(hasActiveScrobble = true, progressPercent = 0f))
+        assertTrue(shouldSendPauseScrobble(hasActiveScrobble = true, progressPercent = 0.5f))
+    }
+
+    @Test
+    fun `stop closes active sessions below one percent`() {
+        assertTrue(shouldSendStopScrobble(hasActiveScrobble = true, progressPercent = 0f))
+        assertTrue(shouldSendStopScrobble(hasActiveScrobble = true, progressPercent = 0.5f))
+        assertFalse(shouldSendStopScrobble(hasActiveScrobble = false, progressPercent = 0.5f))
+    }
+
+    @Test
+    fun `completion stop remains eligible without an active session`() {
+        assertFalse(shouldSendStopScrobble(hasActiveScrobble = false, progressPercent = 79.99f))
+        assertTrue(shouldSendStopScrobble(hasActiveScrobble = false, progressPercent = 80f))
     }
 }

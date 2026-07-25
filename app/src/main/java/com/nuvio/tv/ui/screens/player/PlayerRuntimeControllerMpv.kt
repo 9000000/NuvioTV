@@ -212,6 +212,7 @@ internal fun PlayerRuntimeController.performLifecyclePause() {
     pendingLifecyclePauseJob = null
     isInBackground = true
     shouldEnforceAutoplayOnFirstReady = false
+    logScrobbleDiagnostic("lifecycle_pause", "userPaused=$userPausedManually")
 
     if (isUsingMpvEngine()) {
         mpvView?.setPaused(true)

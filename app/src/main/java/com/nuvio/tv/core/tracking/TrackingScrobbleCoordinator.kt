@@ -20,11 +20,27 @@ class TrackingScrobbleCoordinator @Inject constructor(
     suspend fun scrobble(
         action: TrackingScrobbleAction,
         event: TrackingScrobbleEvent
-    ): List<TrackingScrobbleFailure> = dispatch(
-        scrobblers = providerRegistry.connectedScrobblers(),
-        action = action,
-        event = event
-    )
+    ): List<TrackingScrobbleFailure> {
+        val scrobblers = providerRegistry.connectedScrobblers()
+        Log.d(
+            TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+            "coordinator dispatch action=${action.wireValue} providers=" +
+                scrobblers.joinToString(prefix = "[", postfix = "]") { it.providerId.storageId } +
+                " ${event.scrobbleDiagnosticSummary()}"
+        )
+        return dispatch(
+            scrobblers = scrobblers,
+            action = action,
+            event = event
+        ).also { failures ->
+            Log.d(
+                TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+                "coordinator complete action=${action.wireValue} failures=" +
+                    failures.joinToString(prefix = "[", postfix = "]") { it.providerId.storageId } +
+                    " ${event.scrobbleDiagnosticSummary()}"
+            )
+        }
+    }
 
     suspend fun scrobbleSeek(
         action: TrackingScrobbleAction,

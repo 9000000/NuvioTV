@@ -9,6 +9,7 @@ internal fun PlayerRuntimeController.releasePlayer() {
 }
 
 internal fun PlayerRuntimeController.releasePlayer(flushPlaybackState: Boolean) {
+    logScrobbleDiagnostic("release_player", "flushPlaybackState=$flushPlaybackState")
     isReleasingPlayer = true
     pendingLifecyclePauseJob?.cancel()
     pendingLifecyclePauseJob = null

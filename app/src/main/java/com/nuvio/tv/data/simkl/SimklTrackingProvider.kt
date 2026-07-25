@@ -1,5 +1,7 @@
 package com.nuvio.tv.data.simkl
 
+import android.util.Log
+import com.nuvio.tv.core.tracking.TRACKING_SCROBBLE_DIAGNOSTIC_TAG
 import com.nuvio.tv.core.tracking.TrackingCapability
 import com.nuvio.tv.core.tracking.TrackingProvider
 import com.nuvio.tv.core.tracking.TrackingProviderDescriptor
@@ -7,6 +9,7 @@ import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
 import com.nuvio.tv.core.tracking.TrackingScrobbleEvent
 import com.nuvio.tv.core.tracking.TrackingScrobbler
+import com.nuvio.tv.core.tracking.scrobbleDiagnosticSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -28,13 +31,34 @@ class SimklTrackingScrobbler @Inject constructor(
         action: TrackingScrobbleAction,
         event: TrackingScrobbleEvent
     ) {
-        if (!authRepository.state.value.isAuthenticated) return
+        val authenticated = authRepository.state.value.isAuthenticated
+        Log.d(
+            TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+            "simkl adapter received action=${action.wireValue} authenticated=$authenticated " +
+                event.scrobbleDiagnosticSummary()
+        )
+        if (!authenticated) {
+            Log.d(
+                TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+                "simkl adapter skipped action=${action.wireValue} reason=not_authenticated"
+            )
+            return
+        }
         syncRepository.ensureLoaded()
+        val enrichedEvent = event.copy(
+            media = syncRepository.state.value.snapshot.enrichMediaReference(event.media)
+        )
+        Log.d(
+            TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+            "simkl adapter enriched action=${action.wireValue} ${enrichedEvent.scrobbleDiagnosticSummary()}"
+        )
         mutationService.scrobble(
             action = action,
-            event = event.copy(
-                media = syncRepository.state.value.snapshot.enrichMediaReference(event.media)
-            )
+            event = enrichedEvent
+        )
+        Log.d(
+            TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+            "simkl adapter complete action=${action.wireValue} ${enrichedEvent.scrobbleDiagnosticSummary()}"
         )
     }
 }

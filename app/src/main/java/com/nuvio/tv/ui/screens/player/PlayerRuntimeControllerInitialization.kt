@@ -956,6 +956,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (isReleasingPlayer) return
+                        logScrobbleDiagnostic(
+                            "exo_playback_state",
+                            "playbackState=$playbackState playWhenReady=$playWhenReady isPlaying=$isPlaying " +
+                                "userPaused=$userPausedManually"
+                        )
                         if (playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_READY) {
                             mediaSourceFactory.unlockStartupPrefetch()
                         }
@@ -1128,6 +1133,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        logScrobbleDiagnostic(
+                            "exo_is_playing_changed",
+                            "isPlaying=$isPlaying playbackState=$playbackState playWhenReady=$playWhenReady " +
+                                "userPaused=$userPausedManually"
+                        )
                         _uiState.update { it.copy(isPlaying = isPlaying) }
                         if (isPlaying) {
                             userPausedManually = false

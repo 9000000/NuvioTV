@@ -12,4 +12,9 @@ internal fun trackingActionForNonPlayingState(playbackState: Int): TrackingScrob
 internal fun shouldSendPauseScrobble(
     hasActiveScrobble: Boolean,
     progressPercent: Float
-): Boolean = hasActiveScrobble && progressPercent >= 1f
+): Boolean = hasActiveScrobble && progressPercent in 0f..100f
+
+internal fun shouldSendStopScrobble(
+    hasActiveScrobble: Boolean,
+    progressPercent: Float
+): Boolean = hasActiveScrobble || progressPercent >= 80f

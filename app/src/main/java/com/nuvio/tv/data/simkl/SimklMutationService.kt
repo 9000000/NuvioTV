@@ -1,5 +1,7 @@
 package com.nuvio.tv.data.simkl
 
+import android.util.Log
+import com.nuvio.tv.core.tracking.TRACKING_SCROBBLE_DIAGNOSTIC_TAG
 import com.nuvio.tv.core.tracking.TrackingHistoryItem
 import com.nuvio.tv.core.tracking.TrackingListStatus
 import com.nuvio.tv.core.tracking.TrackingMediaKind
@@ -9,6 +11,7 @@ import com.nuvio.tv.core.tracking.TrackingMutationResult
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
 import com.nuvio.tv.core.tracking.TrackingScrobbleEvent
+import com.nuvio.tv.core.tracking.scrobbleDiagnosticSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
@@ -90,14 +93,33 @@ class SimklMutationService internal constructor(
         require(event.media.kind == TrackingMediaKind.MOVIE || event.media.episode != null) {
             "Simkl series scrobble requires an episode"
         }
-        client.execute(
-            SimklApiRequest(
-                method = SimklHttpMethod.POST,
-                path = "/scrobble/${action.wireValue}",
-                body = buildSimklScrobbleBody(event, json),
-                retryPolicy = SimklRetryPolicy.NEVER,
-                scrobbleStopConflictIsSuccess = action == TrackingScrobbleAction.STOP
+        Log.d(
+            TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+            "simkl mutation request action=${action.wireValue} ${event.scrobbleDiagnosticSummary()}"
+        )
+        val response = try {
+            client.execute(
+                SimklApiRequest(
+                    method = SimklHttpMethod.POST,
+                    path = "/scrobble/${action.wireValue}",
+                    body = buildSimklScrobbleBody(event, json),
+                    retryPolicy = SimklRetryPolicy.NEVER,
+                    scrobbleStopConflictIsSuccess = action == TrackingScrobbleAction.STOP
+                )
             )
+        } catch (error: Throwable) {
+            Log.e(
+                TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+                "simkl mutation failed action=${action.wireValue} " +
+                    "error=${error.javaClass.simpleName}:${error.message} ${event.scrobbleDiagnosticSummary()}",
+                error
+            )
+            throw error
+        }
+        Log.d(
+            TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+            "simkl mutation response action=${action.wireValue} status=${response.status} " +
+                "softSuccess=${response.isSoftSuccess} ${event.scrobbleDiagnosticSummary()}"
         )
         if (action != TrackingScrobbleAction.START) onMutationCommitted()
     }

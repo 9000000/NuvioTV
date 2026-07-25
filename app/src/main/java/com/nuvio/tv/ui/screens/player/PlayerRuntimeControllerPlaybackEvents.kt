@@ -6,11 +6,13 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.SeekParameters
 import com.nuvio.tv.R
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
+import com.nuvio.tv.core.tracking.TRACKING_SCROBBLE_DIAGNOSTIC_TAG
 import com.nuvio.tv.core.tracking.TrackingMediaKind
 import com.nuvio.tv.core.tracking.TrackingMediaReference
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
 import com.nuvio.tv.core.tracking.TrackingScrobbleEvent
 import com.nuvio.tv.core.tracking.buildTrackingMediaReference
+import com.nuvio.tv.core.tracking.scrobbleDiagnosticIdentity
 import com.nuvio.tv.data.local.SubtitleStyleSettings
 import com.nuvio.tv.data.repository.PlaybackIssueErrorInput
 import com.nuvio.tv.data.repository.PlaybackIssuePlaybackSettingsInput
@@ -644,6 +646,7 @@ internal fun PlayerRuntimeController.refreshScrobbleItem() {
     hasRequestedScrobbleStartForCurrentItem = false
     scrobbleStartRequestGeneration++
     hasSentCompletionScrobbleForCurrentItem = false
+    logScrobbleDiagnostic("item_refreshed")
 }
 
 internal fun PlayerRuntimeController.buildScrobbleItem(): TrackingMediaReference? {
@@ -665,71 +668,129 @@ internal fun PlayerRuntimeController.buildScrobbleItem(): TrackingMediaReference
 }
 
 internal fun PlayerRuntimeController.emitScrobbleStart() {
-    if (isShortPlaceholderStream()) return
-    if (hasRequestedScrobbleStartForCurrentItem) return
+    logScrobbleDiagnostic("start_evaluated")
+    if (isShortPlaceholderStream()) {
+        logScrobbleDiagnostic("start_skipped", "reason=short_placeholder")
+        return
+    }
+    if (hasRequestedScrobbleStartForCurrentItem) {
+        logScrobbleDiagnostic("start_skipped", "reason=already_requested")
+        return
+    }
 
     // Don't start a new Trakt scrobble session if playback resumes at ≥80%.
     // This avoids creating a duplicate history entry when the user continues
     // watching something already marked as watched. If the user seeks back
     // below 80%, the next progress update will re-trigger scrobble start.
     val currentProgress = currentPlaybackProgressPercent()
-    if (currentProgress >= 80f) return
+    if (currentProgress >= 80f) {
+        logScrobbleDiagnostic("start_skipped", "reason=completion_threshold progress=$currentProgress")
+        return
+    }
 
     hasRequestedScrobbleStartForCurrentItem = true
     val requestGeneration = ++scrobbleStartRequestGeneration
+    logScrobbleDiagnostic("start_queued", "requestGeneration=$requestGeneration")
     scope.launch {
         // Wait for the episode mapping to finish (with its own timeout) so that
         // the scrobble start is sent with the correct season/episode number.
         traktMappingJob?.join()
         currentScrobbleItem = buildScrobbleItem()
-        val item = currentScrobbleItem ?: return@launch
-        if (requestGeneration != scrobbleStartRequestGeneration || !hasRequestedScrobbleStartForCurrentItem) return@launch
+        val item = currentScrobbleItem
+        if (item == null) {
+            logScrobbleDiagnostic("start_cancelled", "reason=no_scrobble_item requestGeneration=$requestGeneration")
+            return@launch
+        }
+        if (requestGeneration != scrobbleStartRequestGeneration || !hasRequestedScrobbleStartForCurrentItem) {
+            logScrobbleDiagnostic("start_cancelled", "reason=stale_before_dispatch requestGeneration=$requestGeneration")
+            return@launch
+        }
         val progressPercent = currentPlaybackProgressPercent()
-        trackingScrobbleCoordinator.scrobble(
+        logScrobbleDiagnostic("start_dispatching", "requestGeneration=$requestGeneration progress=$progressPercent")
+        val failures = trackingScrobbleCoordinator.scrobble(
             action = TrackingScrobbleAction.START,
             event = TrackingScrobbleEvent(item, progressPercent.toDouble())
         )
-        if (requestGeneration != scrobbleStartRequestGeneration || !hasRequestedScrobbleStartForCurrentItem) return@launch
+        logScrobbleDiagnostic(
+            "start_dispatched",
+            "requestGeneration=$requestGeneration failures=${failures.map { it.providerId.storageId }}"
+        )
+        if (requestGeneration != scrobbleStartRequestGeneration || !hasRequestedScrobbleStartForCurrentItem) {
+            logScrobbleDiagnostic("start_not_recorded", "reason=stale_after_dispatch requestGeneration=$requestGeneration")
+            return@launch
+        }
         hasSentScrobbleStartForCurrentItem = true
+        logScrobbleDiagnostic("start_recorded", "requestGeneration=$requestGeneration")
     }
 }
 
 internal fun PlayerRuntimeController.emitScrobbleStop(progressPercent: Float? = null) {
-    if (isShortPlaceholderStream()) return
+    logScrobbleDiagnostic("stop_evaluated", "providedProgress=${progressPercent ?: "none"}")
+    if (isShortPlaceholderStream()) {
+        logScrobbleDiagnostic("stop_skipped", "reason=short_placeholder")
+        return
+    }
     val item = currentScrobbleItem
-    if (item == null) return
+    if (item == null) {
+        logScrobbleDiagnostic("stop_skipped", "reason=no_scrobble_item")
+        return
+    }
 
     val provided = progressPercent
-    if (!hasRequestedScrobbleStartForCurrentItem && (provided ?: 0f) < 80f) return
+    if (!hasRequestedScrobbleStartForCurrentItem && (provided ?: 0f) < 80f) {
+        logScrobbleDiagnostic("stop_skipped", "reason=no_active_scrobble providedProgress=${provided ?: "none"}")
+        return
+    }
 
     val percent = provided ?: currentPlaybackProgressPercent()
+    logScrobbleDiagnostic("stop_queued", "progress=$percent")
     scope.launch(kotlinx.coroutines.NonCancellable) {
-        trackingScrobbleCoordinator.scrobble(
+        logScrobbleDiagnostic("stop_dispatching", "progress=$percent")
+        val failures = trackingScrobbleCoordinator.scrobble(
             action = TrackingScrobbleAction.STOP,
             event = TrackingScrobbleEvent(item, percent.toDouble())
         )
+        logScrobbleDiagnostic("stop_dispatched", "progress=$percent failures=${failures.map { it.providerId.storageId }}")
     }
     scrobbleStartRequestGeneration++
     hasRequestedScrobbleStartForCurrentItem = false
     hasSentScrobbleStartForCurrentItem = false
+    logScrobbleDiagnostic("stop_state_reset", "progress=$percent")
 }
 
 internal fun PlayerRuntimeController.emitScrobblePause(progressPercent: Float? = null) {
-    if (isShortPlaceholderStream()) return
+    logScrobbleDiagnostic("pause_evaluated", "providedProgress=${progressPercent ?: "none"}")
+    if (isShortPlaceholderStream()) {
+        logScrobbleDiagnostic("pause_skipped", "reason=short_placeholder")
+        return
+    }
     val item = currentScrobbleItem
-    if (item == null) return
+    if (item == null) {
+        logScrobbleDiagnostic("pause_skipped", "reason=no_scrobble_item")
+        return
+    }
 
     val percent = progressPercent ?: currentPlaybackProgressPercent()
-    if (!shouldSendPauseScrobble(hasRequestedScrobbleStartForCurrentItem, percent)) return
+    if (!shouldSendPauseScrobble(hasRequestedScrobbleStartForCurrentItem, percent)) {
+        logScrobbleDiagnostic(
+            "pause_skipped",
+            "reason=policy active=$hasRequestedScrobbleStartForCurrentItem progress=$percent"
+        )
+        return
+    }
+    logScrobbleDiagnostic("pause_queued", "progress=$percent")
     scope.launch(kotlinx.coroutines.NonCancellable) {
-        trackingScrobbleCoordinator.scrobble(
+        logScrobbleDiagnostic("pause_dispatching", "progress=$percent")
+        val failures = trackingScrobbleCoordinator.scrobble(
             action = TrackingScrobbleAction.PAUSE,
             event = TrackingScrobbleEvent(item, percent.toDouble())
         )
+        logScrobbleDiagnostic("pause_dispatched", "progress=$percent failures=${failures.map { it.providerId.storageId }}")
     }
     scrobbleStartRequestGeneration++
     hasRequestedScrobbleStartForCurrentItem = false
     hasSentScrobbleStartForCurrentItem = false
+    logScrobbleDiagnostic("pause_state_reset", "progress=$percent")
 }
 
 internal fun PlayerRuntimeController.emitCompletionScrobbleStop(progressPercent: Float) {
@@ -740,7 +801,14 @@ internal fun PlayerRuntimeController.emitCompletionScrobbleStop(progressPercent:
 
 internal fun PlayerRuntimeController.emitStopScrobbleForCurrentProgress() {
     val progressPercent = currentPlaybackProgressPercent()
-    if (progressPercent >= 1f && progressPercent < 80f) {
+    if (!shouldSendStopScrobble(hasRequestedScrobbleStartForCurrentItem, progressPercent)) {
+        logScrobbleDiagnostic(
+            "stop_current_skipped",
+            "reason=policy active=$hasRequestedScrobbleStartForCurrentItem progress=$progressPercent"
+        )
+        return
+    }
+    if (progressPercent < 80f) {
         emitScrobbleStop(progressPercent = progressPercent)
         return
     }
@@ -771,8 +839,22 @@ internal fun PlayerRuntimeController.emitSeekScrobbleRestart(progressPercent: Fl
 }
 
 internal fun PlayerRuntimeController.flushPlaybackSnapshotForSwitchOrExit() {
+    logScrobbleDiagnostic("flush_switch_or_exit")
     emitStopScrobbleForCurrentProgress()
     saveWatchProgress()
+}
+
+internal fun PlayerRuntimeController.logScrobbleDiagnostic(
+    stage: String,
+    detail: String = ""
+) {
+    val item = currentScrobbleItem?.scrobbleDiagnosticIdentity() ?: "media=none"
+    Log.d(
+        TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
+        "player stage=$stage engine=$currentInternalPlayerEngine uiPlaying=${_uiState.value.isPlaying} " +
+            "requested=$hasRequestedScrobbleStartForCurrentItem sent=$hasSentScrobbleStartForCurrentItem " +
+            "generation=$scrobbleStartRequestGeneration $item $detail".trim()
+    )
 }
 
 internal fun PlayerRuntimeController.scheduleProgressSyncAfterSeek() {
