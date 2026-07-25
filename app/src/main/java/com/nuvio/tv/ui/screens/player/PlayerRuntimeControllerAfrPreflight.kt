@@ -11,9 +11,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 
 /** Exposed for unit tests so timeout regressions are caught against a single source of truth. */
-internal const val AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS = 4000L
+internal const val AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS = 6000L
 internal const val AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS = 6000L
 internal const val AFR_PREFLIGHT_FALLBACK_TIMEOUT_MS = 4000L
+internal const val AFR_PREFLIGHT_TOTAL_TIMEOUT_MS = 7500L
 
 internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
     url: String,
