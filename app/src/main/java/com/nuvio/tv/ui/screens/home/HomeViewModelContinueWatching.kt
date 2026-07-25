@@ -2612,7 +2612,10 @@ private suspend fun HomeViewModel.applyContinueWatchingEnrichmentOverlay(
             when (item) {
                 is ContinueWatchingItem.NextUp -> {
                     val overlay = cwEnrichedNextUpOverlay[item.info.contentId] ?: return@map item
-                    if (overlay.season != item.info.season || overlay.episode != item.info.episode) return@map item
+                    if (overlay.season != item.info.season || overlay.episode != item.info.episode) {
+                        cwEnrichedNextUpOverlay.remove(item.info.contentId)
+                        return@map item
+                    }
                     if (overlay.sortTimestamp != item.info.sortTimestamp) sortChanged = true
                     item.copy(info = item.info.copy(
                         name = overlay.name.takeIf { it.isNotBlank() } ?: item.info.name,

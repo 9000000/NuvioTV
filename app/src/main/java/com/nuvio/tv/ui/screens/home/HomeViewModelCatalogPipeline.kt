@@ -517,6 +517,7 @@ internal fun HomeViewModel.loadMoreCatalogItemsPipeline(catalogId: String, addon
 
     updateCatalogRow(key) { it.copy(isLoading = true) }
     _loadingCatalogs.update { it + key }
+    scheduleUpdateCatalogRows()
 
     viewModelScope.launch {
         val addon = addonsCache.find { it.id == addonId }
@@ -780,13 +781,14 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
 
     val nextGridItems = if (currentLayout == HomeLayout.GRID) {
         val posterCardWidthDp = _uiState.value.posterCardWidthDp
-        val itemsPerRow = when (posterCardWidthDp) {
-            104 -> 7; 112 -> 6; 120 -> 6; 126 -> 6; 134 -> 5; 140 -> 5; else -> 6
-        }
         val rowCount = if (posterCardWidthDp <= 104) 2 else 3
-        val seeAllThreshold = itemsPerRow * rowCount + 2
-        val maxWithSeeAll = itemsPerRow * rowCount - 1
-        val maxWithoutSeeAll = itemsPerRow * rowCount
+        // Provide generous upper bound of items — the Composable layer will trim
+        // based on the actual column count from GridCells.Adaptive layout info.
+        // We use 8 as safe max columns (widest known config) to avoid cutting too early.
+        val safeMaxColumns = 8
+        val seeAllThreshold = safeMaxColumns * rowCount + 2
+        val maxWithSeeAll = safeMaxColumns * rowCount - 1
+        val maxWithoutSeeAll = safeMaxColumns * rowCount
         buildList {
             if (heroSectionEnabled && baseHeroItems.isNotEmpty()) {
                 add(GridItem.Hero(baseHeroItems))
@@ -806,7 +808,8 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
                                 type = row.apiType
                             ))
                             val hasEnoughForSeeAll = row.hasMore || row.items.size >= seeAllThreshold
-                            val displayItems = if (hasEnoughForSeeAll) row.items.take(maxWithSeeAll) else row.items.take(maxWithoutSeeAll)
+                            val rawMax = if (hasEnoughForSeeAll) maxWithSeeAll else maxWithoutSeeAll
+                            val displayItems = row.items.take(rawMax)
                             displayItems.forEach { item ->
                                 add(GridItem.Content(
                                     item = item,

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -34,7 +35,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.nuvio.tv.ui.util.dpadRepeatThrottle
 import androidx.compose.ui.res.stringResource
@@ -49,6 +52,8 @@ import com.nuvio.tv.R
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.LoadingIndicator
+import com.nuvio.tv.ui.components.LocalCardDepthStyle
+import com.nuvio.tv.ui.components.nuvioCardDepth
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
 import com.nuvio.tv.ui.screens.home.HomeEvent
@@ -211,7 +216,7 @@ fun CatalogSeeAllScreen(
                         start = NuvioTheme.spacing.xxxl,
                         end = NuvioTheme.spacing.xl,
                         top = NuvioTheme.spacing.md,
-                        bottom = if (catalogRow.isLoading) 80.dp else NuvioTheme.spacing.xxl
+                        bottom = NuvioTheme.spacing.xxl
                     ),
                     horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
@@ -249,17 +254,53 @@ fun CatalogSeeAllScreen(
                             }
                         )
                     }
-                }
 
-                if (catalogRow.isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = NuvioTheme.spacing.lg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        LoadingIndicator()
+                    if (catalogRow.isLoading) {
+                        item(key = "loading_more") {
+                            val cardShape = remember(posterCardStyle.cornerRadius) {
+                                androidx.compose.foundation.shape.RoundedCornerShape(posterCardStyle.cornerRadius)
+                            }
+                            val cardDepthStyle = com.nuvio.tv.ui.components.LocalCardDepthStyle.current
+                            Column(
+                                modifier = Modifier
+                                    .width(posterCardStyle.width)
+                            ) {
+                                androidx.tv.material3.Card(
+                                    onClick = {},
+                                    modifier = Modifier
+                                        .width(posterCardStyle.width)
+                                        .height(posterCardStyle.height)
+                                        .then(Modifier.focusProperties { canFocus = false }),
+                                    shape = androidx.tv.material3.CardDefaults.shape(shape = cardShape),
+                                    colors = androidx.tv.material3.CardDefaults.colors(
+                                        containerColor = NuvioTheme.colors.BackgroundCard,
+                                        focusedContainerColor = NuvioTheme.colors.BackgroundCard
+                                    )
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(cardShape)
+                                            .then(
+                                                Modifier.nuvioCardDepth(
+                                                    shape = cardShape,
+                                                    surface = com.nuvio.tv.domain.model.CardDepthSurface.POSTERS,
+                                                    style = cardDepthStyle
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        LoadingIndicator()
+                                    }
+                                }
+                                Spacer(
+                                    modifier = Modifier
+                                        .width(posterCardStyle.width)
+                                        .padding(top = NuvioTheme.spacing.sm)
+                                        .height(MaterialTheme.typography.titleMedium.lineHeight.value.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
