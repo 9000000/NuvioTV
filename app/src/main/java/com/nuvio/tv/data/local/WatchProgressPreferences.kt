@@ -40,13 +40,13 @@ class WatchProgressPreferences @Inject constructor(
     private val deltaInitializedKey = booleanPreferencesKey("watch_progress_delta_initialized")
 
     /** Persisted timestamp of the last successful push to remote. */
-    suspend fun getLastSuccessfulPushMs(): Long {
-        val prefs = store().data.first()
+    suspend fun getLastSuccessfulPushMs(profileId: Int = profileManager.activeProfileId.value): Long {
+        val prefs = store(profileId).data.first()
         return prefs[lastSuccessfulPushMsKey] ?: 0L
     }
 
-    suspend fun setLastSuccessfulPushMs(timestampMs: Long) {
-        store().edit { prefs ->
+    suspend fun setLastSuccessfulPushMs(timestampMs: Long, profileId: Int = profileManager.activeProfileId.value) {
+        store(profileId).edit { prefs ->
             prefs[lastSuccessfulPushMsKey] = timestampMs
         }
     }
@@ -79,6 +79,7 @@ class WatchProgressPreferences @Inject constructor(
      */
     @Volatile private var cachedProgressJson: String? = null
     @Volatile private var cachedProgressResult: List<WatchProgress>? = null
+    @Volatile private var cachedProfileId: Int = -1
 
     val allProgress: Flow<List<WatchProgress>> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { preferences ->
@@ -86,7 +87,7 @@ class WatchProgressPreferences @Inject constructor(
 
             // Fast path: if JSON hasn't changed, return cached result immediately.
             val cached = cachedProgressResult
-            if (json == cachedProgressJson && cached != null) {
+            if (json == cachedProgressJson && cached != null && cachedProfileId == pid) {
                 return@map cached
             }
 
@@ -109,6 +110,7 @@ class WatchProgressPreferences @Inject constructor(
             val result = latestByContent.sortedByDescending { it.lastWatched }
 
             // Cache for next emission
+            cachedProfileId = pid
             cachedProgressJson = json
             cachedProgressResult = result
             result
@@ -117,13 +119,14 @@ class WatchProgressPreferences @Inject constructor(
 
     @Volatile private var cachedRawProgressJson: String? = null
     @Volatile private var cachedRawProgressResult: List<WatchProgress>? = null
+    @Volatile private var cachedRawProfileId: Int = -1
 
     val allRawProgress: Flow<List<WatchProgress>> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
 
             val cached = cachedRawProgressResult
-            if (json == cachedRawProgressJson && cached != null) {
+            if (json == cachedRawProgressJson && cached != null && cachedRawProfileId == pid) {
                 return@map cached
             }
 
@@ -131,6 +134,7 @@ class WatchProgressPreferences @Inject constructor(
                 .values
                 .sortedByDescending { it.lastWatched }
 
+            cachedRawProfileId = pid
             cachedRawProgressJson = json
             cachedRawProgressResult = result
             result
@@ -147,8 +151,8 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Get watch progress for a specific content item
      */
-    fun getProgress(contentId: String): Flow<WatchProgress?> {
-        return store().data.map { preferences ->
+    fun getProgress(contentId: String, profileId: Int = profileManager.activeProfileId.value): Flow<WatchProgress?> {
+        return store(profileId).data.map { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json)
             // Try direct key first (movies), then find latest episode entry (series).
@@ -161,8 +165,8 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Get watch progress for a specific episode
      */
-    fun getEpisodeProgress(contentId: String, season: Int, episode: Int): Flow<WatchProgress?> {
-        return store().data.map { preferences ->
+    fun getEpisodeProgress(contentId: String, season: Int, episode: Int, profileId: Int = profileManager.activeProfileId.value): Flow<WatchProgress?> {
+        return store(profileId).data.map { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json)
             map.values.find { 
@@ -174,8 +178,8 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Get all episode progress for a series
      */
-    fun getAllEpisodeProgress(contentId: String): Flow<Map<Pair<Int, Int>, WatchProgress>> {
-        return store().data.map { preferences ->
+    fun getAllEpisodeProgress(contentId: String, profileId: Int = profileManager.activeProfileId.value): Flow<Map<Pair<Int, Int>, WatchProgress>> {
+        return store(profileId).data.map { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json)
             map.values
@@ -187,8 +191,11 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Save or update watch progress
      */
-    suspend fun saveProgress(progress: WatchProgress) {
-        store().edit { preferences ->
+    suspend fun saveProgress(
+        progress: WatchProgress,
+        profileId: Int = profileManager.activeProfileId.value
+    ) {
+        store(profileId).edit { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json).toMutableMap()
             upsertProgressEntries(map, listOf(progress))
@@ -198,9 +205,12 @@ class WatchProgressPreferences @Inject constructor(
         }
     }
 
-    suspend fun saveProgressBatch(progressList: List<WatchProgress>) {
+    suspend fun saveProgressBatch(
+        progressList: List<WatchProgress>,
+        profileId: Int = profileManager.activeProfileId.value
+    ) {
         if (progressList.isEmpty()) return
-        store().edit { preferences ->
+        store(profileId).edit { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json).toMutableMap()
             upsertProgressEntries(map, progressList)
@@ -212,8 +222,13 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Remove watch progress for a specific item
      */
-    suspend fun removeProgress(contentId: String, season: Int? = null, episode: Int? = null) {
-        store().edit { preferences ->
+    suspend fun removeProgress(
+        contentId: String,
+        season: Int? = null,
+        episode: Int? = null,
+        profileId: Int = profileManager.activeProfileId.value
+    ) {
+        store(profileId).edit { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json).toMutableMap()
 
@@ -247,9 +262,13 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Remove watch progress for multiple episodes in a single DataStore transaction.
      */
-    suspend fun removeProgressBatch(contentId: String, episodes: List<Pair<Int, Int>>) {
+    suspend fun removeProgressBatch(
+        contentId: String,
+        episodes: List<Pair<Int, Int>>,
+        profileId: Int = profileManager.activeProfileId.value
+    ) {
         if (episodes.isEmpty()) return
-        store().edit { preferences ->
+        store(profileId).edit { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json).toMutableMap()
             for ((season, episode) in episodes) {
@@ -264,13 +283,16 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Mark content as completed
      */
-    suspend fun markAsCompleted(progress: WatchProgress) {
+    suspend fun markAsCompleted(
+        progress: WatchProgress,
+        profileId: Int = profileManager.activeProfileId.value
+    ) {
         // If the incoming duration is a dummy sentinel (≤ 1ms), check for an
         // existing local entry with a real duration from prior playback.
         // This creates a proper completed entry that syncs correctly cross-device.
         val effectiveDuration = if (progress.duration <= 1L) {
             val key = createKey(progress)
-            val existing = getAllRawEntries()[key]
+            val existing = getAllRawEntries(profileId)[key]
             existing?.duration?.takeIf { it > 1L } ?: progress.duration
         } else {
             progress.duration
@@ -281,15 +303,18 @@ class WatchProgressPreferences @Inject constructor(
             duration = effectiveDuration,
             lastWatched = System.currentTimeMillis()
         )
-        saveProgress(completedProgress)
+        saveProgress(completedProgress, profileId = profileId)
     }
 
     /**
      * Mark multiple items as completed in a single DataStore transaction.
      */
-    suspend fun markAsCompletedBatch(progressList: List<WatchProgress>) {
+    suspend fun markAsCompletedBatch(
+        progressList: List<WatchProgress>,
+        profileId: Int = profileManager.activeProfileId.value
+    ) {
         if (progressList.isEmpty()) return
-        val rawEntries = getAllRawEntries()
+        val rawEntries = getAllRawEntries(profileId)
         val now = System.currentTimeMillis()
         val completed = progressList.map { progress ->
             val effectiveDuration = if (progress.duration <= 1L) {
@@ -304,7 +329,7 @@ class WatchProgressPreferences @Inject constructor(
                 lastWatched = now
             )
         }
-        saveProgressBatch(completed)
+        saveProgressBatch(completed, profileId = profileId)
     }
 
     /**
@@ -447,8 +472,8 @@ class WatchProgressPreferences @Inject constructor(
     /**
      * Clear all watch progress
      */
-    suspend fun clearAll() {
-        store().edit { preferences ->
+    suspend fun clearAll(profileId: Int = profileManager.activeProfileId.value) {
+        store(profileId).edit { preferences ->
             preferences.remove(watchProgressKey)
             preferences.remove(deltaCursorKey)
             preferences.remove(deltaInitializedKey)
@@ -459,9 +484,10 @@ class WatchProgressPreferences @Inject constructor(
      * Clear all watch progress entries EXCEPT those with non-Trakt-compatible IDs
      */
     suspend fun clearAllPreservingNonTraktIds(
+        profileId: Int = profileManager.activeProfileId.value,
         isNonTraktId: (String) -> Boolean
     ) {
-        store().edit { preferences ->
+        store(profileId).edit { preferences ->
             val json = preferences[watchProgressKey] ?: "{}"
             val map = parseProgressMap(json)
             val preserved = map.filter { (_, progress) -> isNonTraktId(progress.contentId) }

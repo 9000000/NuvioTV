@@ -37,9 +37,37 @@ internal class DolbyVisionMatroskaTransformer(
     // Reused across samples; grows to the largest frame once.
     private val scratch = ExposedByteArrayOutputStream(64 * 1024)
 
-    private class ExposedByteArrayOutputStream(size: Int) : ByteArrayOutputStream(size) {
-        fun backingArray(): ByteArray = buf
+    // Cached per-stream once resolved. SEI carrying mastering-display/CLL info
+    // is typically only sent on keyframes, so we keep checking each sample
+    // until we find it or hit the detection window, rather than deciding off
+    // just the first frame.
+    private var dv5StripDecision: Boolean? = null
+    private var dv5DetectionSamplesChecked = 0
+
+    private fun shouldStripDv5Rpu(
+        sample: ByteArray,
+        sampleLength: Int,
+        nalUnitLengthFieldLength: Int
+    ): Boolean {
+        dv5StripDecision?.let { return it }
+        val detected = HevcDvRpuStripper.containsHdr10StaticMetadataSei(
+            sample, sampleLength, nalUnitLengthFieldLength
+        )
+        if (detected) {
+            dv5StripDecision = true
+            android.util.Log.i("DVStrip", "DV5_STRIP_DECISION: hdr10StaticSeiPresent=true -> STRIP")
+            return true
+        }
+        dv5DetectionSamplesChecked++
+        if (dv5DetectionSamplesChecked >= DV5_DETECTION_SAMPLE_LIMIT) {
+            dv5StripDecision = false
+            android.util.Log.i("DVStrip", "DV5_STRIP_DECISION: hdr10StaticSeiPresent=false after $dv5DetectionSamplesChecked samples -> SKIP")
+            return false
+        }
+        return false
     }
+
+    // Reuses the package-private ExposedByteArrayOutputStream from HevcDvRpuStripper.kt
 
     override fun onDolbyVisionBlockAdditionalData(
         blockAdditionalData: ByteArray?,
@@ -50,7 +78,17 @@ internal class DolbyVisionMatroskaTransformer(
         if (stripRpuOnly) return ByteArray(0)
         val profile = resolveProfile(null, dolbyVisionConfigBytes)
         if (!config.shouldConvert(profile)) return null
+        // Single conversion site for BlockAdditional RPUs; transformHevcSample appends as-is.
         return convertRpuNal(blockAdditionalData, config.conversionMode(profile))
+    }
+
+    override fun shouldTransform(codecs: String?, dolbyVisionConfigBytes: ByteArray?): Boolean {
+        if (stripHdr10PlusSei) return true
+        val isDv = codecs?.startsWith("dv", ignoreCase = true) == true ||
+                (dolbyVisionConfigBytes != null && dolbyVisionConfigBytes.isNotEmpty())
+        if (stripRpuOnly) return isDv
+        val profile = resolveProfile(codecs, dolbyVisionConfigBytes)
+        return config.shouldConvert(profile)
     }
 
     override fun onHevcSample(
@@ -77,14 +115,17 @@ internal class DolbyVisionMatroskaTransformer(
 
         if (stripRpuOnly) {
             if (profile == 5) {
-                return stripHdr10PlusIfEnabled(sample, sampleLength, nalUnitLengthFieldLength) ?: sample
+                if (!shouldStripDv5Rpu(sample, sampleLength, nalUnitLengthFieldLength)) {
+                    return stripHdr10PlusIfEnabled(sample, sampleLength, nalUnitLengthFieldLength) ?: sample
+                }
             }
-            val stripped = HevcDvRpuStripper.stripRpuLengthDelimited(
-                sample, sampleLength, nalUnitLengthFieldLength
+            // Use the shared ExposedByteArrayOutputStream scratch buffer to avoid GC allocations on every frame
+            val changed = HevcDvRpuStripper.stripRpuLengthDelimited(
+                sample, sampleLength, nalUnitLengthFieldLength, scratch
             )
-            if (stripped != null) {
-                lastTransformedLength = stripped.size
-                return stripHdr10PlusIfEnabled(stripped, stripped.size, nalUnitLengthFieldLength) ?: stripped
+            if (changed) {
+                val stripped = finishScratch()
+                return stripHdr10PlusIfEnabled(stripped, lastTransformedLength, nalUnitLengthFieldLength) ?: stripped
             }
             return stripHdr10PlusIfEnabled(sample, sampleLength, nalUnitLengthFieldLength) ?: sample
         }
@@ -112,11 +153,8 @@ internal class DolbyVisionMatroskaTransformer(
             scratch.reset()
             scratch.write(sample, 0, sampleLength)
         }
-        // Convert + append the BlockAdditional RPU straight into scratch with no allocation.
-        // If conversion fails, fall back to appending the original RPU NAL unchanged.
-        if (!appendConvertedRpuToScratch(blockAdditionalData, mode, nalUnitLengthFieldLength) &&
-            !appendLengthDelimitedNalToScratch(blockAdditionalData, nalUnitLengthFieldLength)
-        ) {
+        // RPU already converted in onDolbyVisionBlockAdditionalData (or left raw on fail).
+        if (!appendLengthDelimitedNalToScratch(blockAdditionalData, nalUnitLengthFieldLength)) {
             return null
         }
         val dvResult = finishScratch()
@@ -184,28 +222,6 @@ internal class DolbyVisionMatroskaTransformer(
         return null
     }
 
-    /**
-     * Converts [nal] (a DV7 RPU NAL) and writes the length-delimited DV8.1 result straight
-     * into [scratch], performing zero JVM allocations on the hot path (the converted bytes
-     * stay in [DoviBridge.rpuOutBuffer]). Mirrors [convertRpuNal]'s mode-2 -> mode-1 fallback.
-     *
-     * Returns true if a converted NAL was appended; false if conversion failed (the caller
-     * is responsible for appending the original NAL instead).
-     */
-    private fun appendConvertedRpuToScratch(nal: ByteArray, mode: Int, nalLenField: Int): Boolean {
-        var outLen = DoviBridge.convertDv7RpuToDv81NonAllocating(nal, 0, nal.size, mode)
-        var usedMode = mode
-        if (outLen <= 0 && config.allowMode2Fallback && mode == 2) {
-            outLen = DoviBridge.convertDv7RpuToDv81NonAllocating(nal, 0, nal.size, 1)
-            usedMode = 1
-        }
-        if (outLen <= 0) return false
-        if (!writeLengthField(scratch, outLen, nalLenField)) return false
-        scratch.write(DoviBridge.rpuOutBuffer, 0, outLen)
-        DolbyVisionConversionStats.recordConversionMode(usedMode)
-        return true
-    }
-
     private fun rewriteMp4HevcSampleInto(
         sample: ByteArray,
         sampleLength: Int,
@@ -227,6 +243,8 @@ internal class DolbyVisionMatroskaTransformer(
             when {
                 // Enhancement-layer NAL that isn't the RPU: drop it.
                 layerId > 0 && nalType != NAL_TYPE_UNSPEC62 -> changed = true
+                // P7 single-track: EL is in type-63 NALs at layer 0.
+                nalType == NAL_TYPE_UNSPEC63 -> changed = true
                 // RPU NAL: convert directly from sample buffer without JVM allocations
                 nalType == NAL_TYPE_UNSPEC62 -> {
                     val outLen = DoviBridge.convertDv7RpuToDv81NonAllocating(sample, offset, nalSize, mode)
@@ -306,11 +324,13 @@ internal class DolbyVisionMatroskaTransformer(
     }
 
     private fun resolveProfile(codecs: String?, configBytes: ByteArray?): Int? {
-        resolveProfileFromCodecString(codecs)?.let { return it }
-        if (configBytes == null || configBytes.isEmpty()) return null
-        return runCatching {
-            DolbyVisionConfig.parse(ParsableByteArray(configBytes))?.profile
-        }.getOrNull()
+        if (configBytes != null && configBytes.isNotEmpty()) {
+            val parsedProfile = runCatching {
+                DolbyVisionConfig.parse(ParsableByteArray(configBytes))?.profile
+            }.getOrNull()
+            if (parsedProfile != null) return parsedProfile
+        }
+        return resolveProfileFromCodecString(codecs)
     }
 
     private fun resolveProfileFromCodecString(codecs: String?): Int? {
@@ -374,5 +394,7 @@ internal class DolbyVisionMatroskaTransformer(
 
     private companion object {
         const val NAL_TYPE_UNSPEC62 = 62
+        const val NAL_TYPE_UNSPEC63 = 63
+        const val DV5_DETECTION_SAMPLE_LIMIT = 15
     }
 }

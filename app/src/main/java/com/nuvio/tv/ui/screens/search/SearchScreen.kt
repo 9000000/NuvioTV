@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.focusGroup
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
@@ -92,12 +93,14 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.nuvio.tv.ui.components.CatalogRowSection
+import com.nuvio.tv.ui.components.SearchSkeletonRow
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
 import com.nuvio.tv.domain.model.DiscoverLocation
+import com.nuvio.tv.domain.model.stableKey
 import android.view.inputmethod.CompletionInfo
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.platform.LocalView
@@ -106,6 +109,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
+
+/** Skeleton rows shown while a search is pending, matching the two mobile renders. */
+private const val SEARCH_SKELETON_ROW_COUNT = 2
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -299,7 +305,7 @@ fun SearchScreen(
     // Clean up stale keys when the catalog rows change.
     val visibleRowKeys = remember(uiState.catalogRows) {
         uiState.catalogRows.mapTo(mutableSetOf()) {
-            "${it.addonId}_${it.apiType}_${it.catalogId}"
+            it.stableKey()
         }
     }
     // Stable list of non-empty catalog rows — mirrors ClassicHomeContent's
@@ -578,18 +584,9 @@ fun SearchScreen(
                     )
                 }
 
-                if ((trimmedSubmittedQuery.length < 2 || hasPendingUnsubmittedQuery) && !showRecentSearches) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.search_keyboard_hint),
-                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                            color = NuvioTheme.colors.TextSecondary,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 52.dp)
-                        )
-                    }
-                }
+                // The "press Done to search" hint is gone: search now runs as you type, so the
+                // instruction is wrong, and it was re-appearing on every keystroke. Neither the
+                // mobile nor the desktop client shows an equivalent message.
 
                 when {
                     trimmedSubmittedQuery.length < 2 && !hasPendingUnsubmittedQuery -> {
@@ -621,19 +618,18 @@ fun SearchScreen(
                         }
                     }
 
-                    uiState.isSearching && uiState.catalogRows.isEmpty() -> {
-                        // Placeholder shimmer rows are emitted by the ViewModel,
-                        // so this branch only fires if search targets haven't
-                        // been resolved yet (very brief).
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 80.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                LoadingIndicator()
-                            }
+                    // Nothing to show yet, either still waiting on the debounce or on the first
+                    // responses. Mobile renders skeleton rows for both, so this does too. Unlike
+                    // mobile it only applies with an empty screen: mobile swaps results out for
+                    // skeletons on every keystroke, which on a remote reads as flicker because each
+                    // letter outlasts the debounce, so existing results are kept instead.
+                    (hasPendingUnsubmittedQuery || uiState.isSearching) && visibleCatalogRows.isEmpty() -> {
+                        items(SEARCH_SKELETON_ROW_COUNT) {
+                            SearchSkeletonRow(
+                                posterCardStyle = posterCardStyle,
+                                showAddonName = uiState.catalogAddonNameEnabled,
+                                modifier = Modifier.padding(bottom = 24.dp)
+                            )
                         }
                     }
 
@@ -659,12 +655,12 @@ fun SearchScreen(
                     else -> {
                         itemsIndexed(
                             items = visibleCatalogRows,
-                            key = { _, item ->
-                                "${item.addonId}_${item.apiType}_${item.catalogId}"
+                            key = { index, item ->
+                                "${item.stableKey()}_$index"
                             },
                             contentType = { _, _ -> "catalog_row" }
                         ) { index, catalogRow ->
-                            val catalogKey = "${catalogRow.addonId}_${catalogRow.apiType}_${catalogRow.catalogId}"
+                            val catalogKey = catalogRow.stableKey()
                             val isPlaceholder = catalogRow.isLoading &&
                                 catalogRow.items.firstOrNull()?.id?.startsWith("__placeholder_") == true
                             val hasEnoughForSeeAll = !isPlaceholder && catalogRow.items.size >= 15
@@ -743,6 +739,17 @@ fun SearchScreen(
                                     )
                                 }
                             )
+                        }
+
+                        // Results are up but more catalogs are still answering, as on mobile.
+                        if (uiState.isSearching || hasPendingUnsubmittedQuery) {
+                            item(key = "search_loading_more") {
+                                SearchSkeletonRow(
+                                    posterCardStyle = posterCardStyle,
+                                    showAddonName = uiState.catalogAddonNameEnabled,
+                                    modifier = Modifier.padding(bottom = 24.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1068,5 +1075,33 @@ private fun SearchInputField(
                 cursorColor = NuvioTheme.colors.FocusRing
             )
         )
+
+        // Clear button, requested in review. Placed beside the field rather than as a trailing
+        // icon so it is reachable with the D-pad, matching the voice button's treatment.
+        if (query.isNotEmpty()) {
+            var isClearButtonFocused by remember { mutableStateOf(false) }
+            Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
+            IconButton(
+                onClick = { onQueryChanged("") },
+                modifier = Modifier
+                    .onFocusChanged { isClearButtonFocused = it.isFocused }
+                    .size(NuvioTheme.spacing.huge)
+                    .border(
+                        width = if (isClearButtonFocused) NuvioTheme.spacing.xxs else NuvioTheme.spacing.hairline,
+                        color = if (isClearButtonFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.Border,
+                        shape = RoundedCornerShape(NuvioTheme.radii.md)
+                    )
+                    .background(
+                        color = NuvioTheme.colors.BackgroundCard,
+                        shape = RoundedCornerShape(NuvioTheme.radii.md)
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.cd_clear_search),
+                    tint = NuvioTheme.colors.TextPrimary
+                )
+            }
+        }
     }
 }

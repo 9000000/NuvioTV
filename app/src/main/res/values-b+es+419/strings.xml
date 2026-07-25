@@ -174,6 +174,8 @@
     <string name="hero_mark_unwatched">Marcar como no visto</string>
     <string name="hero_play_trailer">Reproducir tráiler</string>
     <string name="hero_press_back_trailer">Presiona atrás para salir del tráiler</string>
+    <string name="hero_synopsis_read_more">Leer más</string>
+    <string name="hero_synopsis_dismiss_hint">Presiona atrás para cerrar</string>
     <string name="cd_rating">Calificación</string>
 
     <string name="episodes_season">Temporada %1$d</string>
@@ -320,6 +322,14 @@
     <string name="appearance_amoled_mode_subtitle">Usa negro puro para los fondos de la app</string>
     <string name="appearance_amoled_surfaces_mode">Superficies negro puro</string>
     <string name="appearance_amoled_surfaces_mode_subtitle">También aplica negro puro a tarjetas, paneles y contenedores</string>
+    <string name="appearance_settings_style">Estilo de configuración</string>
+    <string name="appearance_settings_style_subtitle">Elige cómo se muestran las pantallas de configuración</string>
+    <string name="settings_style_classic">Predeterminado</string>
+    <string name="settings_style_classic_desc">Diseño estándar con tarjetas</string>
+    <string name="settings_style_zen">Minimalista</string>
+    <string name="settings_style_zen_desc">Diseño simple y plano</string>
+    <string name="settings_style_horizon">Barra superior</string>
+    <string name="settings_style_horizon_desc">Pestañas de navegación en la parte superior</string>
     <string name="appearance_font_and_language">Fuente y idioma</string>
     <string name="appearance_font_and_language_subtitle">Elige la tipografía y región usadas en toda la app</string>
     <string name="cd_selected">Seleccionado</string>
@@ -466,10 +476,34 @@
     <string name="network_connection_offline">Sin conexión</string>
     <string name="advanced_section_performance">Rendimiento y navegación</string>
     <string name="advanced_section_diagnostics">Diagnósticos</string>
+    <string name="advanced_sentry_reports">Reportes de fallos de Sentry</string>
+    <string name="advanced_sentry_reports_subtitle">Enviar reportes de fallos y ANR con contexto seguro. Activado de forma predeterminada.</string>
+    <string name="advanced_playback_issue_reports">Reportes de problemas de reproducción</string>
+    <string name="advanced_playback_issue_reports_subtitle">Mostrar botones de reporte durante la reproducción, cargas prolongadas y errores de reproducción</string>
+    <string name="sentry_enable_dialog_title">¿Activar reportes de fallos?</string>
+    <string name="sentry_enable_dialog_subtitle">Los reportes de fallos ayudan a identificar errores específicos del dispositivo sin pedirte que reproduzcas el problema con registros ADB.</string>
+    <string name="sentry_disable_dialog_title">¿Desactivar reportes de fallos?</string>
+    <string name="sentry_disable_dialog_subtitle">Los futuros fallos y los ANR actuales de este dispositivo no se reportarán. Esto puede hacer que los errores específicos del dispositivo sean mucho más difíciles de corregir.</string>
+    <string name="sentry_help_title">Cómo ayuda</string>
+    <string name="sentry_help_body">Los reportes se agrupan por versión de la aplicación, modelo del dispositivo, versión de Android y rastreo de pila para que los fallos reales más comunes puedan corregirse primero.</string>
+    <string name="sentry_sent_title">Enviado</string>
+    <string name="sentry_sent_body">Fallos, ANR actuales, rastreos de pila, versión de la aplicación, tipo de compilación, variante, metadatos del dispositivo y del sistema operativo, además de registros seguros de red con método, host, ruta, estado, duración y tipo de excepción.</string>
+    <string name="sentry_not_sent_title">No enviado</string>
+    <string name="sentry_not_sent_body">Contraseñas, tokens de acceso, tokens de actualización, cuerpos de solicitudes, cuerpos de respuestas, encabezados, cookies, capturas de pantalla, jerarquía de vistas, repetición de sesión, diagnósticos sin procesar y valores de consulta o fragmentos de URL de transmisiones.</string>
+    <string name="sentry_keep_enabled">Mantener activado</string>
+    <string name="sentry_turn_off">Desactivar</string>
+    <string name="sentry_turn_on">Activar</string>
     <string name="advanced_section_cache">Caché</string>
-    <string name="advanced_section_dv_diagnostics" translatable="false">Diagnóstico de Dolby Vision</string>
+    <string name="advanced_section_dv_diagnostics" translatable="false">DV Diagnostics</string>
     <string name="advanced_fast_horizontal_navigation">Navegación horizontal rápida</string>
-    <string name="advanced_fast_horizontal_navigation_subtitle">Aumenta la velocidad de repetición del D-pad en filas manteniendo habilitada la limitación de repetición.</string>
+    <string name="advanced_fast_horizontal_navigation_subtitle">Aumenta la velocidad de repetición del D-pad en las filas mientras mantiene habilitada la limitación de repetición.</string>
+    <string name="advanced_nuvio_performance_mode">Memoria nativa de ExoPlayer</string>
+    <string name="advanced_nuvio_performance_mode_subtitle">Habilita un asignador nativo de alto rendimiento, memoria fuera del montón (off-heap) y optimizaciones de red para una reproducción más fluida</string>
+    <string name="buffer_device_ram_info">RAM del dispositivo: %s</string>
+    <string name="buffer_safe_limit_info">Límite seguro recomendado: %d MB</string>
+    <string name="buffer_safe_status">Seguro: dentro del límite recomendado para tu dispositivo.</string>
+    <string name="buffer_unsafe_warning">Advertencia: supera el límite seguro recomendado (%1$d MB) para tu dispositivo %2$s. Puede provocar cierres inesperados de la aplicación.</string>
+    <string name="buffer_auto_limit_active">Límite seguro ajustado automáticamente: %d MB</string>
     <string name="advanced_nuvio_focus_scroll">Desplazamiento de enfoque de Nuvio</string>
     <string name="advanced_nuvio_focus_scroll_subtitle">Usa la animación y posicionamiento global personalizado de enfoque de Nuvio.</string>
     <string name="advanced_memory_only_vertical_scroll">Desplazamiento vertical solo en memoria</string>
@@ -502,6 +536,7 @@
     <string name="cd_decrease">Disminuir</string>
     <string name="cd_increase">Aumentar</string>
     <string name="action_cancel">Cancelar</string>
+    <string name="action_switch">Cambiar</string>
     <string name="action_apply">Aplicar</string>
     <string name="sub_opacity">Opacidad</string>
     <string name="action_none">Ninguno</string>
@@ -511,6 +546,10 @@
     <string name="supporters_contributors_subtitle">Las personas que respaldan Nuvio y los colaboradores que lo desarrollan en TV y dispositivos móviles.</string>
     <string name="supporters_contributors_supporters_copy">Los patrocinadores y donantes ayudan a mantener el proyecto en marcha, financian la infraestructura y permiten desarrollar funciones más ambiciosas.</string>
     <string name="supporters_contributors_donate_copy">Nuvio seguirá siendo gratuito y de código abierto. Si quieres apoyar el proyecto, puedes ayudar a cubrir el tiempo y la infraestructura necesarios para mantenerlo.</string>
+    <string name="supporters_contributors_donation_progress_title">Servidores y mantenimiento de este mes</string>
+    <string name="supporters_contributors_donation_progress_complete">Cubierto. El apoyo adicional ahora se destina al desarrollo.</string>
+    <string name="supporters_contributors_donation_progress_remaining">Después del 100%%, el apoyo adicional se destina al desarrollo.</string>
+    <string name="supporters_contributors_loading_donation_progress">Cargando progreso de financiación...</string>
     <string name="supporters_contributors_donate_button">Donar a Nuvio</string>
     <string name="supporters_contributors_qr_title">Escanear para donar</string>
     <string name="supporters_contributors_qr_subtitle">Abre el enlace en tu teléfono y apoya a Nuvio a través de Ko-fi.</string>
@@ -573,6 +612,8 @@
     <string name="playback_auto_switch_internal_player_on_error_sub">Si falla el inicio del stream, alterna automáticamente entre ExoPlayer y libmpv.</string>
     <string name="playback_external_forward_subtitles">Enviar subtítulos al reproductor externo</string>
     <string name="playback_external_forward_subtitles_sub">Obtén subtítulos en tu idioma preferido desde los addons y envíalos al reproductor externo.</string>
+    <string name="playback_external_send_skip_segments">Enviar marcas de tiempo de introducción y créditos finales</string>
+    <string name="playback_external_send_skip_segments_sub">Envía las marcas de tiempo de omisión de introducción y créditos finales al reproductor externo para omitirlas automáticamente. Solo funciona en reproductores compatibles; los demás las ignorarán.</string>
     <string name="playback_section_audio">Audio y video</string>
     <string name="playback_section_audio_desc">Controles de audio y compatibilidad de video.</string>
     <string name="playback_section_subtitles">Subtítulos</string>
@@ -1211,6 +1252,12 @@
     <string name="debug_section_popup">Prueba de Popups / Diálogos</string>
     <string name="debug_playback_error_title">Pantalla de Error de Reproducción</string>
     <string name="debug_playback_error_subtitle">Mostrar un mensaje emergente de error de reproducción simulado</string>
+    <string name="debug_section_progress">Indicador de progreso</string>
+    <string name="debug_progress_indicator_title">Indicador de carga</string>
+    <string name="debug_progress_indicator_subtitle">Vista previa de la animación de carga compartida en tamaños comunes de la interfaz</string>
+    <string name="debug_progress_indicator_small">Pequeño</string>
+    <string name="debug_progress_indicator_default">Predeterminado</string>
+    <string name="debug_progress_indicator_large">Grande</string>
     <string name="debug_section_features">Activadores de Funciones</string>
     <string name="debug_account_tab_title">Pestaña de Cuenta</string>
     <string name="debug_account_tab_subtitle">Mostrar la pestaña de Cuenta en la navegación de Ajustes</string>
@@ -1398,6 +1445,7 @@
     <string name="player_no_external_player">No se encontró un reproductor externo</string>
     <string name="player_loading_preparing">Preparando reproducción…</string>
     <string name="player_loading_detecting_format">Detectando formato del stream…</string>
+    <string name="external_player_loading_skip_segments">Cargando segmentos de introducción y créditos finales…</string>
     <string name="player_loading_subtitles">Buscando subtítulos…</string>
     <string name="player_loading_subtitles_from">Buscando subtítulos desde %1$d addons…</string>
     <string name="player_loading_subtitles_progress">Buscando subtítulos… (%1$d / %2$d)</string>
@@ -1440,6 +1488,17 @@
     <string name="player_subtitle_delay">Retraso de Subtítulos</string>
     <string name="player_error_title">Error de Reproducción</string>
     <string name="player_go_back">Volver</string>
+    <string name="player_report_issue">Reportar problema</string>
+    <string name="player_report_issue_sending">Enviando reporte de reproducción...</string>
+    <string name="player_report_issue_sending_button">Enviando...</string>
+    <string name="player_report_issue_sent">Reporte enviado: %1$s</string>
+    <string name="player_report_issue_sent_button">Reporte enviado</string>
+    <string name="player_report_issue_failed">No se pudo enviar el reporte</string>
+    <string name="player_report_loading_issue">Reportar problema de carga</string>
+    <plurals name="player_report_loading_issue_prompt">
+    <item quantity="one">Sigue cargando después de %1$d segundo</item>
+    <item quantity="other">Sigue cargando después de %1$d segundos</item>
+</plurals>
     <string name="player_speed_title">Velocidad de Reproducción</string>
     <string name="player_more_actions_title">Más Acciones</string>
     <string name="player_more_speed">Velocidad de Reproducción</string>
@@ -1714,6 +1773,8 @@
     <string name="account_total_label">Total</string>
     <string name="account_loading_sync">Cargando datos de sincronización\u2026</string>
     <string name="account_sign_out">Cerrar Sesión</string>
+    <string name="account_sign_out_confirm_title">¿Cerrar sesión?</string>
+    <string name="account_sign_out_confirm_subtitle">Tendrás que iniciar sesión nuevamente para sincronizar la biblioteca, el progreso de visualización, addons y plugins en este dispositivo.</string>
     <string name="account_error_signin_required">Primero debes iniciar sesión con una cuenta.</string>
     <string name="account_signin_create_title">Iniciar sesión / Crear cuenta</string>
     <string name="account_signin_create_desc">Usa tu correo electrónico y contraseña para crear o iniciar sesión en tu cuenta.</string>
@@ -1728,6 +1789,7 @@
     <string name="auth_signin_qr_btn">Continuar con QR</string>
     
     <string name="auth_qr_title">Iniciar Sesión con QR</string>
+    <string name="auth_qr_tagline">Disfruta tu biblioteca en cualquier lugar</string>
     <string name="auth_qr_account_login">Inicio de Sesión de la Cuenta</string>
     <string name="auth_qr_finishing">Finalizando inicio de sesión\u2026</string>
     <string name="auth_qr_code_label">Código: %1$s</string>
@@ -1744,6 +1806,8 @@
     <string name="auth_qr_please_wait">Por favor espera…</string>
     <string name="auth_qr_continue">Continuar</string>
     <string name="auth_qr_back">Atrás</string>
+    <string name="auth_qr_terms_prefix">Al registrarme o iniciar sesión, acepto los</string>
+    <string name="auth_qr_terms_link">Términos</string>
 
     <string name="sync_generate_title">Generar Código de Sincronización</string>
     <string name="sync_generate_subtitle">Crea un PIN para proteger tu código de sincronización. Comparte el código con tus otros dispositivos.</string>
@@ -2031,9 +2095,10 @@
 
     <!-- Collection Management -->
     <string name="collections_header">Colecciones</string>
-    <string name="collections_empty">Aún no hay colecciones. Crea una para organizar tus catálogos.</string>
+    <string name="collections_delete_confirm_title">¿Eliminar colección?</string>
     <string name="collections_delete_confirm">Eliminar</string>
     <string name="collections_delete_confirm_subtitle">Esto eliminará permanentemente \"%1$s\". Esta acción no se puede deshacer.</string>
+    <string name="collections_empty">Aún no hay colecciones. Crea una para organizar tus catálogos.</string>
     <string name="collections_new">Nueva colección</string>
     <string name="collections_import">Importar</string>
     <string name="collections_export_file">Exportar archivo</string>
@@ -2626,6 +2691,10 @@
     <!-- Playback — Buffer & Network settings -->
     <string name="playback_section_buffer_network">Búfer y red</string>
     <string name="playback_section_buffer_network_desc">Cuánto contenido mantener en memoria y cómo obtener las transmisiones.</string>
+    <string name="playback_net_device_memory_info">Memoria del dispositivo: %1$s | Límite de seguridad recomendado: %2$d MB</string>
+    <string name="playback_net_nuvio_performance_mode">Memoria nativa de ExoPlayer</string>
+    <string name="playback_net_nuvio_performance_mode_sub">Habilita el asignador nativo fuera del montón (off-heap) y las optimizaciones de desplazamiento.</string>
+    <string name="playback_net_nuvio_performance_mode_not_supported">Esta función no es compatible con tu dispositivo.</string>
     <string name="playback_buffer_custom">Búferes de reproducción personalizados</string>
     <string name="playback_buffer_custom_sub">Reemplaza el almacenamiento en búfer predeterminado de Media3 con los valores de abajo. Cuando está desactivado, el reproductor usa las duraciones y el tamaño objetivo del búfer predeterminados de Media3.</string>
     <string name="playback_buffer_header">Búfer</string>
@@ -2648,6 +2717,7 @@
     <string name="playback_buffer_target_sub">Cantidad máxima de RAM usada para el búfer adelantado. El máximo se calcula según la memoria disponible del dispositivo (límite de memoria por aplicación de Android), por lo que dispositivos con más RAM permiten valores mayores automáticamente.</string>
     <string name="playback_buffer_target_managed_hint">Administrado por el límite de memoria del dispositivo. Desactiva Límite de memoria administrado para configurarlo.</string>
     <string name="playback_buffer_target_warning">Advertencia: supera el límite seguro del dispositivo (%1$d MB). La aplicación podría cerrarse durante la reproducción.</string>
+    <string name="playback_buffer_target_danger_warning">Peligro: supera el límite de advertencia (%1$d MB). Alto riesgo de fallos o cierres inesperados.</string>
     <string name="playback_buffer_allow_large">Permitir búfer objetivo más grande</string>
     <string name="playback_buffer_allow_large_sub">Elimina el límite de memoria del dispositivo para el control del tamaño del búfer objetivo, permitiendo valores de hasta 2 GB. Puede causar cierres en dispositivos con menos de 2 GB de RAM.</string>
     <string name="playback_cache_header">Caché en disco</string>
@@ -2665,6 +2735,8 @@
     <string name="playback_reset_to_default">Restablecer valores predeterminados</string>
     <string name="playback_net_custom">Red personalizada</string>
     <string name="playback_net_custom_sub">Usa múltiples conexiones paralelas para obtener transmisiones progresivas. Cuando está desactivado, se usa una sola conexión.</string>
+    <string name="playback_net_http2">Habilitar HTTP/2</string>
+    <string name="playback_net_http2_sub">Habilita el protocolo HTTP/2 para las conexiones de red, permitiendo la multiplexación de solicitudes y tiempos de conexión más rápidos.</string>
     <string name="playback_net_parallel">Conexiones paralelas</string>
     <string name="playback_net_parallel_sub">Usa múltiples conexiones en paralelo para obtener transmisiones. Actívalo si experimentas almacenamiento en búfer aunque tu velocidad de descarga sea claramente suficiente.</string>
     <string name="playback_net_connection_count">Cantidad de conexiones</string>
@@ -2728,4 +2800,27 @@
     <string name="profile_default_name">Perfil %1$d</string>
     <string name="detail_tmdb_fallback_title">TMDB %1$d</string>
     <string name="collections_editor_tmdb_collection_fallback">Colección de TMDB %1$d</string>
+
+    <!-- Stream Throughput Speed & Chunk Diagnostic Test -->
+    <string name="stream_test_section_header">Diagnóstico de rendimiento de transmisión</string>
+    <string name="stream_test_card_title">Ejecutar prueba de velocidad de la última transmisión reproducida</string>
+    <string name="stream_test_server_label">Servidor: %1$s</string>
+    <string name="stream_test_no_stream">No hay reproducciones registradas. Reproduce un video para ejecutar pruebas de diagnóstico en su servidor.</string>
+    <string name="stream_test_btn_start">Iniciar prueba</string>
+    <string name="stream_test_btn_measuring_baseline">Midiendo línea base...</string>
+    <string name="stream_test_btn_measuring_parallel1">Midiendo conexión paralela (1 MB)...</string>
+    <string name="stream_test_btn_measuring_parallel4">Midiendo conexión paralela (4 MB)...</string>
+    <string name="stream_test_btn_measuring_parallel8">Midiendo conexión paralela (8 MB)...</string>
+    <string name="stream_test_btn_measuring_parallel16">Midiendo conexión paralela (16 MB)...</string>
+    <string name="stream_test_btn_run_again">Ejecutar nuevamente</string>
+    <string name="stream_test_btn_running">Ejecutando...</string>
+    <string name="stream_test_label_baseline">Conexión única estándar (línea base)</string>
+    <string name="stream_test_label_parallel1">Conexión paralela (fragmentos de 1 MB)</string>
+    <string name="stream_test_label_parallel4">Conexión paralela (fragmentos de 4 MB)</string>
+    <string name="stream_test_label_parallel8">Conexión paralela (fragmentos de 8 MB)</string>
+    <string name="stream_test_label_parallel16">Conexión paralela (fragmentos de 16 MB)</string>
+    <string name="stream_test_error_prefix">Error: %1$s</string>
+    <string name="stream_test_video_bitrate">Tasa de bits promedio del video: %1$s</string>
+    <string name="stream_test_error_connection">La conexión falló. Es posible que el enlace de la última transmisión reproducida haya expirado o no esté disponible. Reproduce el video nuevamente e inténtalo otra vez.</string>
+
     </resources>

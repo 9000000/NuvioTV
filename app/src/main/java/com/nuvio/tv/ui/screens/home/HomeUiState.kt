@@ -15,6 +15,7 @@ import com.nuvio.tv.domain.model.WatchProgress
 data class HomeUiState(
     val catalogRows: List<CatalogRow> = emptyList(),
     val continueWatchingItems: List<ContinueWatchingItem> = emptyList(),
+    val upcomingItems: List<ContinueWatchingItem> = emptyList(),
     val isLoading: Boolean = true,
     val layoutPreferencesReady: Boolean = false,
     val error: String? = null,
@@ -124,6 +125,7 @@ sealed class HomeRow {
     @Immutable
     data class PlaceholderCatalog(
         val catalogKey: String,
+        val stableCatalogKey: String,
         val addonId: String,
         val addonName: String,
         val addonBaseUrl: String,
@@ -157,6 +159,7 @@ sealed class GridItem {
     data class SeeAll(
         val catalogId: String,
         val addonId: String,
+        val addonBaseUrl: String,
         val type: String
     ) : GridItem()
     @Immutable

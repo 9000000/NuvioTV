@@ -45,6 +45,103 @@ object FrameRateUtils {
 
     private var originalModeId: Int? = null
 
+    private const val FRAME_RATE_CACHE_SIZE = 64
+    private val frameRateCache = object : LinkedHashMap<String, FrameRateDetection>(FRAME_RATE_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FrameRateDetection>?): Boolean {
+            return size > FRAME_RATE_CACHE_SIZE
+        }
+    }
+
+    private fun sanitizeHeaders(headers: Map<String, String>?): Map<String, String> {
+        val raw = headers ?: return emptyMap()
+        if (raw.isEmpty()) return emptyMap()
+        val sanitized = LinkedHashMap<String, String>(raw.size)
+        raw.forEach { (key, value) ->
+            val k = key.trim()
+            val v = value.trim()
+            if (k.isNotEmpty() && v.isNotEmpty() && !k.equals("Range", ignoreCase = true)) {
+                sanitized[k] = v
+            }
+        }
+        return sanitized
+    }
+
+    /**
+     * Headers used for NextLib bypass decision and NextLib probe invocation.
+     * Range is stripped because it is never meaningful for frame-rate probing.
+     */
+    internal fun streamHeadersForAfrProbe(headers: Map<String, String>): Map<String, String> {
+        return headers.filterKeys { !it.equals("Range", ignoreCase = true) }
+    }
+
+    /**
+     * Headers for MediaExtractor fallback. Adds Connection: close so the probe
+     * connection is torn down promptly after sampling.
+     */
+    internal fun extractorProbeHeaders(headers: Map<String, String>): Map<String, String> {
+        return streamHeadersForAfrProbe(headers).toMutableMap().apply {
+            put("Connection", "close")
+        }
+    }
+
+    /**
+     * True when headers contain values NextLib cannot forward (auth tokens, cookies, etc.).
+     * Synthetic / always-present headers (Range, User-Agent, Connection) are ignored so public
+     * and debrid streams that only inject UA still get NextLib probing.
+     */
+    internal fun hasNextLibBlockingHeaders(headers: Map<String, String>): Boolean {
+        return headers.any { (k, v) ->
+            v.isNotBlank() &&
+                !k.equals("Range", ignoreCase = true) &&
+                !k.equals("User-Agent", ignoreCase = true) &&
+                !k.equals("Connection", ignoreCase = true)
+        }
+    }
+
+    internal fun buildCacheKey(url: String, headers: Map<String, String>, filename: String?): String {
+        val sanitized = sanitizeHeaders(headers)
+        val baseKey = if (!filename.isNullOrBlank()) {
+            "file://${parseUriHost(url)}/$filename"
+        } else {
+            url.substringBefore('?')
+        }
+
+        if (sanitized.isEmpty()) return baseKey
+        return buildString {
+            append(baseKey)
+            // Normalize header names to lowercase so cache hits are stable across casing.
+            sanitized.mapKeys { (key, _) -> key.lowercase(Locale.ROOT) }
+                .toSortedMap()
+                .forEach { (key, value) ->
+                    append('|')
+                    append(key)
+                    append('=')
+                    append(value)
+                }
+        }
+    }
+
+    fun getCachedFrameRate(url: String, headers: Map<String, String>, filename: String? = null): FrameRateDetection? {
+        val key = buildCacheKey(url, headers, filename)
+        return synchronized(frameRateCache) {
+            frameRateCache[key]
+        }
+    }
+
+    fun cacheFrameRate(url: String, headers: Map<String, String>, detection: FrameRateDetection, filename: String? = null) {
+        val key = buildCacheKey(url, headers, filename)
+        synchronized(frameRateCache) {
+            frameRateCache[key] = detection
+        }
+    }
+
+    /** Test-only: wipe the in-memory FPS cache between unit tests. */
+    internal fun clearFrameRateCache() {
+        synchronized(frameRateCache) {
+            frameRateCache.clear()
+        }
+    }
+
     data class FrameRateDetection(
         val raw: Float,
         val snapped: Float,
@@ -515,12 +612,20 @@ object FrameRateUtils {
         }
     }
 
-    private fun shouldUseNextLibProbe(sourceUrl: String, headers: Map<String, String>): Boolean {
+    /**
+     * Whether NextLib MediaInfo probe should run for this source.
+     * Exposed as internal for regression tests (0.7.10 parity + header bypass).
+     */
+    internal fun shouldUseNextLibProbe(sourceUrl: String, headers: Map<String, String>): Boolean {
         if (sourceUrl.isBlank()) return false
         if (isLiveStreamUrl(sourceUrl)) return false
+
+        // Bypass NextLib when auth/custom headers are present: MediaInfoBuilder cannot forward them.
+        if (hasNextLibBlockingHeaders(headers)) return false
+
         if (isMkvSource(sourceUrl)) return true
 
-        val scheme = Uri.parse(sourceUrl).scheme?.lowercase(Locale.ROOT)
+        val scheme = parseUriScheme(sourceUrl)
         return when (scheme) {
             in NEXTLIB_HTTP_SCHEMES -> true
             "file", "content" -> true
@@ -529,14 +634,42 @@ object FrameRateUtils {
         }
     }
 
-    private fun isLiveStreamUrl(sourceUrl: String): Boolean {
+    internal fun isLiveStreamUrl(sourceUrl: String): Boolean {
         val normalized = sourceUrl.substringBefore('?').lowercase(Locale.ROOT)
         return LIVE_STREAM_EXTENSIONS.any { ext -> normalized.endsWith(ext) }
     }
 
-    private fun isMkvSource(sourceUrl: String): Boolean {
+    internal fun isMkvSource(sourceUrl: String): Boolean {
         val normalized = sourceUrl.substringBefore('?').lowercase(Locale.ROOT)
         return normalized.endsWith(MKV_EXTENSION)
+    }
+
+    /** Scheme extraction that tolerates missing/stub Android Uri in JVM unit tests. */
+    private fun parseUriScheme(sourceUrl: String): String? {
+        val fromUri = try {
+            Uri.parse(sourceUrl).scheme?.lowercase(Locale.ROOT)
+        } catch (_: Throwable) {
+            null
+        }
+        if (!fromUri.isNullOrBlank()) return fromUri
+        val schemeEnd = sourceUrl.indexOf("://")
+        if (schemeEnd <= 0) return null
+        return sourceUrl.substring(0, schemeEnd).lowercase(Locale.ROOT)
+    }
+
+    /** Host extraction that tolerates missing/stub Android Uri in JVM unit tests. */
+    private fun parseUriHost(url: String): String {
+        val fromUri = try {
+            Uri.parse(url).host
+        } catch (_: Throwable) {
+            null
+        }
+        if (!fromUri.isNullOrBlank()) return fromUri
+        // https://host/path or https://user@host/path
+        val afterScheme = url.substringAfter("://", missingDelimiterValue = "")
+        if (afterScheme.isEmpty()) return ""
+        val authority = afterScheme.substringBefore('/').substringBefore('?')
+        return authority.substringAfter('@')
     }
 
     private fun isResolveProxyUrl(sourceUrl: String): Boolean {

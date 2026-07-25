@@ -1,6 +1,7 @@
 package com.nuvio.tv.data.local
 
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.nuvio.tv.core.profile.ProfileManager
@@ -35,6 +36,8 @@ class WatchedSeriesStateHolder @Inject constructor(
         private const val FEATURE = "watched_series_cache"
         private val KEY = stringSetPreferencesKey("fully_watched_ids")
         private val REVALIDATE_KEY = stringPreferencesKey("revalidate_after")
+        private val VALIDATION_RESET_KEY = intPreferencesKey("validation_reset_version")
+        private const val VALIDATION_RESET_VERSION = 1
         private const val DEFAULT_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
     }
 
@@ -46,26 +49,43 @@ class WatchedSeriesStateHolder @Inject constructor(
     /** Per-series revalidation deadline (contentId → epochMs when re-check is needed). */
     @Volatile
     private var revalidateAfterMap: Map<String, Long> = emptyMap()
-    private var loaded = false
+    @Volatile
+    private var loadedForProfileId: Int? = null
 
-    private fun store() = factory.get(profileManager.activeProfileId.value, FEATURE)
+    private fun store(profileId: Int = profileManager.activeProfileId.value) = factory.get(profileId, FEATURE)
 
-    suspend fun loadFromDisk() {
-        if (loaded) return
-        val prefs = store().data.first()
+    suspend fun loadFromDisk(profileId: Int = profileManager.activeProfileId.value) {
+        if (loadedForProfileId == profileId) return
+        val prefs = store(profileId).data.first()
         val persisted = prefs[KEY] ?: emptySet()
-        revalidateAfterMap = parseTimestamps(prefs[REVALIDATE_KEY])
+        val resetVersion = prefs[VALIDATION_RESET_KEY] ?: 0
+        if (resetVersion < VALIDATION_RESET_VERSION) {
+            revalidateAfterMap = emptyMap()
+            store().edit { p ->
+                p.remove(REVALIDATE_KEY)
+                p[VALIDATION_RESET_KEY] = VALIDATION_RESET_VERSION
+            }
+        } else {
+            revalidateAfterMap = parseTimestamps(prefs[REVALIDATE_KEY])
+        }
         if (_fullyWatchedSeriesIds.value.isEmpty() && persisted.isNotEmpty()) {
             _fullyWatchedSeriesIds.value = persisted
         }
-        loaded = true
+        loadedForProfileId = profileId
     }
 
     fun update(ids: Set<String>) {
         _fullyWatchedSeriesIds.value = ids
+        val profileId = profileManager.activeProfileId.value
         scope.launch {
-            store().edit { prefs -> prefs[KEY] = ids }
+            store(profileId).edit { prefs -> prefs[KEY] = ids }
         }
+    }
+
+    /** Clear in-memory state only — does NOT touch DataStore on disk. */
+    fun clearInMemory() {
+        _fullyWatchedSeriesIds.value = emptySet()
+        revalidateAfterMap = emptyMap()
     }
 
     /**
@@ -77,7 +97,8 @@ class WatchedSeriesStateHolder @Inject constructor(
     fun updateWithValidation(
         ids: Set<String>,
         validatedIds: Set<String>,
-        revalidateAt: Map<String, Long> = emptyMap()
+        revalidateAt: Map<String, Long> = emptyMap(),
+        profileId: Int = profileManager.activeProfileId.value
     ) {
         val idsChanged = _fullyWatchedSeriesIds.value != ids
         _fullyWatchedSeriesIds.value = ids
@@ -105,7 +126,7 @@ class WatchedSeriesStateHolder @Inject constructor(
         revalidateAfterMap = updated
         if (idsChanged || deadlinesChanged) {
             scope.launch {
-                store().edit { prefs ->
+                store(profileId).edit { prefs ->
                     prefs[KEY] = ids
                     prefs[REVALIDATE_KEY] = gson.toJson(updated)
                 }
@@ -132,10 +153,10 @@ class WatchedSeriesStateHolder @Inject constructor(
      * Clears all revalidation deadlines, forcing every series to be re-evaluated
      * on the next CW pipeline cycle. Called when the user manually clears the CW cache.
      */
-    fun clearValidationState() {
+    fun clearValidationState(profileId: Int = profileManager.activeProfileId.value) {
         revalidateAfterMap = emptyMap()
         scope.launch {
-            store().edit { prefs -> prefs.remove(REVALIDATE_KEY) }
+            store(profileId).edit { prefs -> prefs.remove(REVALIDATE_KEY) }
         }
     }
 

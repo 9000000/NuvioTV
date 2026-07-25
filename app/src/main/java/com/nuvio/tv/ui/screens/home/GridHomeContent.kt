@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -70,14 +71,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nuvio.tv.domain.model.CollectionFolder
+import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.ui.components.GridContentCard
+import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.GridContinueWatchingSection
 import com.nuvio.tv.ui.components.HeroCarousel
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
 import com.nuvio.tv.ui.components.collectionFolderCardImageUrl
+import com.nuvio.tv.ui.components.nuvioCardDepth
 import com.nuvio.tv.ui.components.rememberArtworkBackedCardGlow
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -107,6 +111,10 @@ fun GridHomeContent(
     )
     val focusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val lastFocusedGridItemKey = remember { mutableStateOf(gridFocusState.focusedItemKey) }
+    val lastFocusedCwIndex = remember { mutableIntStateOf(-1) }
+    val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
+    val cwFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    val upcomingFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
 
     // Scroll to top when triggered from sidebar Home button.
     LaunchedEffect(scrollToTopTrigger) {
@@ -233,14 +241,14 @@ fun GridHomeContent(
         gridItems.map { item ->
             val key = when (item) {
                 is GridItem.Hero -> "hero"
-                is GridItem.SectionDivider -> "divider_${item.catalogId}_${item.addonId}_${item.type}"
+                is GridItem.SectionDivider -> "divider_${item.addonBaseUrl.hashCode()}_${item.catalogId}_${item.addonId}_${item.type}"
                 is GridItem.Content -> {
-                    val base = "content_${item.catalogId}_${item.item.id}"
+                    val base = "content_${item.addonBaseUrl.hashCode()}_${item.catalogId}_${item.item.id}"
                     val count = occurrences.getOrDefault(base, 0)
                     occurrences[base] = count + 1
                     "${base}_$count"
                 }
-                is GridItem.SeeAll -> "see_all_${item.catalogId}_${item.addonId}_${item.type}"
+                is GridItem.SeeAll -> "see_all_${item.addonBaseUrl.hashCode()}_${item.catalogId}_${item.addonId}_${item.type}"
                 is GridItem.CollectionHeader -> "col_header_${item.collectionId}"
                 is GridItem.CollectionFolder -> "col_folder_${item.collectionId}_${item.folder.id}"
             }
@@ -346,6 +354,63 @@ fun GridHomeContent(
                         fullWidth = gridWidth,
                         items = continueWatchingItems,
                         focusedItemIndex = if (shouldRequestInitialFocus && !hasHero) 0 else -1,
+                        lastFocusedIndex = lastFocusedCwIndex,
+                        focusRequesters = cwFocusRequesters,
+                        onItemFocused = { lastFocusedCwIndex.intValue = it },
+                        onItemClick = onContinueWatchingClick,
+                        onStartFromBeginning = onContinueWatchingStartFromBeginning,
+                        showManualPlayOption = showContinueWatchingManualPlayOption,
+                        onPlayManually = onContinueWatchingPlayManually,
+                        onDetailsClick = { item ->
+                            onNavigateToDetail(
+                                when (item) {
+                                    is ContinueWatchingItem.InProgress -> item.progress.contentId
+                                    is ContinueWatchingItem.NextUp -> item.info.contentId
+                                },
+                                when (item) {
+                                    is ContinueWatchingItem.InProgress -> item.progress.contentType
+                                    is ContinueWatchingItem.NextUp -> item.info.contentType
+                                },
+                                ""
+                            )
+                        },
+                        onRemoveItem = { item ->
+                            val contentId = when (item) {
+                                is ContinueWatchingItem.InProgress -> item.progress.contentId
+                                is ContinueWatchingItem.NextUp -> item.info.contentId
+                            }
+                            val season = when (item) {
+                                is ContinueWatchingItem.InProgress -> item.progress.season
+                                is ContinueWatchingItem.NextUp -> item.info.seedSeason
+                            }
+                            val episode = when (item) {
+                                is ContinueWatchingItem.InProgress -> item.progress.episode
+                                is ContinueWatchingItem.NextUp -> item.info.seedEpisode
+                            }
+                            val isNextUp = item is ContinueWatchingItem.NextUp
+                            onRemoveContinueWatching(contentId, season, episode, isNextUp)
+                        },
+                        blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
+                        useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw
+                    )
+                }
+            }
+
+            // Emit Upcoming section if SPLIT_UPCOMING mode has upcoming items
+            if (uiState.upcomingItems.isNotEmpty()) {
+                item(
+                    key = "upcoming_section",
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "upcoming_section"
+                ) {
+                    GridContinueWatchingSection(
+                        modifier = Modifier.fillMaxWidth(),
+                        fullWidth = gridWidth,
+                        items = uiState.upcomingItems,
+                        title = stringResource(R.string.upcoming_section_title),
+                        lastFocusedIndex = lastFocusedUpcomingIndex,
+                        focusRequesters = upcomingFocusRequesters,
+                        onItemFocused = { lastFocusedUpcomingIndex.intValue = it },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
                         showManualPlayOption = showContinueWatchingManualPlayOption,
@@ -690,6 +755,7 @@ private fun GridCollectionFolderCard(
     modifier: Modifier = Modifier
 ) {
     val cardShape = RoundedCornerShape(posterCardStyle.cornerRadius)
+    val cardDepthStyle = LocalCardDepthStyle.current
     var isFocused by remember { mutableStateOf(false) }
     val cardGlow = rememberArtworkBackedCardGlow(
         imageUrl = folder.coverImageUrl,
@@ -725,7 +791,16 @@ private fun GridCollectionFolderCard(
         scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale),
         glow = cardGlow
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(cardShape)
+                .nuvioCardDepth(
+                    shape = cardShape,
+                    surface = CardDepthSurface.POSTERS,
+                    style = cardDepthStyle
+                )
+        ) {
             val activeImageUrl = collectionFolderCardImageUrl(folder, isFocused)
             if (!activeImageUrl.isNullOrBlank()) {
                 AsyncImage(

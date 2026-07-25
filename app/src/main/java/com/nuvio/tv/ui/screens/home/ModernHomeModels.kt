@@ -10,6 +10,7 @@ import com.nuvio.tv.domain.model.Collection
 import com.nuvio.tv.domain.model.CollectionFolder
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.PosterShape
+import com.nuvio.tv.domain.model.stableKey
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.computeAirDateBadgeText
@@ -28,6 +29,7 @@ internal const val MODERN_TRAILER_OVERSCAN_ZOOM = 1.35f
 internal const val MODERN_HERO_FOCUS_DEBOUNCE_MS = 450L
 internal val MODERN_ROW_HEADER_FOCUS_INSET = 40.dp
 internal const val MODERN_CONTINUE_WATCHING_ROW_KEY = "continue_watching"
+internal const val MODERN_UPCOMING_ROW_KEY = "upcoming_section"
 internal val MODERN_LANDSCAPE_LOGO_GRADIENT = Brush.verticalGradient(
     colorStops = arrayOf(
         0.0f to Color.Transparent,
@@ -183,6 +185,10 @@ class ModernCarouselRowBuildCache {
     var continueWatchingUpcomingLabel: String = ""
     var continueWatchingUseLandscapePosters: Boolean = false
     var continueWatchingRow: HeroCarouselRow? = null
+    var upcomingItems: List<ContinueWatchingItem> = emptyList()
+    var upcomingTitle: String = ""
+    var upcomingUseLandscapePosters: Boolean = false
+    var upcomingRow: HeroCarouselRow? = null
     internal val catalogRows = java.util.concurrent.ConcurrentHashMap<String, ModernCatalogRowBuildCacheEntry>()
     internal val collectionRows = java.util.concurrent.ConcurrentHashMap<String, ModernCollectionRowBuildCacheEntry>()
     // per-item cache: rowKey -> (itemId -> cached carousel item + source MetaPreview)
@@ -567,7 +573,7 @@ internal fun continueWatchingItemKey(item: ContinueWatchingItem): String {
 }
 
 internal fun catalogRowKey(row: CatalogRow): String {
-    return "${row.addonId}_${row.apiType}_${row.catalogId}"
+    return row.stableKey()
 }
 
 internal fun catalogRowTitle(
@@ -587,7 +593,7 @@ internal fun catalogRowTitle(
 }
 
 internal fun CatalogRow.key(): String {
-    return "${addonId}_${apiType}_${catalogId}"
+    return stableKey()
 }
 
 internal fun isSeriesType(type: String?): Boolean {

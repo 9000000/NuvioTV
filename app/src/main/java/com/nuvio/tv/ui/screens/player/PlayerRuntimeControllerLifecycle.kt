@@ -10,6 +10,11 @@ internal fun PlayerRuntimeController.releasePlayer() {
 
 internal fun PlayerRuntimeController.releasePlayer(flushPlaybackState: Boolean) {
     isReleasingPlayer = true
+    pendingLifecyclePauseJob?.cancel()
+    pendingLifecyclePauseJob = null
+    wasPlayingBeforeLifecyclePause = false
+    wasStoppedByLifecycle = false
+    com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value = false
     if (flushPlaybackState) {
         stopTorrentStream()
         flushPlaybackSnapshotForSwitchOrExit()
@@ -25,6 +30,9 @@ internal fun PlayerRuntimeController.releasePlayer(flushPlaybackState: Boolean) 
         e.printStackTrace()
     }
     progressJob?.cancel()
+    mpvTrackRefreshJob?.cancel()
+    mpvTrackRefreshJob = null
+    mpvTrackRefreshInProgress = false
     hideControlsJob?.cancel()
     watchProgressSaveJob?.cancel()
     seekProgressSyncJob?.cancel()
