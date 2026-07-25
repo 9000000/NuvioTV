@@ -215,7 +215,7 @@ class SearchViewModel @Inject constructor(
                 // Keep whatever is on screen while a keystroke waits to run. Clearing here flashed
                 // the no-results state on every letter, because on a remote each letter outlasts the
                 // debounce. The screen renders skeleton rows for this window instead.
-                catalogRows = if (trimmedInput.length < 2) emptyList() else it.catalogRows
+                catalogRows = if (trimmedInput.length < MIN_SEARCH_QUERY_LENGTH) emptyList() else it.catalogRows
             )
         }
 
@@ -227,7 +227,7 @@ class SearchViewModel @Inject constructor(
         // every enabled addon catalog.
         liveSearchJob?.cancel()
         val trimmed = query.trim()
-        if (trimmed.length >= 2) {
+        if (trimmed.length >= MIN_SEARCH_QUERY_LENGTH) {
             liveSearchJob = viewModelScope.launch {
                 kotlinx.coroutines.delay(LIVE_SEARCH_DEBOUNCE_MS)
                 performSearch(query)
@@ -245,7 +245,7 @@ class SearchViewModel @Inject constructor(
     private fun fetchSuggestions(query: String) {
         suggestionJob?.cancel()
 
-        if (query.length < 2) {
+        if (query.length < MIN_SEARCH_QUERY_LENGTH) {
             _uiState.update { it.copy(suggestions = emptyList()) }
             return
         }
@@ -362,13 +362,13 @@ class SearchViewModel @Inject constructor(
         suggestionJob?.cancel()
         _uiState.update {
             it.copy(
-                submittedQuery = query,
+                submittedQuery = submittedSearchQuery(query),
                 query = rawQuery,
                 suggestions = emptyList()
             )
         }
 
-        if (query.length < 2) {
+        if (query.length < MIN_SEARCH_QUERY_LENGTH) {
             activeSearchJobs.forEach { it.cancel() }
             activeSearchJobs = emptyList()
             catalogRowsUpdateJob?.cancel()

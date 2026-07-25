@@ -158,7 +158,8 @@ fun SearchScreen(
             pendingFocusMoveToResultsQuery = recognized
             pendingFocusMoveSawSearching = false
             pendingFocusMoveHadExistingSearchRows =
-                uiState.submittedQuery.trim().length >= 2 && uiState.catalogRows.any { it.items.isNotEmpty() }
+                uiState.submittedQuery.trim().length >= MIN_SEARCH_QUERY_LENGTH &&
+                    uiState.catalogRows.any { it.items.isNotEmpty() }
         } else {
             Toast.makeText(context, strVoiceNoSpeech, Toast.LENGTH_SHORT).show()
         }
@@ -320,14 +321,20 @@ fun SearchScreen(
         searchRowFocusedItemIndex.keys.retainAll(visibleRowKeys)
     }
 
-    val isDiscoverMode = remember(uiState.discoverLocation, trimmedSubmittedQuery) {
-        uiState.discoverLocation == DiscoverLocation.IN_SEARCH && trimmedSubmittedQuery.isEmpty()
+    val isDiscoverMode = remember(uiState.discoverLocation, trimmedQuery, trimmedSubmittedQuery) {
+        shouldShowDiscoverInSearch(
+            discoverLocation = uiState.discoverLocation,
+            query = trimmedQuery,
+            submittedQuery = trimmedSubmittedQuery
+        )
     }
     LaunchedEffect(isDiscoverMode) {
         if (isDiscoverMode) viewModel.ensureDiscoverLoaded()
     }
     val hasPendingUnsubmittedQuery = remember(isDiscoverMode, trimmedQuery, trimmedSubmittedQuery) {
-        !isDiscoverMode && trimmedQuery.length >= 2 && trimmedQuery != trimmedSubmittedQuery
+        !isDiscoverMode &&
+            trimmedQuery.length >= MIN_SEARCH_QUERY_LENGTH &&
+            trimmedQuery != trimmedSubmittedQuery
     }
     val showRecentSearches = remember(
         trimmedQuery,
@@ -342,16 +349,22 @@ fun SearchScreen(
         trimmedSubmittedQuery,
         uiState.catalogRows
     ) {
-        if (isDiscoverMode) false else trimmedSubmittedQuery.length >= 2 && uiState.catalogRows.any { it.items.isNotEmpty() }
+        if (isDiscoverMode) {
+            false
+        } else {
+            trimmedSubmittedQuery.length >= MIN_SEARCH_QUERY_LENGTH &&
+                uiState.catalogRows.any { it.items.isNotEmpty() }
+        }
     }
     val submitCurrentQuery: (String) -> Unit = { submittedQuery ->
         viewModel.onEvent(SearchEvent.SubmitSearch)
         focusResults = false
-        if (submittedQuery.length >= 2) {
+        if (submittedQuery.length >= MIN_SEARCH_QUERY_LENGTH) {
             pendingFocusMoveToResultsQuery = submittedQuery
             pendingFocusMoveSawSearching = false
             pendingFocusMoveHadExistingSearchRows =
-                trimmedSubmittedQuery.length >= 2 && uiState.catalogRows.any { row -> row.items.isNotEmpty() }
+                trimmedSubmittedQuery.length >= MIN_SEARCH_QUERY_LENGTH &&
+                    uiState.catalogRows.any { row -> row.items.isNotEmpty() }
         } else {
             pendingFocusMoveToResultsQuery = null
             pendingFocusMoveSawSearching = false
@@ -361,7 +374,7 @@ fun SearchScreen(
     val handleQueryChanged: (String) -> Unit = { nextQuery ->
         val previousQuery = uiState.query.trim()
         val trimmedNextQuery = nextQuery.trim()
-        val selectedSuggestion = trimmedNextQuery.length >= 2 &&
+        val selectedSuggestion = trimmedNextQuery.length >= MIN_SEARCH_QUERY_LENGTH &&
             trimmedNextQuery != trimmedSubmittedQuery &&
             uiState.suggestions.any { it.equals(trimmedNextQuery, ignoreCase = true) } &&
             trimmedNextQuery.startsWith(previousQuery, ignoreCase = true) &&
@@ -491,12 +504,20 @@ fun SearchScreen(
             .fillMaxSize(),
         contentAlignment = Alignment.TopCenter
     ) {
-        if (isDiscoverMode) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 10.dp)
-            ) {
+        val listState = rememberLazyListState()
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .recompositionHighlighter()
+                .dpadRepeatThrottle(),
+            state = listState,
+            contentPadding = PaddingValues(
+                top = if (isDiscoverMode) 10.dp else NuvioTheme.spacing.lg,
+                bottom = NuvioTheme.spacing.lg
+            ),
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+        ) {
+            item(key = "search_input") {
                 SearchInputField(
                     query = uiState.query,
                     canMoveToResults = canMoveToResults,
@@ -518,27 +539,24 @@ fun SearchScreen(
                     clearHistoryFocusRequester = if (showRecentSearches) recentClearHistoryFocusRequester else null,
                     isScreenActive = isScreenActive
                 )
+            }
 
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-
+            if (isDiscoverMode) {
                 if (showRecentSearches) {
-                    RecentSearchesSection(
-                        recentSearches = uiState.recentSearches,
-                        onSearchSelected = submitRecentSearch,
-                        onClearHistory = {
-                            viewModel.onEvent(SearchEvent.ClearRecentSearches)
-                        },
-                        onSectionFocusChanged = { focused -> isRecentSearchSectionFocused = focused },
-                        clearHistoryFocusRequester = recentClearHistoryFocusRequester,
-                        modifier = Modifier.padding(horizontal = 52.dp)
-                    )
+                    item(key = "recent_searches") {
+                        RecentSearchesSection(
+                            recentSearches = uiState.recentSearches,
+                            onSearchSelected = submitRecentSearch,
+                            onClearHistory = {
+                                viewModel.onEvent(SearchEvent.ClearRecentSearches)
+                            },
+                            onSectionFocusChanged = { focused -> isRecentSearchSectionFocused = focused },
+                            clearHistoryFocusRequester = recentClearHistoryFocusRequester,
+                            modifier = Modifier.padding(horizontal = 52.dp)
+                        )
+                    }
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    item(key = "search_start") {
                         EmptyScreenState(
                             title = stringResource(R.string.search_start_title),
                             subtitle = stringResource(R.string.search_start_subtitle),
@@ -546,50 +564,13 @@ fun SearchScreen(
                         )
                     }
                 }
-            }
-        } else {
-            val listState = rememberLazyListState()
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .recompositionHighlighter()
-                    .dpadRepeatThrottle(),
-                state = listState,
-                contentPadding = PaddingValues(vertical = NuvioTheme.spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
-            ) {
-                item {
-                    SearchInputField(
-                        query = uiState.query,
-                        canMoveToResults = canMoveToResults,
-                        voiceFocusRequester = if (isVoiceSearchAvailable) voiceFocusRequester else null,
-                        searchFocusRequester = searchFocusRequester,
-                        onSearchFieldFocusChanged = { focused -> isSearchFieldFocused = focused },
-                        onQueryChanged = handleQueryChanged,
-                        onSubmit = {
-                            submitCurrentQuery(uiState.query.trim())
-                        },
-                        showVoiceSearch = isVoiceSearchAvailable,
-                        isVoiceListening = isVoiceListening,
-                        voiceRmsLevel = voiceRmsLevel,
-                        onVoiceSearch = launchVoiceSearch,
-                        onMoveToResults = {
-                            focusResults = true
-                        },
-                        onOpenDiscover = onOpenDiscover,
-                        showDiscoverButton = uiState.discoverLocation == DiscoverLocation.IN_SEARCH,
-                        keyboardController = keyboardController,
-                        clearHistoryFocusRequester = if (showRecentSearches) recentClearHistoryFocusRequester else null,
-                        isScreenActive = isScreenActive
-                    )
-                }
-
+            } else {
                 // The "press Done to search" hint is gone: search now runs as you type, so the
                 // instruction is wrong, and it was re-appearing on every keystroke. Neither the
                 // mobile nor the desktop client shows an equivalent message.
 
                 when {
-                    trimmedSubmittedQuery.length < 2 && !hasPendingUnsubmittedQuery -> {
+                    trimmedSubmittedQuery.length < MIN_SEARCH_QUERY_LENGTH && !hasPendingUnsubmittedQuery -> {
                         item {
                             if (showRecentSearches) {
                                 RecentSearchesSection(
