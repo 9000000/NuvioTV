@@ -25,7 +25,10 @@ class SimklTrackingHistoryWriter @Inject constructor(
         syncRepository.ensureLoaded()
         val snapshot = syncRepository.state.value.snapshot
         return service.addToHistory(
-            items.map { item -> item.copy(media = snapshot.enrichMediaReference(item.media)) }
+            items.map { item ->
+                val enriched = snapshot.enrichMediaReference(item.media)
+                item.copy(media = enriched.resolveAnimeEpisodeForSimkl())
+            }
         )
     }
 

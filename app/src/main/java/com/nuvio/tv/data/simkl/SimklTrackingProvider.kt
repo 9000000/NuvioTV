@@ -46,7 +46,9 @@ class SimklTrackingScrobbler @Inject constructor(
         }
         syncRepository.ensureLoaded()
         val enrichedEvent = event.copy(
-            media = syncRepository.state.value.snapshot.enrichMediaReference(event.media)
+            media = syncRepository.state.value.snapshot
+                .enrichMediaReference(event.media)
+                .resolveAnimeEpisodeForSimkl()
         )
         Log.d(
             TRACKING_SCROBBLE_DIAGNOSTIC_TAG,

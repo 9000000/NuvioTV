@@ -1,8 +1,10 @@
 package com.nuvio.tv.data.simkl
 
+import com.nuvio.tv.core.tracking.TrackingExternalIds
 import com.nuvio.tv.core.tracking.TrackingProgressProvider
 import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
+import com.nuvio.tv.core.tracking.parseTrackingExternalIds
 import com.nuvio.tv.core.tracking.selectPreferredTrackingNextUpSeeds
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.domain.model.WatchProgress
@@ -69,9 +71,14 @@ class SimklTrackingProgressProvider @Inject constructor(
 
     override fun episodeProgress(contentId: String): Flow<Map<Pair<Int, Int>, WatchProgress>> =
         syncRepository.state.map { state ->
+            val resolvedId = state.snapshot.resolveCanonicalContentId(contentId) ?: contentId
+            val matchIds = buildSet {
+                add(contentId)
+                add(resolvedId)
+            }
             val completed = state.snapshot.toSimklWatchedProjection().items
                 .filter { item ->
-                    item.contentId.equals(contentId, ignoreCase = true) &&
+                    matchIds.any { id -> item.contentId.equals(id, ignoreCase = true) } &&
                         item.season != null && item.episode != null
                 }
                 .associate { item ->
@@ -80,7 +87,7 @@ class SimklTrackingProgressProvider @Inject constructor(
                 .toMutableMap()
             state.snapshot.toSimklProgressEntries()
                 .filter { progress ->
-                    progress.contentId.equals(contentId, ignoreCase = true) &&
+                    matchIds.any { id -> progress.contentId.equals(id, ignoreCase = true) } &&
                         progress.season != null && progress.episode != null
                 }
                 .forEach { progress ->
@@ -105,10 +112,7 @@ class SimklTrackingProgressProvider @Inject constructor(
         if (progress != null && progress.progressPercentage > 0f && !progress.isCompleted()) {
             false
         } else {
-            state.snapshot.toSimklWatchedProjection().items.any { item ->
-                item.contentId.equals(contentId, ignoreCase = true) &&
-                    item.season == season && item.episode == episode
-            }
+            isWatchedInSnapshot(state.snapshot, contentId, videoId, season, episode)
         }
     }.onStart { syncRepository.refresh(TrackingRefreshIntent.AUTOMATIC) }
         .distinctUntilChanged()
@@ -230,3 +234,116 @@ private fun SimklMedia.trackingContentIds(): Set<String> = buildSet {
     ids.idValue("kitsu")?.let { add("kitsu:$it") }
     ids.simklIdValue()?.let { add("simkl:$it") }
 }
+
+/**
+ * Determines whether an episode is watched by resolving through Simkl entries.
+ *
+ * Resolution strategy:
+ * 1. Direct match: contentId equals WatchedItem.contentId (existing behavior)
+ * 2. Sibling match: contentId resolves to a canonical ID that matches a WatchedItem
+ * 3. Anime video ID match: for anime, parse the MAL/AniDB/etc ID from videoId,
+ *    find the Simkl entry, and check if the episode number is watched in that entry.
+ */
+private fun isWatchedInSnapshot(
+    snapshot: SimklSyncSnapshot,
+    contentId: String,
+    videoId: String?,
+    season: Int?,
+    episode: Int?
+): Boolean {
+    val watchedItems = snapshot.toSimklWatchedProjection().items
+
+    // 1. Direct match by contentId
+    if (watchedItems.any { item ->
+            item.contentId.equals(contentId, ignoreCase = true) &&
+                item.season == season && item.episode == episode
+        }) return true
+
+    // 2. Resolve contentId through snapshot entries (sibling/alias resolution)
+    val resolvedCanonicalId = snapshot.resolveCanonicalContentId(contentId)
+    if (resolvedCanonicalId != null && !resolvedCanonicalId.equals(contentId, ignoreCase = true)) {
+        if (watchedItems.any { item ->
+                item.contentId.equals(resolvedCanonicalId, ignoreCase = true) &&
+                    item.season == season && item.episode == episode
+            }) return true
+    }
+
+    // 3. Anime video ID resolution: parse anime-specific ID and episode from videoId,
+    //    find the corresponding Simkl entry, and check watched status directly.
+    if (videoId != null && episode != null) {
+        if (isWatchedByVideoId(snapshot, videoId, episode)) return true
+    }
+
+    return false
+}
+
+/**
+ * Resolve a contentId to its canonical form by finding a matching Simkl entry.
+ * e.g. "mal:123" → finds entry with mal=123 → returns "tt2560140" (its IMDB/canonical ID)
+ */
+private fun SimklSyncSnapshot.resolveCanonicalContentId(contentId: String): String? {
+    val entry = entries.firstOrNull { it.matchesSimklContentId(contentId) }
+    return entry?.media?.canonicalContentId()
+}
+
+/**
+ * Check if an episode is watched by resolving through the video ID.
+ * Parses the anime-specific ID from videoId (e.g. "mal:123:5" → mal=123, ep=5),
+ * finds the Simkl entry, and checks if that episode number has watched_at.
+ *
+ * Works for:
+ * - Single MAL = single season: video ID "mal:123:5" → entry mal:123, episode 5
+ * - Split season (multiple MAL per season): "mal:11759:3" → entry mal:11759, episode 3
+ * - Franchise parent with child MAL IDs per season
+ */
+private fun isWatchedByVideoId(
+    snapshot: SimklSyncSnapshot,
+    videoId: String,
+    episode: Int
+): Boolean {
+    val parsed = parseAnimeVideoId(videoId) ?: return false
+    val entry = snapshot.entries.firstOrNull { entry ->
+        entry.mediaType == SimklMediaType.ANIME &&
+            entry.media?.toTrackingExternalIds()?.sharesAnimeIdentityWith(parsed.ids) == true
+    } ?: return false
+
+    // Check if episode number is watched in this entry
+    // Use the episode number from the video ID segment if available, otherwise fall back to the
+    // season/episode passed by the caller.
+    val targetEpisodeNumber = parsed.episodeNumber ?: episode
+    return entry.seasons.any { season ->
+        season.episodes.any { ep ->
+            ep.number == targetEpisodeNumber && ep.watchedAt != null
+        }
+    }
+}
+
+private data class AnimeVideoIdParts(
+    val ids: TrackingExternalIds,
+    val episodeNumber: Int?
+)
+
+/**
+ * Parses a video ID like "mal:123:5" into the anime-specific ID (mal=123) and episode number (5).
+ * Returns null if the video ID doesn't match an anime-tracker prefix.
+ */
+private fun parseAnimeVideoId(videoId: String): AnimeVideoIdParts? {
+    val trimmed = videoId.trim()
+    if (trimmed.isBlank()) return null
+    val prefix = trimmed.substringBefore(':').lowercase()
+    if (prefix !in ANIME_VIDEO_ID_PREFIXES) return null
+    val afterPrefix = trimmed.substringAfter(':', "")
+    val idValue = afterPrefix.substringBefore(':')
+    val episodePart = afterPrefix.substringAfter(':', "").substringBefore(':')
+    val ids = parseTrackingExternalIds("$prefix:$idValue")
+    val episodeNumber = episodePart.toIntOrNull()
+    return AnimeVideoIdParts(ids, episodeNumber)
+}
+
+private val ANIME_VIDEO_ID_PREFIXES = setOf("mal", "anidb", "anilist", "kitsu")
+
+private fun TrackingExternalIds.sharesAnimeIdentityWith(other: TrackingExternalIds): Boolean =
+    (mal != null && mal == other.mal) ||
+        (anidb != null && anidb == other.anidb) ||
+        (anilist != null && anilist == other.anilist) ||
+        (kitsu != null && kitsu == other.kitsu)
