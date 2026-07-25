@@ -438,13 +438,8 @@ object FrameRateUtils {
         return frameRate.isFinite() && frameRate in MIN_VALID_VIDEO_FPS..MAX_VALID_VIDEO_FPS
     }
 
-    private val probeConnectionPool by lazy {
-        okhttp3.ConnectionPool(5, 15, java.util.concurrent.TimeUnit.SECONDS)
-    }
-
     private val probeHttpClient by lazy {
-        okhttp3.OkHttpClient.Builder()
-            .connectionPool(probeConnectionPool)
+        com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking.playbackHttpClient.newBuilder()
             .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
@@ -683,8 +678,6 @@ object FrameRateUtils {
         return null
     }
 
-    private const val DEFAULT_PROBE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
     internal fun fetchHttpRangeToFile(
         url: String,
         headers: Map<String, String>,
@@ -698,7 +691,7 @@ object FrameRateUtils {
             .header("Range", rangeHeader)
 
         if (headers.none { it.key.equals("User-Agent", ignoreCase = true) }) {
-            requestBuilder.header("User-Agent", DEFAULT_PROBE_USER_AGENT)
+            requestBuilder.header("User-Agent", com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
         }
 
         headers.forEach { (k, v) ->
@@ -741,7 +734,7 @@ object FrameRateUtils {
             }
         } catch (e: Exception) {
             call.cancel()
-            Log.w(TAG, "fetchHttpRangeToFile failed ($rangeHeader): ${e.message}")
+            Log.w(TAG, "fetchHttpRangeToFile failed for url=$url range=$rangeHeader: ${e.message}")
             HttpRangeFetchResult(success = false)
         }
     }
@@ -750,10 +743,9 @@ object FrameRateUtils {
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
             .head()
-            .header("Connection", "close")
 
         if (headers.none { it.key.equals("User-Agent", ignoreCase = true) }) {
-            requestBuilder.header("User-Agent", DEFAULT_PROBE_USER_AGENT)
+            requestBuilder.header("User-Agent", com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
         }
 
         headers.forEach { (k, v) ->
@@ -856,11 +848,7 @@ object FrameRateUtils {
         sourceUrl: String,
         headers: Map<String, String>
     ): FrameRateDetection? {
-        val safeHeaders = if (headers.none { it.key.equals("User-Agent", ignoreCase = true) }) {
-            headers + ("User-Agent" to DEFAULT_PROBE_USER_AGENT)
-        } else {
-            headers
-        }
+        val safeHeaders = headers
         val extractor = MediaExtractor()
         return try {
             val uri = Uri.parse(sourceUrl)
