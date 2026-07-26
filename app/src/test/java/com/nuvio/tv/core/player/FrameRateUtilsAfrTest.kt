@@ -310,6 +310,40 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
+    fun `isMkvSource and isMp4Source respect mimeType and filename for extensionless proxy URLs`() {
+        val proxyUrl = "https://meteorfortheweebs.midnightignite.me/p/eyJ.../0?svc=0"
+        
+        // Without mimeType or filename, extensionless URL returns false
+        assertFalse(FrameRateUtils.isMkvSource(proxyUrl))
+        assertFalse(FrameRateUtils.isMp4Source(proxyUrl))
+
+        // With Matroska mimeType or .mkv filename, returns true
+        assertTrue(FrameRateUtils.isMkvSource(proxyUrl, mimeType = "video/x-matroska"))
+        assertTrue(FrameRateUtils.isMkvSource(proxyUrl, mimeType = "video/mkv"))
+        assertTrue(FrameRateUtils.isMkvSource(proxyUrl, filename = "movie.mkv"))
+
+        // With MP4 mimeType or .mp4 filename, returns true
+        assertTrue(FrameRateUtils.isMp4Source(proxyUrl, mimeType = "video/mp4"))
+        assertTrue(FrameRateUtils.isMp4Source(proxyUrl, filename = "movie.mp4"))
+    }
+
+    @Test
+    fun `hasFtypAtom detects ftyp and moov header magic bytes`() {
+        val ftypFile = java.io.File.createTempFile("ftyp_", ".tmp")
+        val nonFtypFile = java.io.File.createTempFile("other_", ".tmp")
+        try {
+            ftypFile.writeBytes(byteArrayOf(0, 0, 0, 32, 0x66.toByte(), 0x74.toByte(), 0x79.toByte(), 0x70.toByte(), 0x69.toByte(), 0x73.toByte(), 0x6f.toByte(), 0x6d.toByte()))
+            nonFtypFile.writeBytes(byteArrayOf(0x1A.toByte(), 0x45.toByte(), 0xDF.toByte(), 0xA3.toByte(), 0, 0, 0, 0))
+
+            assertTrue("Must detect MP4 ftyp atom", FrameRateUtils.hasFtypAtom(ftypFile))
+            assertFalse("Must not detect ftyp atom in MKV EBML file", FrameRateUtils.hasFtypAtom(nonFtypFile))
+        } finally {
+            ftypFile.delete()
+            nonFtypFile.delete()
+        }
+    }
+
+    @Test
     fun `isLiveStreamUrl detects mpd and ism manifest`() {
         assertTrue(FrameRateUtils.isLiveStreamUrl("https://x/live.mpd"))
         assertTrue(FrameRateUtils.isLiveStreamUrl("https://x/foo.ism/manifest?x=1"))
@@ -671,8 +705,8 @@ class FrameRateUtilsAfrTest {
         try {
             val headBytes = "ftypisom00000008".toByteArray(Charsets.US_ASCII)
             val tailBytes = "moovtrakmdhdstco".toByteArray(Charsets.US_ASCII)
-            val totalContentLength = 10_000_000L
-            val tailStart = 9_000_000L
+            val totalContentLength = 10_000_000_000L
+            val tailStart = 9_974_834_176L
 
             // 1. Concatenated File (Head + Tail directly appended)
             val concatFile = java.io.File(tempDir, "concat.mp4")
@@ -709,17 +743,17 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
-    fun `calculateMp4TailStart uses 12MB default tail size and enforces 2MB minimum offset`() {
-        // For a 10 GB file (10_000_000_000 bytes), tail size is 12MB (12_582_912 bytes), so start offset is 10,000,000,000 - 12_582_912 = 9,987,417,088
+    fun `calculateMp4TailStart uses 16MB default tail size and enforces 4MB minimum offset`() {
+        // For a 10 GB file (10_000_000_000 bytes), tail size is 16MB (16_777_216 bytes), so start offset is 10,000,000,000 - 16_777_216 = 9,983,222,784
         val tenGb = 10_000_000_000L
-        val expectedOffset = tenGb - 12_582_912L
+        val expectedOffset = tenGb - 16_777_216L
         assertEquals(expectedOffset, FrameRateUtils.calculateMp4TailStart(tenGb))
 
-        // For a 5 MB file, tailStart coerced to min 2,097,152
-        assertEquals(2_097_152L, FrameRateUtils.calculateMp4TailStart(5_000_000L))
+        // For a 5 MB file, tailStart coerced to min 4,194,304
+        assertEquals(4_194_304L, FrameRateUtils.calculateMp4TailStart(5_000_000L))
 
-        // For a 2 MB or smaller file, returns 0L
-        assertEquals(0L, FrameRateUtils.calculateMp4TailStart(2_097_152L))
+        // For a 4 MB or smaller file, returns 0L
+        assertEquals(0L, FrameRateUtils.calculateMp4TailStart(4_194_304L))
         assertEquals(0L, FrameRateUtils.calculateMp4TailStart(1_000_000L))
     }
 
@@ -733,6 +767,43 @@ class FrameRateUtilsAfrTest {
 
         val key = FrameRateUtils.buildCacheKey(streamUrl, emptyMap(), null)
         assertTrue(key.endsWith("sample_movie_2160p.iT.WEB-DL.UNRATED.DV.HDR10%2B.MULTi%5BTest%5D.mp4"))
+    }
+
+    @org.junit.Ignore("Live integration test requiring active debrid credentials")
+    @Test
+    fun `live test real extensionless debrid MP4 URL detects frame rate`() {
+        val realUrl = "https://example.com/dld/bdc5c439-299a-4dff-aff6-b6f99b4952d4?token=debrid_token_placeholder"
+        val tempFile = java.io.File.createTempFile("live_afr_test_", ".tmp")
+        try {
+            // Pass 1: Head Range Probe (first 4 MB)
+            val headMaxBytes = 4_194_304L + 65_536L
+            val headResult = FrameRateUtils.fetchHttpRangeToFile(
+                realUrl, emptyMap(), "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
+            )
+            println("DEBUG: headResult success=${headResult.success}, totalLength=${headResult.totalContentLength}, fileLength=${tempFile.length()}")
+            assertTrue("Pass 1 head download must succeed", headResult.success)
+            assertTrue("Must detect MP4 ftyp atom in head", FrameRateUtils.hasFtypAtom(tempFile))
+            println("DEBUG: head hasMoovAtom=${FrameRateUtils.hasMoovAtom(tempFile)}")
+
+            // Pass 2: Tail Range Probe
+            val contentLength = headResult.totalContentLength ?: 30805864407L
+            val tailSizeBytes = FrameRateUtils.calculateAdaptiveMp4TailSize(contentLength)
+            val tailStart = FrameRateUtils.calculateMp4TailStart(contentLength, tailSizeBytes)
+            val tailRange = "bytes=$tailStart-${contentLength - 1}"
+            val tailMaxBytes = tailSizeBytes + 65_536L
+            println("DEBUG: Pass 2 configuration: tailSizeBytes=$tailSizeBytes, tailStart=$tailStart, tailRange=$tailRange, tailMaxBytes=$tailMaxBytes")
+
+            val tailResult = FrameRateUtils.fetchHttpRangeToFile(
+                realUrl, emptyMap(), tailRange, tailMaxBytes, tempFile, fileOffset = tailStart
+            )
+            println("DEBUG: tailResult success=${tailResult.success}, fileLength=${tempFile.length()}")
+            assertTrue("Pass 2 tail download must succeed", tailResult.success)
+            assertTrue("Must contain moov in combined file after tail download", FrameRateUtils.hasMoovAtom(tempFile))
+
+            println("SUCCESS: Real URL Head + Tail successfully downloaded. Combined size: ${tempFile.length()} bytes")
+        } finally {
+            tempFile.delete()
+        }
     }
 
     @Test

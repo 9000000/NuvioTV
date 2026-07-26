@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.Display
+import androidx.media3.common.MimeTypes
 import io.github.anilbeesetti.nextlib.mediainfo.MediaInfo
 import io.github.anilbeesetti.nextlib.mediainfo.MediaInfoBuilder
 import kotlinx.coroutines.Dispatchers
@@ -453,19 +454,23 @@ object FrameRateUtils {
     fun detectFrameRateFromSource(
         context: Context,
         sourceUrl: String,
-        headers: Map<String, String> = emptyMap()
+        headers: Map<String, String> = emptyMap(),
+        mimeType: String? = null,
+        filename: String? = null
     ): FrameRateDetection? {
-        detectFrameRateWithOkHttpProbe(context, sourceUrl, headers)?.let { return it }
-        detectFrameRateFromNextLib(context, sourceUrl, headers)?.let { return it }
+        detectFrameRateWithOkHttpProbe(context, sourceUrl, headers, mimeType, filename)?.let { return it }
+        detectFrameRateFromNextLib(context, sourceUrl, headers, mimeType, filename)?.let { return it }
         return detectFrameRateFromExtractor(context, sourceUrl, headers)
     }
 
     fun detectFrameRateFromNextLib(
         context: Context,
         sourceUrl: String,
-        headers: Map<String, String> = emptyMap()
+        headers: Map<String, String> = emptyMap(),
+        mimeType: String? = null,
+        filename: String? = null
     ): FrameRateDetection? {
-        return detectFrameRateWithNextLib(context, sourceUrl, headers)
+        return detectFrameRateWithNextLib(context, sourceUrl, headers, mimeType, filename)
     }
 
     fun detectFrameRateFromExtractor(
@@ -482,7 +487,17 @@ object FrameRateUtils {
         return detectFrameRateWithExtractor(context, sourceUrl, headers)
     }
 
-    internal fun isMp4Source(sourceUrl: String): Boolean {
+    internal fun isMp4Source(
+        sourceUrl: String,
+        mimeType: String? = null,
+        filename: String? = null
+    ): Boolean {
+        if (mimeType?.equals(MimeTypes.VIDEO_MP4, ignoreCase = true) == true ||
+            mimeType?.equals("video/iso.segment", ignoreCase = true) == true) return true
+        if (filename != null) {
+            val lower = filename.lowercase(Locale.ROOT)
+            if (lower.endsWith(".mp4") || lower.endsWith(".m4v") || lower.endsWith(".mov")) return true
+        }
         val normalized = sourceUrl.substringBefore('?').lowercase(Locale.ROOT)
         return normalized.endsWith(".mp4") || normalized.endsWith(".m4v") || normalized.endsWith(".mov")
     }
@@ -496,18 +511,18 @@ object FrameRateUtils {
 
     internal fun calculateAdaptiveMp4TailSize(contentLength: Long): Long {
         return when {
-            contentLength <= 2_097_152L -> 0L
-            contentLength < 5_000_000_000L -> 4_194_304L // < 5 GB: 4 MB tail
-            contentLength < 30_000_000_000L -> 12_582_912L // 5 - 30 GB: 12 MB tail
+            contentLength <= 4_194_304L -> 0L
+            contentLength < 5_000_000_000L -> 8_388_608L // < 5 GB: 8 MB tail
+            contentLength < 30_000_000_000L -> 16_777_216L // 5 - 30 GB: 16 MB tail
             contentLength < 60_000_000_000L -> 20_971_520L // 30 - 60 GB: 20 MB tail
             else -> 33_554_432L // >= 60 GB (100GB+ 4K REMUX): 32 MB tail
         }
     }
 
     internal fun calculateMp4TailStart(contentLength: Long, tailSizeBytes: Long = calculateAdaptiveMp4TailSize(contentLength)): Long {
-        if (contentLength <= 2_097_152L) return 0L
+        if (contentLength <= 4_194_304L) return 0L
         val effectiveTailSize = if (tailSizeBytes <= 0L) calculateAdaptiveMp4TailSize(contentLength) else tailSizeBytes
-        return (contentLength - effectiveTailSize).coerceAtLeast(2_097_152L)
+        return (contentLength - effectiveTailSize).coerceAtLeast(4_194_304L)
     }
 
     internal data class HttpRangeFetchResult(
@@ -558,20 +573,52 @@ object FrameRateUtils {
         }
     }
 
-    internal fun hasMoovAtom(file: java.io.File): Boolean {
+    internal fun hasFtypAtom(file: java.io.File): Boolean {
         if (!file.exists() || file.length() < 8) return false
         return runCatching {
             java.io.RandomAccessFile(file, "r").use { raf ->
-                val len = raf.length().coerceAtMost(33_554_432L).toInt()
-                val bytes = ByteArray(len)
+                val bytes = ByteArray(12)
                 raf.readFully(bytes)
-                for (i in 0 until bytes.size - 3) {
-                    if (bytes[i] == 0x6d.toByte() &&
-                        bytes[i + 1] == 0x6f.toByte() &&
-                        bytes[i + 2] == 0x6f.toByte() &&
-                        bytes[i + 3] == 0x76.toByte()
+                (bytes[4] == 0x66.toByte() && bytes[5] == 0x74.toByte() && bytes[6] == 0x79.toByte() && bytes[7] == 0x70.toByte()) ||
+                (bytes[4] == 0x6d.toByte() && bytes[5] == 0x6f.toByte() && bytes[6] == 0x6f.toByte() && bytes[7] == 0x76.toByte())
+            }
+        }.getOrDefault(false)
+    }
+
+    internal fun hasMoovAtom(file: java.io.File): Boolean {
+        if (!file.exists() || file.length() < 8) return false
+        val fileLength = file.length()
+        return runCatching {
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                // Check head (first 4 MB)
+                val headLen = fileLength.coerceAtMost(4_194_304L).toInt()
+                val headBytes = ByteArray(headLen)
+                raf.seek(0L)
+                raf.readFully(headBytes)
+                for (i in 0 until headBytes.size - 3) {
+                    if (headBytes[i] == 0x6d.toByte() &&
+                        headBytes[i + 1] == 0x6f.toByte() &&
+                        headBytes[i + 2] == 0x6f.toByte() &&
+                        headBytes[i + 3] == 0x76.toByte()
                     ) {
                         return@use true
+                    }
+                }
+
+                // Check tail (last 32 MB) if file is larger than 4 MB
+                if (fileLength > 4_194_304L) {
+                    val tailSize = (fileLength - 4_194_304L).coerceAtMost(33_554_432L).toInt()
+                    val tailBytes = ByteArray(tailSize)
+                    raf.seek(fileLength - tailSize)
+                    raf.readFully(tailBytes)
+                    for (i in 0 until tailBytes.size - 3) {
+                        if (tailBytes[i] == 0x6d.toByte() &&
+                            tailBytes[i + 1] == 0x6f.toByte() &&
+                            tailBytes[i + 2] == 0x6f.toByte() &&
+                            tailBytes[i + 3] == 0x76.toByte()
+                        ) {
+                            return@use true
+                        }
                     }
                 }
                 false
@@ -582,7 +629,9 @@ object FrameRateUtils {
     fun detectFrameRateWithOkHttpProbe(
         context: Context,
         sourceUrl: String,
-        headers: Map<String, String> = emptyMap()
+        headers: Map<String, String> = emptyMap(),
+        mimeType: String? = null,
+        filename: String? = null
     ): FrameRateDetection? {
         val scheme = parseUriScheme(sourceUrl)
         if (scheme != "http" && scheme != "https") return null
@@ -602,31 +651,33 @@ object FrameRateUtils {
         }
 
         try {
-            // Pass 1: Head Range Probe & Debrid Server Warmup (first 2 MB - bytes=0-2097151)
-            val headMaxBytes = 2_097_152L + 65_536L
+            // Pass 1: Head Range Probe & Debrid Server Warmup (first 4 MB - bytes=0-4194303)
+            val headMaxBytes = 4_194_304L + 65_536L
             val headResult = fetchHttpRangeToFile(
-                targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, fileOffset = 0L
+                targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
             )
+            val isMp4Detected = isMp4Source(targetUrl, mimeType, filename) || hasFtypAtom(tempFile)
+
             if (headResult.success && tempFile.length() > 0) {
-                // For MP4/MKV files where moov/header is in the first 2MB, probe immediately.
-                // If moov is not in the first 2MB (Legacy MP4), skip local probing to save ~4.5s wasted parsing stall.
-                if (!isMp4Source(targetUrl) || hasMoovAtom(tempFile)) {
+                // For MP4/MKV files where moov/header is in the first 4MB, probe immediately.
+                // If moov is not in the first 4MB (Legacy MP4), skip local probing to save ~4.5s wasted parsing stall.
+                if (!isMp4Detected || hasMoovAtom(tempFile)) {
                     val detection = detectFrameRateFromLocalFile(context, tempFile)
                     if (detection != null) {
-                        Log.d(TAG, "OkHttp AFR probe Pass 1 (head 2MB) succeeded: FPS=${detection.snapped}")
+                        Log.d(TAG, "OkHttp AFR probe Pass 1 (head 4MB) succeeded: FPS=${detection.snapped}")
                         return detection
                     }
                 } else {
-                    Log.d(TAG, "Pass 1 head 2MB does not contain 'moov' atom; proceeding directly to Pass 2 tail probe")
+                    Log.d(TAG, "Pass 1 head 4MB does not contain 'moov' atom; proceeding directly to Pass 2 tail probe")
                 }
             }
 
             // Pass 2: Sparse File Head (ftyp) + Tail (moov) for Legacy MP4/MOV
             // Writing tail at fileOffset=tailStart via RandomAccessFile preserves exact MP4 atom offsets (stco/co64) without breaking FFmpeg container parser.
-            if (isMp4Source(targetUrl)) {
+            if (isMp4Detected) {
                 val contentLength = headResult.totalContentLength
                     ?: fetchContentLength(targetUrl, headers)
-                if (contentLength > 2_097_152L) {
+                if (contentLength > 4_194_304L) {
                     val tailSizeBytes = calculateAdaptiveMp4TailSize(contentLength)
                     val tailStart = calculateMp4TailStart(contentLength, tailSizeBytes)
                     val tailRange = "bytes=$tailStart-${contentLength - 1}"
@@ -649,10 +700,10 @@ object FrameRateUtils {
                         }
                     }
 
-                    // Strategy B: Compact file fallback (Head 2MB + Tail concatenated)
+                    // Strategy B: Compact file fallback (Head 4MB + Tail concatenated)
                     tempFile.delete()
                     val headResultCompact = fetchHttpRangeToFile(
-                        targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, fileOffset = 0L
+                        targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
                     )
                     if (headResultCompact.success) {
                         val compactOffset = tempFile.length()
@@ -798,9 +849,11 @@ object FrameRateUtils {
     private fun detectFrameRateWithNextLib(
         context: Context,
         sourceUrl: String,
-        headers: Map<String, String>
+        headers: Map<String, String>,
+        mimeType: String? = null,
+        filename: String? = null
     ): FrameRateDetection? {
-        if (!shouldUseNextLibProbe(sourceUrl, headers)) return null
+        if (!shouldUseNextLibProbe(sourceUrl, headers, mimeType, filename)) return null
 
         val embeddedResolveUrl = extractEmbeddedResolveUrl(sourceUrl)
         val shouldPreferEmbedded = isResolveProxyUrl(sourceUrl)
@@ -943,14 +996,19 @@ object FrameRateUtils {
      * Whether NextLib MediaInfo probe should run for this source.
      * Exposed as internal for regression tests (0.7.10 parity + header bypass).
      */
-    internal fun shouldUseNextLibProbe(sourceUrl: String, headers: Map<String, String>): Boolean {
+    internal fun shouldUseNextLibProbe(
+        sourceUrl: String,
+        headers: Map<String, String>,
+        mimeType: String? = null,
+        filename: String? = null
+    ): Boolean {
         if (sourceUrl.isBlank()) return false
         if (isLiveStreamUrl(sourceUrl)) return false
 
         // Bypass NextLib when auth/custom headers are present: MediaInfoBuilder cannot forward them.
         if (hasNextLibBlockingHeaders(headers)) return false
 
-        if (isMkvSource(sourceUrl)) return true
+        if (isMkvSource(sourceUrl, mimeType, filename)) return true
 
         val scheme = parseUriScheme(sourceUrl)
         return when (scheme) {
@@ -966,7 +1024,15 @@ object FrameRateUtils {
         return LIVE_STREAM_EXTENSIONS.any { ext -> normalized.endsWith(ext) }
     }
 
-    internal fun isMkvSource(sourceUrl: String): Boolean {
+    internal fun isMkvSource(
+        sourceUrl: String,
+        mimeType: String? = null,
+        filename: String? = null
+    ): Boolean {
+        if (mimeType?.equals(MimeTypes.VIDEO_MATROSKA, ignoreCase = true) == true ||
+            mimeType?.equals("video/mkv", ignoreCase = true) == true ||
+            mimeType?.equals("video/x-matroska", ignoreCase = true) == true) return true
+        if (filename?.endsWith(MKV_EXTENSION, ignoreCase = true) == true) return true
         val normalized = sourceUrl.substringBefore('?').lowercase(Locale.ROOT)
         return normalized.endsWith(MKV_EXTENSION)
     }

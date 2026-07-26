@@ -11,16 +11,17 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 
 /** Exposed for unit tests so timeout regressions are caught against a single source of truth. */
-internal const val AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS = 10000L
+internal const val AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS = 15000L
 internal const val AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS = 10000L
 internal const val AFR_PREFLIGHT_FALLBACK_TIMEOUT_MS = 5000L
-internal const val AFR_PREFLIGHT_TOTAL_TIMEOUT_MS = 12000L
+internal const val AFR_PREFLIGHT_TOTAL_TIMEOUT_MS = 18000L
 
 internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
     url: String,
     headers: Map<String, String>,
     frameRateMatchingMode: FrameRateMatchingMode,
-    resolutionMatchingEnabled: Boolean
+    resolutionMatchingEnabled: Boolean,
+    mimeType: String? = null
 ) {
     mpvDelayStartAfterAfrSwitch = false
 
@@ -61,9 +62,11 @@ internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
     val streamHeaders = FrameRateUtils.streamHeadersForAfrProbe(headers)
     // Extractor fallback headers – add Connection: close for proper connection teardown.
     val probeHeaders = FrameRateUtils.extractorProbeHeaders(headers)
+    val effectiveMimeType = mimeType ?: currentStreamMimeType
+    val filename = currentFilename
 
     try {
-        val cached = FrameRateUtils.getCachedFrameRate(url, headers, currentFilename)
+        val cached = FrameRateUtils.getCachedFrameRate(url, headers, filename)
         if (cached != null) {
             Log.d(PlayerRuntimeController.TAG, "AFR preflight: cache hit! Using cached FPS=${cached.snapped}")
             _uiState.update {
@@ -119,7 +122,9 @@ internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
                 FrameRateUtils.detectFrameRateWithOkHttpProbe(
                     context = context,
                     sourceUrl = url,
-                    headers = streamHeaders
+                    headers = streamHeaders,
+                    mimeType = effectiveMimeType,
+                    filename = filename
                 )
             }
         }
@@ -133,7 +138,9 @@ internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
                     FrameRateUtils.detectFrameRateFromNextLib(
                         context = context,
                         sourceUrl = url,
-                        headers = streamHeaders
+                        headers = streamHeaders,
+                        mimeType = effectiveMimeType,
+                        filename = filename
                     )
                 }
             }
