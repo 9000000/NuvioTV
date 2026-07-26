@@ -16,7 +16,7 @@ class PlayerLifecycleDebounceTest {
     private val testScope = TestScope(testDispatcher)
 
     @Test
-    fun `transient pause within 400ms cancels pause job and should auto resume`() = testScope.runTest {
+    fun `transient pause within 400ms cancels pause job and should auto resume if playing`() = testScope.runTest {
         var wasPlayingBeforeLifecyclePause = false
         var wasStoppedByLifecycle = false
         var isInBackground = false
@@ -35,13 +35,36 @@ class PlayerLifecycleDebounceTest {
         testScheduler.advanceTimeBy(50L)
 
         // Simulate resumeForLifecycle
-        val wasPendingPause = isPendingPause
         isPendingPause = false // Job cancelled
 
-        val shouldAutoResume = (wasPendingPause || (wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle)) && !userPausedManually
+        val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
 
-        assertTrue("Should auto resume after transient <400ms pause", shouldAutoResume)
+        assertTrue("Should auto resume after transient <400ms pause if playing", shouldAutoResume)
         assertFalse("App should not be marked as in background", isInBackground)
+    }
+
+    @Test
+    fun `transient pause within 400ms does NOT auto resume if already paused`() = testScope.runTest {
+        var wasPlayingBeforeLifecyclePause = false
+        var wasStoppedByLifecycle = false
+        var userPausedManually = false
+        var isPlaying = false
+
+        // Simulate pauseForLifecycle when player was already paused
+        val currentlyPlaying = isPlaying
+        if (currentlyPlaying && !userPausedManually) {
+            wasPlayingBeforeLifecyclePause = true
+        }
+
+        var isPendingPause = true
+
+        // Simulate ON_RESUME firing 50ms later
+        testScheduler.advanceTimeBy(50L)
+        isPendingPause = false
+
+        val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
+
+        assertFalse("Should NOT auto resume after transient pause if already paused", shouldAutoResume)
     }
 
     @Test
@@ -69,8 +92,7 @@ class PlayerLifecycleDebounceTest {
         isPlaying = false
 
         // Simulate ON_RESUME firing later
-        val wasPendingPause = isPendingPause // false, already executed
-        val shouldAutoResume = (wasPendingPause || (wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle)) && !userPausedManually
+        val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
 
         assertTrue("Should auto resume when returning from non-stopped overlay pause", shouldAutoResume)
         assertTrue("App was in background before resume", isInBackground)
@@ -91,8 +113,7 @@ class PlayerLifecycleDebounceTest {
         isPlaying = false
 
         // Simulate ON_RESUME when user re-opens app from Home screen
-        val wasPendingPause = false
-        val shouldAutoResume = (wasPendingPause || (wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle)) && !userPausedManually
+        val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
 
         assertFalse("Should NOT auto resume when returning from ON_STOP home screen exit", shouldAutoResume)
     }
@@ -103,8 +124,7 @@ class PlayerLifecycleDebounceTest {
         var wasStoppedByLifecycle = false
         var userPausedManually = true
 
-        val wasPendingPause = true
-        val shouldAutoResume = (wasPendingPause || (wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle)) && !userPausedManually
+        val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
 
         assertFalse("Should NOT auto resume when user paused manually", shouldAutoResume)
     }

@@ -361,7 +361,9 @@ class FolderDetailViewModel @Inject constructor(
         val state = _uiState.value
         if (!hasAllTab) return
         val sourceTabs = state.tabs.drop(1) // skip the All tab
-        val anyLoading = sourceTabs.any { it.isLoading }
+        val anyLoading = sourceTabs.any { tab ->
+            tab.catalogRow?.isLoading == true || tab.isLoading
+        }
         // Only include real loaded rows (exclude placeholder shimmer rows)
         val loadedRows = sourceTabs.mapNotNull { tab ->
             tab.catalogRow?.takeIf { !it.isLoading }
@@ -369,20 +371,42 @@ class FolderDetailViewModel @Inject constructor(
 
         if (loadedRows.isEmpty()) return
 
-        // Round-robin interleave items from all loaded catalog rows
+        val currentAllRow = state.tabs.getOrNull(0)?.catalogRow
+
+        if (anyLoading && currentAllRow != null && currentAllRow.items.isNotEmpty()) {
+            _uiState.update { s ->
+                val tabs = s.tabs.toMutableList()
+                tabs[0] = tabs[0].copy(
+                    isLoading = false,
+                    catalogRow = currentAllRow.copy(isLoading = true)
+                )
+                s.copy(tabs = tabs)
+            }
+            return
+        }
+
+        // All pending loads completed — compute the new batch of items via round-robin
+        // and APPEND them to the existing ALL tab content (stable scroll position).
         val mergedItems = roundRobinMerge(loadedRows.map { it.items })
-        // Use the first loaded row as a template for the merged CatalogRow
+        val existingItems = currentAllRow?.items.orEmpty()
+        val existingIds = existingItems.mapTo(mutableSetOf()) { it.id }
+        val newItems = mergedItems.filter { it.id !in existingIds }
+        val finalItems = existingItems + newItems
+
         val templateRow = loadedRows.first()
+        val hasMore = sourceTabs.any { tab -> tab.catalogRow?.hasMore == true }
         val mergedRow = templateRow.copy(
             catalogName = "All",
-            items = mergedItems
+            items = finalItems,
+            hasMore = hasMore,
+            isLoading = false
         )
 
         _uiState.update { s ->
             val tabs = s.tabs.toMutableList()
             tabs[0] = tabs[0].copy(
                 catalogRow = mergedRow,
-                isLoading = anyLoading
+                isLoading = false
             )
             s.copy(tabs = tabs)
         }
@@ -624,7 +648,9 @@ class FolderDetailViewModel @Inject constructor(
                 }
             }
             val tab = _uiState.value.tabs.getOrNull(tabIndex)
-            val catalogName = catalog?.name ?: tab?.label?.takeIf { it != tab?.typeLabel } ?: source.catalogId
+            val catalogName = catalog?.name
+                ?: tab?.label?.takeIf { it.isNotBlank() }
+                ?: source.catalogId
 
             val supportsSkip = catalog?.supportsExtra("skip") ?: false
             val skipStep = catalog?.skipStep() ?: 100

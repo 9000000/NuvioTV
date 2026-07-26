@@ -438,11 +438,24 @@ object FrameRateUtils {
         return frameRate.isFinite() && frameRate in MIN_VALID_VIDEO_FPS..MAX_VALID_VIDEO_FPS
     }
 
+    private val probeHttpClient by lazy {
+        com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking.playbackHttpClient.newBuilder()
+            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
     fun detectFrameRateFromSource(
         context: Context,
         sourceUrl: String,
         headers: Map<String, String> = emptyMap()
     ): FrameRateDetection? {
+        detectFrameRateWithOkHttpProbe(context, sourceUrl, headers)?.let { return it }
         detectFrameRateFromNextLib(context, sourceUrl, headers)?.let { return it }
         return detectFrameRateFromExtractor(context, sourceUrl, headers)
     }
@@ -467,6 +480,319 @@ object FrameRateUtils {
             }
         }
         return detectFrameRateWithExtractor(context, sourceUrl, headers)
+    }
+
+    internal fun isMp4Source(sourceUrl: String): Boolean {
+        val normalized = sourceUrl.substringBefore('?').lowercase(Locale.ROOT)
+        return normalized.endsWith(".mp4") || normalized.endsWith(".m4v") || normalized.endsWith(".mov")
+    }
+
+    internal fun parseContentRangeTotalLength(contentRangeHeader: String?): Long? {
+        if (contentRangeHeader.isNullOrBlank()) return null
+        val totalStr = contentRangeHeader.substringAfter('/', missingDelimiterValue = "").trim()
+        if (totalStr == "*") return null
+        return totalStr.toLongOrNull()?.takeIf { it > 0L }
+    }
+
+    internal fun calculateAdaptiveMp4TailSize(contentLength: Long): Long {
+        return when {
+            contentLength <= 2_097_152L -> 0L
+            contentLength < 5_000_000_000L -> 4_194_304L // < 5 GB: 4 MB tail
+            contentLength < 30_000_000_000L -> 12_582_912L // 5 - 30 GB: 12 MB tail
+            contentLength < 60_000_000_000L -> 20_971_520L // 30 - 60 GB: 20 MB tail
+            else -> 33_554_432L // >= 60 GB (100GB+ 4K REMUX): 32 MB tail
+        }
+    }
+
+    internal fun calculateMp4TailStart(contentLength: Long, tailSizeBytes: Long = calculateAdaptiveMp4TailSize(contentLength)): Long {
+        if (contentLength <= 2_097_152L) return 0L
+        val effectiveTailSize = if (tailSizeBytes <= 0L) calculateAdaptiveMp4TailSize(contentLength) else tailSizeBytes
+        return (contentLength - effectiveTailSize).coerceAtLeast(2_097_152L)
+    }
+
+    internal data class HttpRangeFetchResult(
+        val success: Boolean,
+        val totalContentLength: Long? = null
+    )
+
+    internal fun patchMdatHeaderForCompactMp4(targetFile: java.io.File, moovOffset: Long) {
+        if (!targetFile.exists() || targetFile.length() < 32) return
+        runCatching {
+            java.io.RandomAccessFile(targetFile, "rw").use { raf ->
+                var pos = 0L
+                val fileLen = raf.length()
+                while (pos + 8 <= fileLen && pos < moovOffset) {
+                    raf.seek(pos)
+                    val boxSize32 = raf.readInt().toLong() and 0xFFFFFFFFL
+                    val type = ByteArray(4)
+                    raf.readFully(type)
+                    val typeStr = String(type, Charsets.US_ASCII)
+
+                    val is64Bit = boxSize32 == 1L
+                    val actualBoxSize = if (is64Bit) {
+                        raf.readLong()
+                    } else if (boxSize32 == 0L) {
+                        fileLen - pos
+                    } else {
+                        boxSize32
+                    }
+
+                    if (typeStr == "mdat") {
+                        val newMdatSize = (moovOffset - pos).coerceAtLeast(8L)
+                        raf.seek(pos)
+                        if (is64Bit) {
+                            raf.writeInt(1)
+                            raf.write("mdat".toByteArray(Charsets.US_ASCII))
+                            raf.writeLong(newMdatSize)
+                        } else {
+                            raf.writeInt(newMdatSize.toInt())
+                        }
+                        Log.d(TAG, "Patched mdat box size to $newMdatSize for compact MP4 probe at pos $pos")
+                        break
+                    }
+
+                    if (actualBoxSize <= 0) break
+                    pos += actualBoxSize
+                }
+            }
+        }
+    }
+
+    internal fun hasMoovAtom(file: java.io.File): Boolean {
+        if (!file.exists() || file.length() < 8) return false
+        return runCatching {
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                val len = raf.length().coerceAtMost(33_554_432L).toInt()
+                val bytes = ByteArray(len)
+                raf.readFully(bytes)
+                for (i in 0 until bytes.size - 3) {
+                    if (bytes[i] == 0x6d.toByte() &&
+                        bytes[i + 1] == 0x6f.toByte() &&
+                        bytes[i + 2] == 0x6f.toByte() &&
+                        bytes[i + 3] == 0x76.toByte()
+                    ) {
+                        return@use true
+                    }
+                }
+                false
+            }
+        }.getOrDefault(false)
+    }
+
+    fun detectFrameRateWithOkHttpProbe(
+        context: Context,
+        sourceUrl: String,
+        headers: Map<String, String> = emptyMap()
+    ): FrameRateDetection? {
+        val scheme = parseUriScheme(sourceUrl)
+        if (scheme != "http" && scheme != "https") return null
+        if (isLiveStreamUrl(sourceUrl)) return null
+
+        val targetUrl = if (isResolveProxyUrl(sourceUrl)) {
+            extractEmbeddedResolveUrl(sourceUrl)?.takeIf { it.isNotBlank() } ?: sourceUrl
+        } else {
+            sourceUrl
+        }
+
+        val tempFile = try {
+            java.io.File.createTempFile("afr_probe_", ".tmp", context.cacheDir)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create temp file for AFR probe: ${e.message}")
+            return null
+        }
+
+        try {
+            // Pass 1: Head Range Probe & Debrid Server Warmup (first 2 MB - bytes=0-2097151)
+            val headMaxBytes = 2_097_152L + 65_536L
+            val headResult = fetchHttpRangeToFile(
+                targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, fileOffset = 0L
+            )
+            if (headResult.success && tempFile.length() > 0) {
+                // For MP4/MKV files where moov/header is in the first 2MB, probe immediately.
+                // If moov is not in the first 2MB (Legacy MP4), skip local probing to save ~4.5s wasted parsing stall.
+                if (!isMp4Source(targetUrl) || hasMoovAtom(tempFile)) {
+                    val detection = detectFrameRateFromLocalFile(context, tempFile)
+                    if (detection != null) {
+                        Log.d(TAG, "OkHttp AFR probe Pass 1 (head 2MB) succeeded: FPS=${detection.snapped}")
+                        return detection
+                    }
+                } else {
+                    Log.d(TAG, "Pass 1 head 2MB does not contain 'moov' atom; proceeding directly to Pass 2 tail probe")
+                }
+            }
+
+            // Pass 2: Sparse File Head (ftyp) + Tail (moov) for Legacy MP4/MOV
+            // Writing tail at fileOffset=tailStart via RandomAccessFile preserves exact MP4 atom offsets (stco/co64) without breaking FFmpeg container parser.
+            if (isMp4Source(targetUrl)) {
+                val contentLength = headResult.totalContentLength
+                    ?: fetchContentLength(targetUrl, headers)
+                if (contentLength > 2_097_152L) {
+                    val tailSizeBytes = calculateAdaptiveMp4TailSize(contentLength)
+                    val tailStart = calculateMp4TailStart(contentLength, tailSizeBytes)
+                    val tailRange = "bytes=$tailStart-${contentLength - 1}"
+                    val tailMaxBytes = tailSizeBytes + 65_536L
+
+                    // Strategy A: Sparse offset file (Head at 0, Tail at original tailStart)
+                    // Preserves exact co64/stco sample chunk offsets for Android Stagefright native MPEG4Extractor.
+                    // On ext4/f2fs, sparse file takes only 14 MB physical disk space despite 23GB+ reported file length.
+                    val usableSpace = runCatching { context.cacheDir.usableSpace }.getOrDefault(0L)
+                    if (usableSpace > 50_000_000L) { // Requires only 50 MB usable disk space for 14 MB sparse blocks
+                        val tailResultSparse = fetchHttpRangeToFile(
+                            targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = tailStart
+                        )
+                        if (tailResultSparse.success && tempFile.length() > 0) {
+                            val detection = detectFrameRateFromLocalFile(context, tempFile)
+                            if (detection != null) {
+                                Log.d(TAG, "OkHttp AFR probe Pass 2 (sparse head+tail file) succeeded for MP4: FPS=${detection.snapped}")
+                                return detection
+                            }
+                        }
+                    }
+
+                    // Strategy B: Compact file fallback (Head 2MB + Tail concatenated)
+                    tempFile.delete()
+                    val headResultCompact = fetchHttpRangeToFile(
+                        targetUrl, headers, "bytes=0-2097151", headMaxBytes, tempFile, fileOffset = 0L
+                    )
+                    if (headResultCompact.success) {
+                        val compactOffset = tempFile.length()
+                        val tailResultCompact = fetchHttpRangeToFile(
+                            targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = compactOffset
+                        )
+                        if (tailResultCompact.success && tempFile.length() > 0) {
+                            patchMdatHeaderForCompactMp4(tempFile, compactOffset)
+                            val detection = detectFrameRateFromLocalFile(context, tempFile)
+                            if (detection != null) {
+                                Log.d(TAG, "OkHttp AFR probe Pass 2 (compact head+tail file) succeeded for MP4: FPS=${detection.snapped}")
+                                return detection
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "OkHttp AFR probe failed: ${e.message}")
+        } finally {
+            runCatching { tempFile.delete() }
+        }
+        return null
+    }
+
+    internal fun fetchHttpRangeToFile(
+        url: String,
+        headers: Map<String, String>,
+        rangeHeader: String,
+        maxBytes: Long,
+        targetFile: java.io.File,
+        fileOffset: Long = 0L
+    ): HttpRangeFetchResult {
+        val requestBuilder = okhttp3.Request.Builder()
+            .url(url)
+            .header("Range", rangeHeader)
+
+        if (headers.none { it.key.equals("User-Agent", ignoreCase = true) }) {
+            requestBuilder.header("User-Agent", com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
+        }
+
+        headers.forEach { (k, v) ->
+            if (v.isNotBlank() && !k.equals("Range", ignoreCase = true)) {
+                requestBuilder.header(k, v)
+            }
+        }
+
+        val call = probeHttpClient.newCall(requestBuilder.build())
+        return try {
+            call.execute().use { response ->
+                if (response.code != 206 && response.code != 200) {
+                    Log.w(TAG, "fetchHttpRangeToFile server did not return 200/206 Content (code=${response.code})")
+                    return HttpRangeFetchResult(success = false)
+                }
+                val totalLength = parseContentRangeTotalLength(response.header("Content-Range"))
+                    ?: response.header("Content-Length")?.toLongOrNull()
+
+                val body = response.body ?: return HttpRangeFetchResult(success = false)
+                body.byteStream().use { input ->
+                    java.io.RandomAccessFile(targetFile, "rw").use { raf ->
+                        if (fileOffset > 0L) {
+                            raf.seek(fileOffset)
+                        }
+                        val buffer = ByteArray(8192)
+                        var totalRead = 0L
+                        while (totalRead < maxBytes) {
+                            val toRead = minOf(buffer.size.toLong(), maxBytes - totalRead).toInt()
+                            val bytesRead = input.read(buffer, 0, toRead)
+                            if (bytesRead <= 0) break
+                            raf.write(buffer, 0, bytesRead)
+                            totalRead += bytesRead
+                        }
+                        HttpRangeFetchResult(
+                            success = totalRead > 0,
+                            totalContentLength = totalLength
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            call.cancel()
+            Log.w(TAG, "fetchHttpRangeToFile failed for url=$url range=$rangeHeader: ${e.message}")
+            HttpRangeFetchResult(success = false)
+        }
+    }
+
+    private fun fetchContentLength(url: String, headers: Map<String, String>): Long {
+        val requestBuilder = okhttp3.Request.Builder()
+            .url(url)
+            .head()
+
+        if (headers.none { it.key.equals("User-Agent", ignoreCase = true) }) {
+            requestBuilder.header("User-Agent", com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
+        }
+
+        headers.forEach { (k, v) ->
+            if (v.isNotBlank() && !k.equals("Range", ignoreCase = true)) {
+                requestBuilder.header(k, v)
+            }
+        }
+
+        val call = probeHttpClient.newCall(requestBuilder.build())
+        return try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) return -1L
+                response.header("Content-Length")?.toLongOrNull() ?: -1L
+            }
+        } catch (_: Exception) {
+            call.cancel()
+            -1L
+        }
+    }
+
+    private fun detectFrameRateFromLocalFile(context: Context, file: java.io.File): FrameRateDetection? {
+        try {
+            val uri = Uri.fromFile(file)
+            val mediaInfo = MediaInfoBuilder().from(context = context, uri = uri).build()
+            if (mediaInfo != null) {
+                try {
+                    val video = mediaInfo.videoStream
+                    if (video != null) {
+                        val measured = video.frameRate.toFloat()
+                        if (isValidVideoFrameRate(measured)) {
+                            return FrameRateDetection(
+                                raw = measured,
+                                snapped = snapToStandardRate(measured),
+                                videoWidth = video.frameWidth.takeIf { it > 0 },
+                                videoHeight = video.frameHeight.takeIf { it > 0 }
+                            )
+                        }
+                    }
+                } finally {
+                    runCatching { mediaInfo.release() }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.d(TAG, "Local NextLib probe failed: ${e.message}")
+        }
+
+        return detectFrameRateWithExtractor(context, file.absolutePath, emptyMap())
     }
 
     private fun detectFrameRateWithNextLib(
@@ -522,12 +848,13 @@ object FrameRateUtils {
         sourceUrl: String,
         headers: Map<String, String>
     ): FrameRateDetection? {
+        val safeHeaders = headers
         val extractor = MediaExtractor()
         return try {
             val uri = Uri.parse(sourceUrl)
             when (uri.scheme?.lowercase()) {
-                "http", "https" -> extractor.setDataSource(sourceUrl, headers)
-                else -> extractor.setDataSource(context, uri, headers)
+                "http", "https" -> extractor.setDataSource(sourceUrl, safeHeaders)
+                else -> extractor.setDataSource(context, uri, safeHeaders)
             }
 
             var videoTrackIndex = -1

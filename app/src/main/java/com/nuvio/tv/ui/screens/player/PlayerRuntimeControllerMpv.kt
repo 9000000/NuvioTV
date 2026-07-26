@@ -4,11 +4,9 @@ import android.util.Log
 import androidx.media3.exoplayer.SeekParameters
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 private const val MPV_RESUME_SEEK_TOLERANCE_MS = 1500L
@@ -273,7 +271,7 @@ internal fun PlayerRuntimeController.resumeForLifecycle() {
         }
     }
 
-    val shouldAutoResume = (wasPendingPause || (wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle)) && !userPausedManually
+    val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
     wasPlayingBeforeLifecyclePause = false
     wasStoppedByLifecycle = false
 
@@ -298,9 +296,7 @@ internal fun PlayerRuntimeController.updateMpvAvailableTracks() {
     mpvTrackRefreshInProgress = true
     mpvTrackRefreshJob = scope.launch {
         try {
-            val snapshot = withContext(Dispatchers.IO) {
-                view.readTrackSnapshot()
-            }
+            val snapshot = view.readTrackSnapshot()
             if (!isUsingMpvEngine() || mpvView !== view || currentStreamUrl != streamUrlAtRefresh) return@launch
             applyMpvTrackSnapshot(snapshot)
             tryAutoSelectPreferredSubtitleFromAvailableTracks()
