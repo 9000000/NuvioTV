@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
 
 /**
@@ -29,6 +30,7 @@ class ExternalPlaybackKeepAliveService : Service() {
         private const val MAX_ALIVE_MS = 8L * 60 * 60 * 1000 // 8 hours safety limit
 
         fun start(context: Context) {
+            if (!BuildConfig.FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED) return
             val intent = Intent(context, ExternalPlaybackKeepAliveService::class.java)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -43,6 +45,7 @@ class ExternalPlaybackKeepAliveService : Service() {
         }
 
         fun stop(context: Context) {
+            if (!BuildConfig.FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED) return
             try {
                 val intent = Intent(context, ExternalPlaybackKeepAliveService::class.java)
                 context.stopService(intent)
