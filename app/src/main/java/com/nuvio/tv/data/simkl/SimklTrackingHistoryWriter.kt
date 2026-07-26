@@ -39,6 +39,10 @@ class SimklTrackingHistoryWriter @Inject constructor(
         if (profileId != profileManager.activeProfileId.value) return TrackingMutationResult(0)
         syncRepository.ensureLoaded()
         val snapshot = syncRepository.state.value.snapshot
-        return service.removeFromHistory(items.map(snapshot::enrichMediaReference))
+        return service.removeFromHistory(
+            items.map { ref ->
+                snapshot.enrichMediaReference(ref).resolveAnimeEpisodeForSimkl()
+            }
+        )
     }
 }
