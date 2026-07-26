@@ -158,15 +158,20 @@ fun PlayerScreen(
     var subtitleDelayAutoSyncFocused by remember { mutableStateOf(false) }
     var subtitleTimingConsumeNextConfirmKeyUp by remember { mutableStateOf(false) }
     var reportCodeVisible by remember { mutableStateOf(false) }
+    var exitDispatched by remember { mutableStateOf(false) }
 
-    val exitPlayer: () -> Unit = {
+    val exitPlayer: () -> Unit = exitPlayer@{
+        if (exitDispatched) return@exitPlayer
+        exitDispatched = true
         val timeline = viewModel.playbackTimeline.value
         viewModel.stopAndRelease()
         val completed = timeline.duration > 0L &&
             (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD
         onBackPress(uiState.currentVideoId, uiState.currentSeason, uiState.currentEpisode, uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL, completed)
     }
-    val exitPlayerFromError: () -> Unit = {
+    val exitPlayerFromError: () -> Unit = exitPlayerFromError@{
+        if (exitDispatched) return@exitPlayerFromError
+        exitDispatched = true
         viewModel.stopAndRelease()
         onPlaybackErrorBack()
     }
@@ -463,10 +468,7 @@ fun PlayerScreen(
             .focusRequester(containerFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
-                ) {
+                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE) {
                     return@onPreviewKeyEvent when (keyEvent.nativeKeyEvent.action) {
                         KeyEvent.ACTION_DOWN -> true
                         KeyEvent.ACTION_UP -> {
