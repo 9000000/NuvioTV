@@ -80,7 +80,8 @@ object OpenSubtitlesHasher {
             client.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) return null
                 val lenStr = response.header("Content-Length")
-                val len = lenStr?.toLongOrNull() ?: response.body.contentLength()
+                val len = lenStr?.toLongOrNull() ?: response.body?.contentLength()
+                if (len == null) return null
                 if (len > 0) len else null
             }
         } catch (_: Exception) {
@@ -111,7 +112,7 @@ object OpenSubtitlesHasher {
         val request = requestBuilder.build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful && response.code != 206) return 0L
-            val stream: InputStream = response.body.byteStream()
+            val stream: InputStream = response.body?.byteStream() ?: return 0L
             val buf = ByteArray(LONG_SIZE)
             var sum = 0L
             var remaining = length
