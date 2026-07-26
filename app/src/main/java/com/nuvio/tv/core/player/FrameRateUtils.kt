@@ -761,7 +761,7 @@ object FrameRateUtils {
                 val totalLength = parseContentRangeTotalLength(response.header("Content-Range"))
                     ?: response.header("Content-Length")?.toLongOrNull()
 
-                val body = response.body
+                val body = response.body ?: return HttpRangeFetchResult(success = false)
                 body.byteStream().use { input ->
                     java.io.RandomAccessFile(targetFile, "rw").use { raf ->
                         if (fileOffset > 0L) {
