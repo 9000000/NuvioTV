@@ -742,20 +742,6 @@ class FrameRateUtilsAfrTest {
         assertNull(FrameRateUtils.parseContentRangeTotalLength("invalid header"))
     }
 
-    @Test
-    fun `calculateMp4TailStart uses 16MB default tail size and enforces 4MB minimum offset`() {
-        // For a 10 GB file (10_000_000_000 bytes), tail size is 16MB (16_777_216 bytes), so start offset is 10,000,000,000 - 16_777_216 = 9,983,222,784
-        val tenGb = 10_000_000_000L
-        val expectedOffset = tenGb - 16_777_216L
-        assertEquals(expectedOffset, FrameRateUtils.calculateMp4TailStart(tenGb))
-
-        // For a 5 MB file, tailStart coerced to min 4,194,304
-        assertEquals(4_194_304L, FrameRateUtils.calculateMp4TailStart(5_000_000L))
-
-        // For a 4 MB or smaller file, returns 0L
-        assertEquals(0L, FrameRateUtils.calculateMp4TailStart(4_194_304L))
-        assertEquals(0L, FrameRateUtils.calculateMp4TailStart(1_000_000L))
-    }
 
     @Test
     fun `detects mp4 and probe path for example movie stream`() {
@@ -787,8 +773,8 @@ class FrameRateUtilsAfrTest {
 
             // Pass 2: Tail Range Probe
             val contentLength = headResult.totalContentLength ?: 30805864407L
-            val tailSizeBytes = FrameRateUtils.calculateAdaptiveMp4TailSize(contentLength)
-            val tailStart = FrameRateUtils.calculateMp4TailStart(contentLength, tailSizeBytes)
+            val tailStart = FrameRateUtils.findNextBoxOffsetAfterMdat(tempFile, contentLength) ?: (contentLength - 16_777_216L)
+            val tailSizeBytes = contentLength - tailStart
             val tailRange = "bytes=$tailStart-${contentLength - 1}"
             val tailMaxBytes = tailSizeBytes + 65_536L
             println("DEBUG: Pass 2 configuration: tailSizeBytes=$tailSizeBytes, tailStart=$tailStart, tailRange=$tailRange, tailMaxBytes=$tailMaxBytes")
@@ -825,7 +811,7 @@ class FrameRateUtilsAfrTest {
                 assertTrue("Content length must be > 2MB", contentLength > 2_097_152L)
 
                 // Pass 2: Tail Range Probe
-                val tailStart = FrameRateUtils.calculateMp4TailStart(contentLength, 4_194_304L)
+                val tailStart = FrameRateUtils.findNextBoxOffsetAfterMdat(tempFile, contentLength) ?: (contentLength - 4_194_304L)
                 val tailRange = "bytes=$tailStart-${contentLength - 1}"
                 val tailResult = FrameRateUtils.fetchHttpRangeToFile(
                     url = streamUrl,
@@ -900,46 +886,7 @@ class FrameRateUtilsAfrTest {
         }
     }
 
-    @Test
-    fun `verifies 12MB adaptive tail moov probe contract`() {
-        val streamUrl = "https://example.com/cdn/sample_movie_2160p.mp4"
-        val tempFile = java.io.File.createTempFile("live_12mb_probe_", ".tmp")
-        try {
-            val headResult = FrameRateUtils.fetchHttpRangeToFile(
-                url = streamUrl,
-                headers = emptyMap(),
-                rangeHeader = "bytes=0-2097151",
-                maxBytes = 2_097_152L + 65_536L,
-                targetFile = tempFile,
-                fileOffset = 0L
-            )
-            val contentLength = headResult.totalContentLength
-            if (headResult.success && contentLength != null) {
-                val tailSizeBytes = 12_582_912L
-                val tailStart = FrameRateUtils.calculateMp4TailStart(contentLength, tailSizeBytes)
-                val tailRange = "bytes=$tailStart-${contentLength - 1}"
-                val compactOffset = tempFile.length()
 
-                val tailResult = FrameRateUtils.fetchHttpRangeToFile(
-                    url = streamUrl,
-                    headers = emptyMap(),
-                    rangeHeader = tailRange,
-                    maxBytes = tailSizeBytes + 65_536L,
-                    targetFile = tempFile,
-                    fileOffset = compactOffset
-                )
-                if (tailResult.success) {
-                    FrameRateUtils.patchMdatHeaderForCompactMp4(tempFile, compactOffset)
-                    val hasMoovPass2 = FrameRateUtils.hasMoovAtom(tempFile)
-                    println("12MB MOOV TEST: hasMoovPass2=$hasMoovPass2")
-                }
-            }
-        } catch (e: Exception) {
-            println("Probe exception: ${e.message}")
-        } finally {
-            tempFile.delete()
-        }
-    }
 
     @Test
     fun `proves end-to-end AFR probe detection produces 23_976 fps and 4K resolution mapping`() {
@@ -968,6 +915,78 @@ class FrameRateUtilsAfrTest {
         assertEquals(snappedFps, cached!!.snapped, 0.0001f)
         assertEquals(3840, cached.videoWidth)
         assertEquals(2160, cached.videoHeight)
+    }
+
+    @Test
+    fun `findNextBoxOffsetAfterMdat resolves offset for 32-bit mdat size`() {
+        val temp = java.io.File.createTempFile("test_mdat32_", ".tmp")
+        try {
+            val bos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(bos)
+            // ftyp box (32 bytes total)
+            dos.writeInt(32)
+            dos.write("ftyp".toByteArray(Charsets.US_ASCII))
+            dos.write(ByteArray(24)) // payload
+            
+            // mdat box (size 1000)
+            dos.writeInt(1000)
+            dos.write("mdat".toByteArray(Charsets.US_ASCII))
+            
+            temp.writeBytes(bos.toByteArray())
+            
+            val offset = FrameRateUtils.findNextBoxOffsetAfterMdat(temp, 2000L)
+            assertEquals(1032L, offset)
+        } finally {
+            temp.delete()
+        }
+    }
+
+    @Test
+    fun `findNextBoxOffsetAfterMdat resolves offset for 64-bit mdat size`() {
+        val temp = java.io.File.createTempFile("test_mdat64_", ".tmp")
+        try {
+            val bos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(bos)
+            // ftyp box (32 bytes total)
+            dos.writeInt(32)
+            dos.write("ftyp".toByteArray(Charsets.US_ASCII))
+            dos.write(ByteArray(24)) // payload
+            
+            // mdat box (size 1 for 64-bit size, then 5,000,000,000L)
+            dos.writeInt(1)
+            dos.write("mdat".toByteArray(Charsets.US_ASCII))
+            dos.writeLong(5_000_000_000L)
+            
+            temp.writeBytes(bos.toByteArray())
+            
+            val offset = FrameRateUtils.findNextBoxOffsetAfterMdat(temp, 6_000_000_000L)
+            assertEquals(5_000_000_032L, offset)
+        } finally {
+            temp.delete()
+        }
+    }
+
+    @Test
+    fun `findNextBoxOffsetAfterMdat returns null when mdat is absent`() {
+        val temp = java.io.File.createTempFile("test_mdat_absent_", ".tmp")
+        try {
+            val bos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(bos)
+            // ftyp box
+            dos.writeInt(32)
+            dos.write("ftyp".toByteArray(Charsets.US_ASCII))
+            dos.write(ByteArray(24))
+            // free box
+            dos.writeInt(16)
+            dos.write("free".toByteArray(Charsets.US_ASCII))
+            dos.writeInt(0)
+            
+            temp.writeBytes(bos.toByteArray())
+            val offset = FrameRateUtils.findNextBoxOffsetAfterMdat(temp, 1000L)
+            assertNull(offset)
+        } finally {
+            temp.delete()
+        }
     }
 
     @Test

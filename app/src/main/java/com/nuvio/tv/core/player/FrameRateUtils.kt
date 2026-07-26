@@ -509,21 +509,6 @@ object FrameRateUtils {
         return totalStr.toLongOrNull()?.takeIf { it > 0L }
     }
 
-    internal fun calculateAdaptiveMp4TailSize(contentLength: Long): Long {
-        return when {
-            contentLength <= 4_194_304L -> 0L
-            contentLength < 5_000_000_000L -> 8_388_608L // < 5 GB: 8 MB tail
-            contentLength < 30_000_000_000L -> 16_777_216L // 5 - 30 GB: 16 MB tail
-            contentLength < 60_000_000_000L -> 20_971_520L // 30 - 60 GB: 20 MB tail
-            else -> 33_554_432L // >= 60 GB (100GB+ 4K REMUX): 32 MB tail
-        }
-    }
-
-    internal fun calculateMp4TailStart(contentLength: Long, tailSizeBytes: Long = calculateAdaptiveMp4TailSize(contentLength)): Long {
-        if (contentLength <= 4_194_304L) return 0L
-        val effectiveTailSize = if (tailSizeBytes <= 0L) calculateAdaptiveMp4TailSize(contentLength) else tailSizeBytes
-        return (contentLength - effectiveTailSize).coerceAtLeast(4_194_304L)
-    }
 
     internal data class HttpRangeFetchResult(
         val success: Boolean,
@@ -638,7 +623,7 @@ object FrameRateUtils {
         if (isLiveStreamUrl(sourceUrl)) return null
 
         val targetUrl = if (isResolveProxyUrl(sourceUrl)) {
-            extractEmbeddedResolveUrl(sourceUrl)?.takeIf { it.isNotBlank() } ?: sourceUrl
+            extractEmbeddedResolveUrl(sourceUrl)?.takeIf { parseUriScheme(it) == "http" || parseUriScheme(it) == "https" } ?: sourceUrl
         } else {
             sourceUrl
         }
@@ -678,10 +663,23 @@ object FrameRateUtils {
                 val contentLength = headResult.totalContentLength
                     ?: fetchContentLength(targetUrl, headers)
                 if (contentLength > 4_194_304L) {
-                    val tailSizeBytes = calculateAdaptiveMp4TailSize(contentLength)
-                    val tailStart = calculateMp4TailStart(contentLength, tailSizeBytes)
-                    val tailRange = "bytes=$tailStart-${contentLength - 1}"
-                    val tailMaxBytes = tailSizeBytes + 65_536L
+                    val nextBoxOffset = findNextBoxOffsetAfterMdat(tempFile, contentLength) ?: run {
+                        Log.w(TAG, "MP4 box parsing could not resolve mdat end, aborting probe")
+                        return null
+                    }
+                    if (nextBoxOffset >= contentLength) {
+                        Log.w(TAG, "Resolved offset $nextBoxOffset is beyond content length $contentLength, aborting probe")
+                        return null
+                    }
+                    val tailStart = nextBoxOffset
+
+                    val tailSizeBytes = contentLength - tailStart
+                    // Apply a safety limit (e.g. max 128 MB) to prevent excessive network usage
+                    val safeTailSizeBytes = tailSizeBytes.coerceAtMost(134_217_728L)
+                    val tailRange = "bytes=$tailStart-${tailStart + safeTailSizeBytes - 1}"
+                    val tailMaxBytes = safeTailSizeBytes + 65_536L
+
+                    Log.d(TAG, "OkHttp AFR probe Pass 2 fetching range $tailRange (size: $safeTailSizeBytes bytes)")
 
                     // Strategy A: Sparse offset file (Head at 0, Tail at original tailStart)
                     // Preserves exact co64/stco sample chunk offsets for Android Stagefright native MPEG4Extractor.
@@ -727,6 +725,51 @@ object FrameRateUtils {
             runCatching { tempFile.delete() }
         }
         return null
+    }
+
+    /**
+     * Parses top-level MP4 boxes from a local head file to determine the end offset of the 'mdat'
+     * box. This allows pinpointing the start of the next box (typically 'moov') for tail range probing.
+     */
+    internal fun findNextBoxOffsetAfterMdat(file: java.io.File, contentLength: Long): Long? {
+        if (!file.exists() || file.length() < 8) return null
+        return runCatching {
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                val fileLen = raf.length()
+                var pos = 0L
+                while (pos + 8 <= fileLen) {
+                    raf.seek(pos)
+                    val size32 = raf.readInt().toLong() and 0xFFFFFFFFL
+                    val typeBytes = ByteArray(4)
+                    raf.readFully(typeBytes)
+                    val type = String(typeBytes, java.nio.charset.StandardCharsets.US_ASCII)
+
+                    val is64Bit = size32 == 1L
+                    val boxSize = if (is64Bit) {
+                        if (pos + 16 <= fileLen) {
+                            raf.readLong()
+                        } else {
+                            break
+                        }
+                    } else if (size32 == 0L) {
+                        contentLength - pos
+                    } else {
+                        size32
+                    }
+
+                    if (type == "mdat") {
+                        val mdatEnd = pos + boxSize
+                        if (mdatEnd in (pos + 8)..contentLength) {
+                            return@use mdatEnd
+                        }
+                    }
+
+                    if (boxSize <= 0) break
+                    pos += boxSize
+                }
+                null
+            }
+        }.getOrNull()
     }
 
     internal fun fetchHttpRangeToFile(
@@ -1080,8 +1123,15 @@ object FrameRateUtils {
             .substringAfter('/', missingDelimiterValue = "")
         if (nestedEncoded.isBlank()) return null
 
-        return runCatching {
+        val decoded = runCatching {
             URLDecoder.decode(nestedEncoded, StandardCharsets.UTF_8.name())
-        }.getOrNull()
+        }.getOrNull() ?: return null
+
+        if (decoded.startsWith("http://", ignoreCase = true) ||
+            decoded.startsWith("https://", ignoreCase = true)
+        ) {
+            return decoded
+        }
+        return null
     }
 }
