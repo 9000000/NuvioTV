@@ -512,7 +512,9 @@ object FrameRateUtils {
 
     internal data class HttpRangeFetchResult(
         val success: Boolean,
-        val totalContentLength: Long? = null
+        val totalContentLength: Long? = null,
+        /** True only when the server honored Range with HTTP 206. */
+        val rangeSatisfied: Boolean = false
     )
 
     internal fun patchMdatHeaderForCompactMp4(targetFile: java.io.File, moovOffset: Long) {
@@ -566,6 +568,21 @@ object FrameRateUtils {
                 raf.readFully(bytes)
                 (bytes[4] == 0x66.toByte() && bytes[5] == 0x74.toByte() && bytes[6] == 0x79.toByte() && bytes[7] == 0x70.toByte()) ||
                 (bytes[4] == 0x6d.toByte() && bytes[5] == 0x6f.toByte() && bytes[6] == 0x6f.toByte() && bytes[7] == 0x76.toByte())
+            }
+        }.getOrDefault(false)
+    }
+
+    /** EBML / Matroska magic at file start (`1A 45 DF A3`) — used for extensionless MKV detection. */
+    internal fun hasEbmlHeader(file: java.io.File): Boolean {
+        if (!file.exists() || file.length() < 4) return false
+        return runCatching {
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                val bytes = ByteArray(4)
+                raf.readFully(bytes)
+                bytes[0] == 0x1A.toByte() &&
+                    bytes[1] == 0x45.toByte() &&
+                    bytes[2] == 0xDF.toByte() &&
+                    bytes[3] == 0xA3.toByte()
             }
         }.getOrDefault(false)
     }
@@ -642,12 +659,35 @@ object FrameRateUtils {
                 targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
             )
             val isMp4Detected = isMp4Source(targetUrl, mimeType, filename) || hasFtypAtom(tempFile)
+            val isMkvDetected = isMkvSource(targetUrl, mimeType, filename) || hasEbmlHeader(tempFile)
 
             if (headResult.success && tempFile.length() > 0) {
                 // For MP4/MKV files where moov/header is in the first 4MB, probe immediately.
                 // If moov is not in the first 4MB (Legacy MP4), skip local probing to save ~4.5s wasted parsing stall.
+                //
+                // Pass 1 uses a truncated head range only — never run MediaExtractor timestamp
+                // sampling here. Sampling ~350 frames on an incomplete MKV/MP4 can hang for the
+                // full OkHttp preflight budget and starve NextLib/extractor fallbacks (MPV total
+                // AFR await is only ~18s). Declared KEY_FRAME_RATE / NextLib on the head chunk is enough.
+                if (isMkvDetected) {
+                    val mkvDetection = probeMkvFromHeadAndSparseTracks(
+                        context = context,
+                        targetUrl = targetUrl,
+                        headers = headers,
+                        tempFile = tempFile,
+                        rangeSatisfied = headResult.rangeSatisfied
+                    )
+                    if (mkvDetection != null) return mkvDetection
+                    Log.d(TAG, "MKV OkHttp probe exhausted; aborting for full-URL NextLib/extractor fallback")
+                    return null
+                }
+
                 if (!isMp4Detected || hasMoovAtom(tempFile)) {
-                    val detection = detectFrameRateFromLocalFile(context, tempFile)
+                    val detection = detectFrameRateFromLocalFile(
+                        context = context,
+                        file = tempFile,
+                        allowTimestampSampling = false
+                    )
                     if (detection != null) {
                         Log.d(TAG, "OkHttp AFR probe Pass 1 (head 4MB) succeeded: FPS=${detection.snapped}")
                         return detection
@@ -660,6 +700,10 @@ object FrameRateUtils {
             // Pass 2: Sparse File Head (ftyp) + Tail (moov) for Legacy MP4/MOV
             // Writing tail at fileOffset=tailStart via RandomAccessFile preserves exact MP4 atom offsets (stco/co64) without breaking FFmpeg container parser.
             if (isMp4Detected) {
+                if (!headResult.rangeSatisfied) {
+                    Log.w(TAG, "CDN did not satisfy Range (no HTTP 206); skipping MP4 tail probe")
+                    return null
+                }
                 val contentLength = headResult.totalContentLength
                     ?: fetchContentLength(targetUrl, headers)
                 if (contentLength > 4_194_304L) {
@@ -689,7 +733,7 @@ object FrameRateUtils {
                         val tailResultSparse = fetchHttpRangeToFile(
                             targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = tailStart
                         )
-                        if (tailResultSparse.success && tempFile.length() > 0) {
+                        if (tailResultSparse.success && tailResultSparse.rangeSatisfied && tempFile.length() > 0) {
                             val detection = detectFrameRateFromLocalFile(context, tempFile)
                             if (detection != null) {
                                 Log.d(TAG, "OkHttp AFR probe Pass 2 (sparse head+tail file) succeeded for MP4: FPS=${detection.snapped}")
@@ -703,12 +747,12 @@ object FrameRateUtils {
                     val headResultCompact = fetchHttpRangeToFile(
                         targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
                     )
-                    if (headResultCompact.success) {
+                    if (headResultCompact.success && headResultCompact.rangeSatisfied) {
                         val compactOffset = tempFile.length()
                         val tailResultCompact = fetchHttpRangeToFile(
                             targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = compactOffset
                         )
-                        if (tailResultCompact.success && tempFile.length() > 0) {
+                        if (tailResultCompact.success && tailResultCompact.rangeSatisfied && tempFile.length() > 0) {
                             patchMdatHeaderForCompactMp4(tempFile, compactOffset)
                             val detection = detectFrameRateFromLocalFile(context, tempFile)
                             if (detection != null) {
@@ -723,6 +767,122 @@ object FrameRateUtils {
             Log.w(TAG, "OkHttp AFR probe failed: ${e.message}")
         } finally {
             runCatching { tempFile.delete() }
+        }
+        return null
+    }
+
+    /**
+     * MKV OkHttp path:
+     * 1) Truncate torn EBML at the last complete Segment child, probe locally (no sample loop)
+     * 2) If Tracks is missing/incomplete and CDN supports Range, SeekHead-sparse-fetch Tracks
+     */
+    private fun probeMkvFromHeadAndSparseTracks(
+        context: Context,
+        targetUrl: String,
+        headers: Map<String, String>,
+        tempFile: java.io.File,
+        rangeSatisfied: Boolean
+    ): FrameRateDetection? {
+        val layout = MatroskaAfrProbe.analyzeHead(tempFile)
+        if (layout != null) {
+            val before = tempFile.length()
+            val truncated = MatroskaAfrProbe.truncateToSafePrefix(tempFile, layout)
+            if (truncated != null && truncated < before) {
+                Log.d(TAG, "MKV safe EBML truncate: $before -> $truncated bytes")
+            }
+        }
+
+        detectFrameRateFromLocalFile(
+            context = context,
+            file = tempFile,
+            allowTimestampSampling = false
+        )?.let { detection ->
+            Log.d(TAG, "OkHttp AFR MKV Pass 1 (safe head) succeeded: FPS=${detection.snapped}")
+            return detection
+        }
+
+        if (!rangeSatisfied) {
+            Log.w(TAG, "CDN did not satisfy Range (no HTTP 206); skipping MKV Tracks sparse probe")
+            return null
+        }
+
+        val tracksOffset = layout?.tracksAbsoluteOffset
+        if (tracksOffset == null || tracksOffset < 0L) {
+            Log.d(TAG, "MKV SeekHead did not resolve Tracks offset; skipping sparse probe")
+            return null
+        }
+
+        // Tracks already fully in the safe prefix but NextLib still failed — sparse won't help
+        // (likely missing DefaultDuration). Fall through to full-URL fallbacks.
+        if (layout.tracksCompleteInPrefix) {
+            Log.d(TAG, "MKV Tracks already complete in head but FPS not found; skipping sparse probe")
+            return null
+        }
+
+        val usableSpace = runCatching { context.cacheDir.usableSpace }.getOrDefault(0L)
+        if (usableSpace < 50_000_000L) {
+            Log.w(TAG, "Insufficient cache space for MKV sparse Tracks probe")
+            return null
+        }
+
+        // Peek Tracks header to learn exact element size, then fetch the full element (capped).
+        val peekBytes = 64L
+        val peekFile = java.io.File(tempFile.parentFile, "afr_mkv_tracks_peek_${tempFile.name}")
+        try {
+            val peekResult = fetchHttpRangeToFile(
+                url = targetUrl,
+                headers = headers,
+                rangeHeader = "bytes=$tracksOffset-${tracksOffset + peekBytes - 1}",
+                maxBytes = peekBytes,
+                targetFile = peekFile,
+                fileOffset = 0L
+            )
+            if (!peekResult.success || !peekResult.rangeSatisfied || peekFile.length() < 4L) {
+                Log.w(TAG, "MKV Tracks header peek failed")
+                return null
+            }
+            val peekBuf = peekFile.readBytes()
+            val tracksHeader = MatroskaAfrProbe.readElementFromBufferStart(peekBuf, tracksOffset)
+            if (tracksHeader == null || tracksHeader.id != MatroskaAfrProbe.ID_TRACKS || tracksHeader.unknownSize) {
+                Log.w(TAG, "MKV Tracks peek did not yield a sized Tracks element")
+                return null
+            }
+            val tracksTotalSize = tracksHeader.headerSize + tracksHeader.dataSize
+            if (tracksTotalSize <= 0L || tracksTotalSize > MatroskaAfrProbe.MAX_TRACKS_FETCH_BYTES) {
+                Log.w(TAG, "MKV Tracks element size $tracksTotalSize outside probe limits")
+                return null
+            }
+
+            // Ensure safe prefix remains at offset 0; write Tracks at its absolute file offset.
+            if (layout != null && layout.safePrefixLength > 0L && tempFile.length() > layout.safePrefixLength) {
+                MatroskaAfrProbe.truncateToSafePrefix(tempFile, layout)
+            }
+
+            val tracksRange = "bytes=$tracksOffset-${tracksOffset + tracksTotalSize - 1}"
+            Log.d(TAG, "OkHttp AFR MKV Pass 2 fetching Tracks range $tracksRange")
+            val tracksResult = fetchHttpRangeToFile(
+                url = targetUrl,
+                headers = headers,
+                rangeHeader = tracksRange,
+                maxBytes = tracksTotalSize + 4_096L,
+                targetFile = tempFile,
+                fileOffset = tracksOffset
+            )
+            if (!tracksResult.success || !tracksResult.rangeSatisfied) {
+                Log.w(TAG, "MKV Tracks sparse fetch failed")
+                return null
+            }
+
+            detectFrameRateFromLocalFile(
+                context = context,
+                file = tempFile,
+                allowTimestampSampling = false
+            )?.let { detection ->
+                Log.d(TAG, "OkHttp AFR MKV Pass 2 (sparse Tracks) succeeded: FPS=${detection.snapped}")
+                return detection
+            }
+        } finally {
+            runCatching { peekFile.delete() }
         }
         return null
     }
@@ -821,7 +981,8 @@ object FrameRateUtils {
                         }
                         HttpRangeFetchResult(
                             success = totalRead > 0,
-                            totalContentLength = totalLength
+                            totalContentLength = totalLength,
+                            rangeSatisfied = response.code == 206
                         )
                     }
                 }
@@ -860,7 +1021,11 @@ object FrameRateUtils {
         }
     }
 
-    private fun detectFrameRateFromLocalFile(context: Context, file: java.io.File): FrameRateDetection? {
+    private fun detectFrameRateFromLocalFile(
+        context: Context,
+        file: java.io.File,
+        allowTimestampSampling: Boolean = true
+    ): FrameRateDetection? {
         try {
             val uri = Uri.fromFile(file)
             val mediaInfo = MediaInfoBuilder().from(context = context, uri = uri).build()
@@ -886,7 +1051,12 @@ object FrameRateUtils {
             Log.d(TAG, "Local NextLib probe failed: ${e.message}")
         }
 
-        return detectFrameRateWithExtractor(context, file.absolutePath, emptyMap())
+        return detectFrameRateWithExtractor(
+            context = context,
+            sourceUrl = file.absolutePath,
+            headers = emptyMap(),
+            allowTimestampSampling = allowTimestampSampling
+        )
     }
 
     private fun detectFrameRateWithNextLib(
@@ -942,7 +1112,8 @@ object FrameRateUtils {
     private fun detectFrameRateWithExtractor(
         context: Context,
         sourceUrl: String,
-        headers: Map<String, String>
+        headers: Map<String, String>,
+        allowTimestampSampling: Boolean = true
     ): FrameRateDetection? {
         val safeHeaders = headers
         val extractor = MediaExtractor()
@@ -989,6 +1160,10 @@ object FrameRateUtils {
                     videoHeight = detectedVideoHeight
                 )
             }
+
+            // Truncated OkHttp head probes must not enter the sample loop — it can block for seconds
+            // on incomplete MKV/MP4 containers and exhaust the AFR preflight budget.
+            if (!allowTimestampSampling) return null
 
             extractor.selectTrack(videoTrackIndex)
             val timestamps = ArrayList<Long>(400)

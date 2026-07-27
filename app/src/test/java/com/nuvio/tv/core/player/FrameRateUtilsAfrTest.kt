@@ -344,6 +344,22 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
+    fun `hasEbmlHeader detects Matroska magic and rejects MP4 ftyp`() {
+        val ebmlFile = java.io.File.createTempFile("ebml_", ".tmp")
+        val ftypFile = java.io.File.createTempFile("ftyp_", ".tmp")
+        try {
+            ebmlFile.writeBytes(byteArrayOf(0x1A.toByte(), 0x45.toByte(), 0xDF.toByte(), 0xA3.toByte(), 1, 0, 0, 0))
+            ftypFile.writeBytes(byteArrayOf(0, 0, 0, 32, 0x66.toByte(), 0x74.toByte(), 0x79.toByte(), 0x70.toByte(), 0, 0, 0, 0))
+
+            assertTrue("Must detect EBML/Matroska magic", FrameRateUtils.hasEbmlHeader(ebmlFile))
+            assertFalse("Must not treat MP4 ftyp as EBML", FrameRateUtils.hasEbmlHeader(ftypFile))
+        } finally {
+            ebmlFile.delete()
+            ftypFile.delete()
+        }
+    }
+
+    @Test
     fun `isLiveStreamUrl detects mpd and ism manifest`() {
         assertTrue(FrameRateUtils.isLiveStreamUrl("https://x/live.mpd"))
         assertTrue(FrameRateUtils.isLiveStreamUrl("https://x/foo.ism/manifest?x=1"))
