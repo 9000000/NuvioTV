@@ -181,6 +181,9 @@ class SimklTrackingProgressProvider @Inject constructor(
     override fun isHiddenFromProgress(contentId: String): Boolean =
         syncRepository.state.value.snapshot.isHiddenFromContinueWatching(contentId)
 
+    override fun isWatchedByVideoId(videoId: String, episode: Int): Boolean =
+        checkWatchedByVideoId(syncRepository.state.value.snapshot, videoId, episode)
+
     override suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress = progress
 }
 
@@ -271,7 +274,7 @@ private fun isWatchedInSnapshot(
     // 3. Anime video ID resolution: parse anime-specific ID and episode from videoId,
     //    find the corresponding Simkl entry, and check watched status directly.
     if (videoId != null && episode != null) {
-        if (isWatchedByVideoId(snapshot, videoId, episode)) return true
+        if (checkWatchedByVideoId(snapshot, videoId, episode)) return true
     }
 
     return false
@@ -296,7 +299,7 @@ private fun SimklSyncSnapshot.resolveCanonicalContentId(contentId: String): Stri
  * - Split season (multiple MAL per season): "mal:11759:3" → entry mal:11759, episode 3
  * - Franchise parent with child MAL IDs per season
  */
-private fun isWatchedByVideoId(
+internal fun checkWatchedByVideoId(
     snapshot: SimklSyncSnapshot,
     videoId: String,
     episode: Int

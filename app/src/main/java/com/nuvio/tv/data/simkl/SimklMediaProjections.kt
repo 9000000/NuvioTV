@@ -301,18 +301,20 @@ fun TrackingMediaReference.resolveAnimeEpisodeForSimkl(): TrackingMediaReference
     val parsed = parseSimklAnimeVideoId(videoId) ?: return this
     val videoEpisodeNumber = parsed.episodeNumber ?: return this
 
-    // Override IDs: anime-specific ID from videoId takes priority
+    // Override IDs: use ONLY the anime-specific ID from videoId.
+    // Clear all other IDs to prevent Simkl from matching a wrong entry
+    // (e.g. shared anidb/anilist IDs from the enriched parent entry).
     val videoIds = parseTrackingExternalIds("${parsed.prefix}:${parsed.id}")
     val overriddenIds = TrackingExternalIds(
-        imdb = ids.imdb,
-        tmdb = ids.tmdb,
-        tvdb = ids.tvdb,
-        trakt = ids.trakt,
-        simkl = ids.simkl,
-        mal = videoIds.mal ?: ids.mal,
-        anidb = videoIds.anidb ?: ids.anidb,
-        anilist = videoIds.anilist ?: ids.anilist,
-        kitsu = videoIds.kitsu ?: ids.kitsu
+        imdb = null,
+        tmdb = null,
+        tvdb = null,
+        trakt = null,
+        simkl = null,
+        mal = videoIds.mal,
+        anidb = videoIds.anidb,
+        anilist = videoIds.anilist,
+        kitsu = videoIds.kitsu
     )
 
     // Override episode: use absolute number from videoId, drop season

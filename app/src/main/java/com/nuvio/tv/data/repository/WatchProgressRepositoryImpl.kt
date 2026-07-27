@@ -568,6 +568,11 @@ class WatchProgressRepositoryImpl @Inject constructor(
         return activeProgressProvider()?.showIdSiblings().orEmpty()
     }
 
+    override fun isWatchedByVideoId(videoId: String, episode: Int): Boolean {
+        val providerId = activeProgressProviderId ?: return false
+        return trackingProgressProviders.provider(providerId)?.isWatchedByVideoId(videoId, episode) ?: false
+    }
+
     override fun isWatched(contentId: String, videoId: String?, season: Int?, episode: Int?): Flow<Boolean> {
         return activeProgressProviderFlow()
             .flatMapLatest { provider ->
@@ -709,34 +714,35 @@ class WatchProgressRepositoryImpl @Inject constructor(
     override suspend fun removeFromHistoryBatch(
         contentId: String,
         videoId: String?,
-        episodes: List<Pair<Int, Int>>
+        episodes: List<Triple<Int, Int, String?>>
     ) {
         if (episodes.isEmpty()) return
         val profileId = profileManager.activeProfileId.value
-        watchProgressPreferences.removeProgressBatch(contentId, episodes)
-        watchedItemsPreferences.unmarkAsWatchedBatch(contentId, episodes, profileId = profileId)
+        val episodePairs = episodes.map { (season, episode, _) -> season to episode }
+        watchProgressPreferences.removeProgressBatch(contentId, episodePairs)
+        watchedItemsPreferences.unmarkAsWatchedBatch(contentId, episodePairs, profileId = profileId)
         connectedProgressProviders().forEach { provider ->
-            episodes.forEach { (season, episode) ->
+            episodes.forEach { (season, episode, _) ->
                 provider.applyOptimisticRemoval(contentId, season, episode)
             }
         }
-        val media = episodes.map { (season, episode) ->
+        val media = episodes.map { (season, episode, epVideoId) ->
             buildTrackingMediaReference(
                 contentType = "series",
                 parentMetaId = contentId,
-                videoId = videoId,
+                videoId = epVideoId ?: videoId,
                 seasonNumber = season,
                 episodeNumber = episode
             )
         }
         broadcastHistoryRemoval(profileId, media)
-        val remoteDeleteKeys = episodes.map { (season, episode) ->
+        val remoteDeleteKeys = episodes.map { (season, episode, _) ->
             "${contentId}_s${season}e${episode}"
         } + contentId
         if (authManager.isAuthenticated) {
             watchProgressSyncService.deleteFromRemote(remoteDeleteKeys.distinct())
                 .onFailure { error -> Log.w(TAG, "removeFromHistoryBatch remote delete failed", error) }
-            watchedItemsSyncService.deleteFromRemoteBatch(contentId, episodes, profileId = profileId)
+            watchedItemsSyncService.deleteFromRemoteBatch(contentId, episodePairs, profileId = profileId)
                 .onFailure { error ->
                     Log.w(TAG, "removeFromHistoryBatch watched item remote delete failed", error)
                 }
