@@ -142,6 +142,7 @@ class MetaDetailsViewModel @Inject constructor(
      *  updated to [Meta.id] once meta loads (typically an IMDB ID like "tt0396375").
      *  This ensures progress is read from the same key it was written under. */
     private val _effectiveContentId = MutableStateFlow(itemId)
+    private val _optimisticMarks = mutableSetOf<Pair<Int, Int>>()
 
     init {
         posterOptions.bind(viewModelScope)
@@ -491,7 +492,27 @@ class MetaDetailsViewModel @Inject constructor(
         if (itemType.lowercase() == "movie") return
         viewModelScope.launch {
             _effectiveContentId.flatMapLatest { cid ->
-                watchedItemsPreferences.getWatchedEpisodesForContent(cid)
+                combine(
+                    watchedItemsPreferences.getWatchedEpisodesForContent(cid),
+                    watchProgressRepository.getAllEpisodeProgress(cid),
+                    _uiState.map { it.meta?.videos }.distinctUntilChanged(),
+                ) { localWatched, progressMap, videos ->
+                    val fromProgress = progressMap.filterValues { it.isCompleted() }.keys
+                    val merged = (localWatched + fromProgress).toMutableSet()
+                    if (videos.isNullOrEmpty()) return@combine merged
+                    for (video in videos) {
+                        val s = video.season ?: continue
+                        val e = video.episode ?: continue
+                        val key = s to e
+                        val watchedByVideoId = watchProgressRepository.isWatchedByVideoId(video.id, e)
+                        if (watchedByVideoId && key !in merged) {
+                            merged += key
+                        } else if (!watchedByVideoId && key in merged && key !in fromProgress && key !in _optimisticMarks) {
+                            merged -= key
+                        }
+                    }
+                    merged as Set<Pair<Int, Int>>
+                }
             }
                 .distinctUntilChanged()
                 .collectLatest { watchedSet ->
@@ -2087,9 +2108,11 @@ class MetaDetailsViewModel @Inject constructor(
                 || _uiState.value.watchedEpisodes.contains(season to episode)
             runCatching {
                 if (isWatched) {
+                    _optimisticMarks -= season to episode
                     watchProgressRepository.removeFromHistory(_effectiveContentId.value, videoId = video.id, season = season, episode = episode)
                     showMessage(localizedContext.getString(R.string.detail_episode_marked_unwatched))
                 } else {
+                    _optimisticMarks += season to episode
                     watchProgressRepository.markAsCompleted(buildCompletedEpisodeProgress(meta, video))
                     showMessage(localizedContext.getString(R.string.detail_episode_marked_watched))
                 }
@@ -2191,11 +2214,11 @@ class MetaDetailsViewModel @Inject constructor(
             }
 
             runCatching {
-                val episodePairs = watched.map { it.season!! to it.episode!! }
+                val episodeTriples = watched.map { Triple(it.season!!, it.episode!!, it.id) }
                 watchProgressRepository.removeFromHistoryBatch(
                     contentId = _effectiveContentId.value,
                     videoId = resolveFallbackVideoId(),
-                    episodes = episodePairs
+                    episodes = episodeTriples
                 )
             }.onFailure { error ->
                 Log.w(TAG, "Failed to batch unmark season $season: ${error.message}")

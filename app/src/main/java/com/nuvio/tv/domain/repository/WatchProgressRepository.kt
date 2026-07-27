@@ -82,6 +82,8 @@ interface WatchProgressRepository {
      */
     suspend fun getShowIdSiblings(): Map<String, Set<String>>
 
+    fun isWatchedByVideoId(videoId: String, episode: Int): Boolean = false
+
     /**
      * Save or update watch progress
      */
@@ -113,7 +115,7 @@ interface WatchProgressRepository {
     suspend fun removeFromHistoryBatch(
         contentId: String,
         videoId: String?,
-        episodes: List<Pair<Int, Int>>
+        episodes: List<Triple<Int, Int, String?>>
     )
     
     /**

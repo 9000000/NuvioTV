@@ -492,11 +492,10 @@ class PosterOptionsController @Inject constructor(
             return
         }
 
-        val episodePairs = episodes.map { it.season!! to it.episode!! }
         watchProgressRepository.removeFromHistoryBatch(
             contentId = item.id,
             videoId = item.imdbId,
-            episodes = episodePairs
+            episodes = episodes.map { Triple(it.season!!, it.episode!!, it.id) }
         )
     }
 
