@@ -299,6 +299,8 @@ class PlayerRuntimeController(
     internal var hidePlayerEngineSwitchInfoJob: Job? = null
     internal var hideSubtitleDelayOverlayJob: Job? = null
     internal var subtitleAutoSyncLoadJob: Job? = null
+    /** Cancels previous TEXT-track bounce jobs when subtitle delay is adjusted repeatedly. */
+    internal var subtitleTimingRefreshJob: Job? = null
     internal var nextEpisodeAutoPlayJob: Job? = null
     internal var debridResolveJob: Job? = null
     internal var stillWatchingPromptJob: Job? = null
