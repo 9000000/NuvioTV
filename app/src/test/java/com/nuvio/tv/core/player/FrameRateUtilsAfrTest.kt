@@ -1006,6 +1006,63 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
+    fun `walkMp4BoxesForMdatEnd asks for peek when large free exceeds local head`() {
+        val temp = java.io.File.createTempFile("test_large_free_", ".tmp")
+        try {
+            val bos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(bos)
+            // ftyp (32)
+            dos.writeInt(32)
+            dos.write("ftyp".toByteArray(Charsets.US_ASCII))
+            dos.write(ByteArray(24))
+            // free header only — declared size 5_472_748, payload not present locally
+            val freeSize = 5_472_748
+            dos.writeInt(freeSize)
+            dos.write("free".toByteArray(Charsets.US_ASCII))
+            temp.writeBytes(bos.toByteArray())
+
+            val contentLength = 10_912_513_112L
+            val walk = FrameRateUtils.walkMp4BoxesForMdatEnd(temp, contentLength)
+            assertTrue(walk is FrameRateUtils.Mp4MdatWalkResult.NeedHeaderAt)
+            assertEquals(32L + freeSize, (walk as FrameRateUtils.Mp4MdatWalkResult.NeedHeaderAt).offset)
+        } finally {
+            temp.delete()
+        }
+    }
+
+    @Test
+    fun `walkMp4BoxesForMdatEnd resolves 64-bit mdat after peeked header past large free`() {
+        val temp = java.io.File.createTempFile("test_free_then_mdat_", ".tmp")
+        try {
+            val freeSize = 5_472_748L
+            val freeEnd = 32L + freeSize
+            val mdatSize = 10_902_184_788L
+            val contentLength = freeEnd + mdatSize
+
+            java.io.RandomAccessFile(temp, "rw").use { raf ->
+                // ftyp
+                raf.writeInt(32)
+                raf.write("ftyp".toByteArray(Charsets.US_ASCII))
+                raf.write(ByteArray(24))
+                // free header only
+                raf.writeInt(freeSize.toInt())
+                raf.write("free".toByteArray(Charsets.US_ASCII))
+                // Simulate remote header peek written at freeEnd
+                raf.seek(freeEnd)
+                raf.writeInt(1) // 64-bit size marker
+                raf.write("mdat".toByteArray(Charsets.US_ASCII))
+                raf.writeLong(mdatSize)
+            }
+
+            val walk = FrameRateUtils.walkMp4BoxesForMdatEnd(temp, contentLength)
+            assertTrue(walk is FrameRateUtils.Mp4MdatWalkResult.Found)
+            assertEquals(freeEnd + mdatSize, (walk as FrameRateUtils.Mp4MdatWalkResult.Found).mdatEnd)
+        } finally {
+            temp.delete()
+        }
+    }
+
+    @Test
     fun `hasMoovAtom detects moov presence accurately`() {
         val fileWithMoov = java.io.File.createTempFile("moov_present_", ".tmp")
         val fileWithoutMoov = java.io.File.createTempFile("moov_absent_", ".tmp")

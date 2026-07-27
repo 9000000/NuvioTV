@@ -707,12 +707,14 @@ object FrameRateUtils {
                 val contentLength = headResult.totalContentLength
                     ?: fetchContentLength(targetUrl, headers)
                 if (contentLength > 4_194_304L) {
-                    val nextBoxOffset = findNextBoxOffsetAfterMdat(tempFile, contentLength) ?: run {
+                    val nextBoxOffset = resolveMp4TailStartAfterMdat(
+                        targetUrl = targetUrl,
+                        headers = headers,
+                        tempFile = tempFile,
+                        contentLength = contentLength
+                    )
+                    if (nextBoxOffset == null || nextBoxOffset >= contentLength) {
                         Log.w(TAG, "MP4 box parsing could not resolve mdat end, aborting probe")
-                        return null
-                    }
-                    if (nextBoxOffset >= contentLength) {
-                        Log.w(TAG, "Resolved offset $nextBoxOffset is beyond content length $contentLength, aborting probe")
                         return null
                     }
                     val tailStart = nextBoxOffset
@@ -888,48 +890,141 @@ object FrameRateUtils {
     }
 
     /**
-     * Parses top-level MP4 boxes from a local head file to determine the end offset of the 'mdat'
-     * box. This allows pinpointing the start of the next box (typically 'moov') for tail range probing.
+     * Result of walking top-level MP4 boxes looking for the end of 'mdat'.
+     * [NeedHeaderAt] means the next box header lies past the bytes currently present in the
+     * local probe file (common when a large 'free'/'uuid' precedes 'mdat' and exceeds the
+     * 4 MB head window) — caller should Range-peek ~64 bytes at [offset] and resume.
      */
-    internal fun findNextBoxOffsetAfterMdat(file: java.io.File, contentLength: Long): Long? {
-        if (!file.exists() || file.length() < 8) return null
+    internal sealed class Mp4MdatWalkResult {
+        data class Found(val mdatEnd: Long) : Mp4MdatWalkResult()
+        data class NeedHeaderAt(val offset: Long) : Mp4MdatWalkResult()
+        data object Failed : Mp4MdatWalkResult()
+    }
+
+    /**
+     * Resolves the byte offset where the box after 'mdat' begins (typically 'moov').
+     * Continues past non-mdat boxes whose payload is not in the local head by header-only skip,
+     * peeking remote headers when needed.
+     */
+    private fun resolveMp4TailStartAfterMdat(
+        targetUrl: String,
+        headers: Map<String, String>,
+        tempFile: java.io.File,
+        contentLength: Long
+    ): Long? {
+        var startPos = 0L
+        repeat(12) {
+            when (val walk = walkMp4BoxesForMdatEnd(tempFile, contentLength, startPos)) {
+                is Mp4MdatWalkResult.Found -> {
+                    Log.d(TAG, "MP4 mdat end resolved at ${walk.mdatEnd}")
+                    return walk.mdatEnd
+                }
+                is Mp4MdatWalkResult.Failed -> {
+                    Log.w(TAG, "MP4 box walk failed to resolve mdat end")
+                    return null
+                }
+                is Mp4MdatWalkResult.NeedHeaderAt -> {
+                    val peekAt = walk.offset
+                    if (peekAt < 0L || peekAt >= contentLength) return null
+                    val peekLen = 64L
+                    val peekEnd = minOf(peekAt + peekLen - 1L, contentLength - 1L)
+                    Log.d(TAG, "MP4 box walk needs header peek at $peekAt")
+                    val peekResult = fetchHttpRangeToFile(
+                        url = targetUrl,
+                        headers = headers,
+                        rangeHeader = "bytes=$peekAt-$peekEnd",
+                        maxBytes = peekLen,
+                        targetFile = tempFile,
+                        fileOffset = peekAt
+                    )
+                    if (!peekResult.success || !peekResult.rangeSatisfied) {
+                        Log.w(TAG, "MP4 header peek failed at $peekAt")
+                        return null
+                    }
+                    startPos = peekAt
+                }
+            }
+        }
+        Log.w(TAG, "MP4 box walk exceeded peek budget without resolving mdat end")
+        return null
+    }
+
+    /**
+     * Parses top-level MP4 boxes to find the end offset of 'mdat'.
+     * Non-mdat boxes may be skipped using only their header size even when the payload is not
+     * present locally (e.g. multi-MB 'free' padding larger than the 4 MB head window).
+     */
+    internal fun walkMp4BoxesForMdatEnd(
+        file: java.io.File,
+        contentLength: Long,
+        startPos: Long = 0L
+    ): Mp4MdatWalkResult {
+        if (!file.exists() || contentLength <= 0L) return Mp4MdatWalkResult.Failed
         return runCatching {
             java.io.RandomAccessFile(file, "r").use { raf ->
                 val fileLen = raf.length()
-                var pos = 0L
-                while (pos + 8 <= fileLen) {
+                var pos = startPos.coerceAtLeast(0L)
+                repeat(64) {
+                    if (pos >= contentLength) return@use Mp4MdatWalkResult.Failed
+                    if (pos + 8L > fileLen) return@use Mp4MdatWalkResult.NeedHeaderAt(pos)
+
                     raf.seek(pos)
                     val size32 = raf.readInt().toLong() and 0xFFFFFFFFL
                     val typeBytes = ByteArray(4)
                     raf.readFully(typeBytes)
                     val type = String(typeBytes, java.nio.charset.StandardCharsets.US_ASCII)
 
-                    val is64Bit = size32 == 1L
-                    val boxSize = if (is64Bit) {
-                        if (pos + 16 <= fileLen) {
-                            raf.readLong()
-                        } else {
-                            break
+                    val headerSize: Int
+                    val boxSize: Long
+                    when {
+                        size32 == 1L -> {
+                            if (pos + 16L > fileLen) return@use Mp4MdatWalkResult.NeedHeaderAt(pos)
+                            val size64 = raf.readLong()
+                            headerSize = 16
+                            boxSize = size64
                         }
-                    } else if (size32 == 0L) {
-                        contentLength - pos
-                    } else {
-                        size32
+                        size32 == 0L -> {
+                            headerSize = 8
+                            boxSize = contentLength - pos
+                        }
+                        else -> {
+                            headerSize = 8
+                            boxSize = size32
+                        }
                     }
+
+                    if (boxSize < headerSize.toLong()) return@use Mp4MdatWalkResult.Failed
 
                     if (type == "mdat") {
                         val mdatEnd = pos + boxSize
-                        if (mdatEnd in (pos + 8)..contentLength) {
-                            return@use mdatEnd
+                        return@use if (mdatEnd in (pos + headerSize.toLong())..contentLength) {
+                            Mp4MdatWalkResult.Found(mdatEnd)
+                        } else {
+                            Mp4MdatWalkResult.Failed
                         }
                     }
 
-                    if (boxSize <= 0) break
+                    // Header-only skip: payload need not be present in the local probe file.
                     pos += boxSize
+                    if (pos < contentLength && pos + 8L > fileLen) {
+                        return@use Mp4MdatWalkResult.NeedHeaderAt(pos)
+                    }
                 }
-                null
+                Mp4MdatWalkResult.Failed
             }
-        }.getOrNull()
+        }.getOrDefault(Mp4MdatWalkResult.Failed)
+    }
+
+    /**
+     * Parses top-level MP4 boxes from a local head file to determine the end offset of the 'mdat'
+     * box. This allows pinpointing the start of the next box (typically 'moov') for tail range probing.
+     * Returns null when the mdat header is not present locally (use [walkMp4BoxesForMdatEnd] + peek).
+     */
+    internal fun findNextBoxOffsetAfterMdat(file: java.io.File, contentLength: Long): Long? {
+        return when (val walk = walkMp4BoxesForMdatEnd(file, contentLength)) {
+            is Mp4MdatWalkResult.Found -> walk.mdatEnd
+            else -> null
+        }
     }
 
     internal fun fetchHttpRangeToFile(
