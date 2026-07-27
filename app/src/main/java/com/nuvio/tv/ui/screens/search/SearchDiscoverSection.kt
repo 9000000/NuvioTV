@@ -294,6 +294,16 @@ private fun DiscoverDropdownPicker(
     var isFocused by remember { mutableStateOf(false) }
     var anchorSize by remember { mutableStateOf(IntSize.Zero) }
     var focusedOptionValue by remember(expanded) { mutableStateOf<String?>(null) }
+    val selectedItemFocusRequester = remember { FocusRequester() }
+
+    // When the dropdown opens, request focus on the currently selected item
+    // so the user can navigate from the correct position (#2507).
+    LaunchedEffect(expanded) {
+        if (expanded && selectedValue != null) {
+            kotlinx.coroutines.delay(50)
+            try { selectedItemFocusRequester.requestFocus() } catch (_: Exception) {}
+        }
+    }
 
     Box(modifier = modifier) {
         Card(
@@ -392,6 +402,7 @@ private fun DiscoverDropdownPicker(
 
                 DropdownMenuItem(
                     modifier = Modifier
+                        .then(if (isSelected) Modifier.focusRequester(selectedItemFocusRequester) else Modifier)
                         .padding(horizontal = 6.dp, vertical = NuvioTheme.spacing.xxs)
                         .background(
                             color = itemBackgroundColor,

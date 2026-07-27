@@ -118,6 +118,7 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
+import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
@@ -240,6 +241,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authManager: AuthManager
+
+    @Inject
+    lateinit var deviceSessionRegistration: DeviceSessionRegistration
 
     @Inject
     lateinit var authSessionNoticeDataStore: AuthSessionNoticeDataStore
@@ -900,7 +904,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
-        startupSyncService.requestForegroundSync()
+        lifecycleScope.launch {
+            authManager.validateCurrentSessionIfAuthenticated()
+            deviceSessionRegistration.requestForegroundRegistration()
+            startupSyncService.requestForegroundSync()
+        }
         lifecycleScope.launch {
             val refreshIntent = if (isFirstResumeAfterCreate) {
                 isFirstResumeAfterCreate = false

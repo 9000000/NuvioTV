@@ -622,7 +622,12 @@ private var cachedDateFormatPattern: String? = null
 internal fun extractYearText(type: ContentType, releaseInfo: String?, released: String?, showFullDate: Boolean = true): String? {
     if (showFullDate && type == ContentType.MOVIE) {
         val full = released
-            ?.let { runCatching { java.time.OffsetDateTime.parse(it).toLocalDate() }.getOrNull() }
+            ?.let {
+                // Try OffsetDateTime first (addon format: "2024-03-15T00:00:00.000Z"),
+                // then LocalDate (TMDB collection format: "2024-03-15"). (#2516)
+                runCatching { java.time.OffsetDateTime.parse(it).toLocalDate() }.getOrNull()
+                    ?: runCatching { java.time.LocalDate.parse(it) }.getOrNull()
+            }
             ?.let {
                 val locale = java.util.Locale.getDefault()
                 val pattern = if (locale == cachedDateFormatLocale && cachedDateFormatPattern != null) {

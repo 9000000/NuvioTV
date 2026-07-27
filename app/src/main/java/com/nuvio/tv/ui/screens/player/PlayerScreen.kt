@@ -156,6 +156,7 @@ fun PlayerScreen(
     var restoreStreamInfoFocus by remember { mutableStateOf(false) }
     val nextEpisodeFocusRequester = remember { FocusRequester() }
     var subtitleDelayAutoSyncFocused by remember { mutableStateOf(false) }
+    val subtitleDelaySyncLineFocusRequester = remember { FocusRequester() }
     var subtitleTimingConsumeNextConfirmKeyUp by remember { mutableStateOf(false) }
     var reportCodeVisible by remember { mutableStateOf(false) }
     var exitDispatched by remember { mutableStateOf(false) }
@@ -837,7 +838,11 @@ fun PlayerScreen(
             onFocused = { viewModel.scheduleHideControls() },
             focusRequester = skipIntroFocusRequester,
             downFocusRequester = if (uiState.showControls) progressBarFocusRequester else null,
-            upFocusRequester = null,
+            upFocusRequester = if (uiState.showSubtitleDelayOverlay || uiState.showSubtitleTimingDialog) {
+                subtitleDelaySyncLineFocusRequester
+            } else {
+                null
+            },
             onHideControls = {
                 if (uiState.showControls) viewModel.hideControls()
                 else viewModel.onEvent(PlayerEvent.OnToggleControls)
@@ -1067,6 +1072,8 @@ fun PlayerScreen(
                 subtitleDelayMs = uiState.subtitleDelayMs,
                 isAutoSyncButtonFocused = subtitleDelayAutoSyncFocused,
                 isSliderFocused = !subtitleDelayAutoSyncFocused,
+                syncLineFocusRequester = subtitleDelaySyncLineFocusRequester,
+                onSyncLineFocused = { subtitleDelayAutoSyncFocused = true },
                 onOpenSyncByLine = {
                     subtitleDelayAutoSyncFocused = false
                     subtitleTimingConsumeNextConfirmKeyUp = true
@@ -2517,7 +2524,9 @@ private fun SubtitleDelayOverlay(
     subtitleDelayMs: Int,
     isAutoSyncButtonFocused: Boolean,
     isSliderFocused: Boolean,
-    onOpenSyncByLine: () -> Unit
+    onOpenSyncByLine: () -> Unit,
+    syncLineFocusRequester: FocusRequester,
+    onSyncLineFocused: () -> Unit = {}
 ) {
     val fraction = ((subtitleDelayMs - SUBTITLE_DELAY_MIN_MS).toFloat() /
         (SUBTITLE_DELAY_MAX_MS - SUBTITLE_DELAY_MIN_MS).toFloat()).coerceIn(0f, 1f)
@@ -2597,6 +2606,13 @@ private fun SubtitleDelayOverlay(
 
         Card(
             onClick = onOpenSyncByLine,
+            modifier = Modifier
+                .focusRequester(syncLineFocusRequester)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        onSyncLineFocused()
+                    }
+                },
             colors = CardDefaults.colors(
                 containerColor = if (isAutoSyncButtonFocused) {
                     Color.White.copy(alpha = 0.22f)
