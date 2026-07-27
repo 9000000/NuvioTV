@@ -638,7 +638,13 @@ internal fun extractYearText(type: ContentType, releaseInfo: String?, released: 
                         cachedDateFormatLocale = locale
                     }
                 }
-                java.time.format.DateTimeFormatter.ofPattern(pattern, locale).format(it)
+                // Use SimpleDateFormat (not DateTimeFormatter) to match the Details
+                // page formatting. DateTimeFormatter.ofPattern interprets MMMM as
+                // the standalone month form in some locales (e.g. Polish "czerwiec"
+                // instead of the genitive "czerwca" used in full dates), while
+                // SimpleDateFormat uses the inflected form expected in date context.
+                java.text.SimpleDateFormat(pattern, locale)
+                    .format(java.util.Date(it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()))
             }
         if (full != null) return full
     }
