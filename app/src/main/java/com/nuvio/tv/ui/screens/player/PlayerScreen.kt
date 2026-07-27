@@ -2714,6 +2714,7 @@ private fun ErrorOverlay(
     onBack: () -> Unit
 ) {
     val exitFocusRequester = remember { FocusRequester() }
+    val reportFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         exitFocusRequester.requestFocus()
@@ -2779,14 +2780,25 @@ private fun ErrorOverlay(
                         onClick = onReport,
                         isPrimary = false,
                         enabled = reportStatus != PlaybackIssueReportStatus.Sending &&
-                            reportStatus != PlaybackIssueReportStatus.Sent
+                            reportStatus != PlaybackIssueReportStatus.Sent,
+                        modifier = Modifier
+                            .focusRequester(reportFocusRequester)
+                            .focusProperties { right = exitFocusRequester }
                     )
                 }
                 DialogButton(
                     text = stringResource(R.string.player_go_back),
                     onClick = onBack,
                     isPrimary = true,
-                    modifier = Modifier.focusRequester(exitFocusRequester)
+                    modifier = Modifier
+                        .focusRequester(exitFocusRequester)
+                        .then(
+                            if (showReportAction) {
+                                Modifier.focusProperties { left = reportFocusRequester }
+                            } else {
+                                Modifier
+                            }
+                        )
                 )
             }
         }
