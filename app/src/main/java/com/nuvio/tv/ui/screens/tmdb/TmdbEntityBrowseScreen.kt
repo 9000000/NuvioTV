@@ -92,6 +92,8 @@ fun TmdbEntityBrowseScreen(
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val watchedMovieIds by viewModel.watchedMovieIds.collectAsStateWithLifecycle()
+    val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsStateWithLifecycle()
     val screenMode = when (uiState) {
         TmdbEntityBrowseUiState.Loading -> 0
         is TmdbEntityBrowseUiState.Error -> 1
@@ -129,6 +131,8 @@ fun TmdbEntityBrowseScreen(
                     TmdbEntityBrowseContent(
                         data = successState.data,
                         sourceType = viewModel.sourceType,
+                        watchedMovieIds = watchedMovieIds,
+                        watchedSeriesIds = watchedSeriesIds,
                         onNavigateToDetail = onNavigateToDetail,
                         onItemLongPress = { item ->
                             viewModel.posterOptions.show(item, null)
@@ -157,6 +161,8 @@ fun TmdbEntityBrowseScreen(
 private fun TmdbEntityBrowseContent(
     data: TmdbEntityBrowseData,
     sourceType: String,
+    watchedMovieIds: Set<String>,
+    watchedSeriesIds: Set<String>,
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
     onLoadMoreRail: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit
@@ -265,6 +271,8 @@ private fun TmdbEntityBrowseContent(
                                     )
                                 },
                                 posterCardStyle = posterCardStyle,
+                                watchedMovieIds = watchedMovieIds,
+                                watchedSeriesIds = watchedSeriesIds,
                                 restoreItemId = pendingRestoreItemId,
                                 restoreFocusToken = restoreFocusToken,
                                 onInitialFocusHandled = { initialFocusRequested = true },
@@ -426,6 +434,8 @@ private fun EntityRailRow(
     rememberedFocusedIndex: Int,
     rowListState: LazyListState,
     posterCardStyle: PosterCardStyle,
+    watchedMovieIds: Set<String>,
+    watchedSeriesIds: Set<String>,
     restoreItemId: String?,
     restoreFocusToken: Int,
     onInitialFocusHandled: () -> Unit,
@@ -545,6 +555,11 @@ private fun EntityRailRow(
                     onLongPress = { onItemLongPress(item) },
                     posterCardStyle = posterCardStyle,
                     showLabel = true,
+                    isWatched = if (rail.mediaType == TmdbEntityMediaType.TV) {
+                        item.id in watchedSeriesIds
+                    } else {
+                        item.id in watchedMovieIds
+                    },
                     focusRequester = requester,
                     onFocused = {
                         onFocusedItemIndexChanged(itemIndex)
