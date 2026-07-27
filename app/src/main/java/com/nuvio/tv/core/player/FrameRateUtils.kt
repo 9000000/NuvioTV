@@ -442,13 +442,78 @@ object FrameRateUtils {
     private val probeHttpClient by lazy {
         com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking.playbackHttpClient.newBuilder()
             .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-            .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(14, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
             .build()
+    }
+
+    /** Tiny Range used only to pay cold debrid/CDN TTFB before the real head/tail probe. */
+    internal const val AFR_CDN_WARMUP_MAX_BYTES = 262_144L // 256 KiB
+
+    /**
+     * Issues a small `bytes=0-(N-1)` GET so TLS + debrid origin spin-up happen on a cheap
+     * request. The following 4 MB head / moov tail then reuse the warmed connection pool.
+     * Failures are ignored — warmup is best-effort.
+     */
+    internal fun warmHttpOriginForAfrProbe(
+        url: String,
+        headers: Map<String, String>
+    ): Boolean {
+        val scheme = parseUriScheme(url)
+        if (scheme != "http" && scheme != "https") return false
+
+        val requestBuilder = okhttp3.Request.Builder()
+            .url(url)
+            .header("Range", "bytes=0-${AFR_CDN_WARMUP_MAX_BYTES - 1}")
+
+        if (headers.none { it.key.equals("User-Agent", ignoreCase = true) }) {
+            requestBuilder.header(
+                "User-Agent",
+                com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactory.DEFAULT_USER_AGENT
+            )
+        }
+        headers.forEach { (k, v) ->
+            if (v.isNotBlank() && !k.equals("Range", ignoreCase = true)) {
+                requestBuilder.header(k, v)
+            }
+        }
+
+        val call = probeHttpClient.newCall(requestBuilder.build())
+        return try {
+            call.execute().use { response ->
+                if (response.code != 206 && response.code != 200) {
+                    Log.d(TAG, "AFR CDN warmup skipped (HTTP ${response.code})")
+                    return false
+                }
+                val body = response.body ?: return false
+                body.byteStream().use { input ->
+                    val buffer = ByteArray(8192)
+                    var total = 0L
+                    while (total < AFR_CDN_WARMUP_MAX_BYTES) {
+                        val read = input.read(
+                            buffer,
+                            0,
+                            minOf(buffer.size.toLong(), AFR_CDN_WARMUP_MAX_BYTES - total).toInt()
+                        )
+                        if (read <= 0) break
+                        total += read
+                    }
+                    val warmed = total > 0L
+                    if (warmed) {
+                        Log.d(TAG, "AFR CDN warmup drained ${total}B (rangeSatisfied=${response.code == 206})")
+                    }
+                    warmed
+                }
+            }
+        } catch (e: Exception) {
+            call.cancel()
+            Log.d(TAG, "AFR CDN warmup failed: ${e.message}")
+            false
+        }
     }
 
     fun detectFrameRateFromSource(
@@ -653,7 +718,11 @@ object FrameRateUtils {
         }
 
         try {
-            // Pass 1: Head Range Probe & Debrid Server Warmup (first 4 MB - bytes=0-4194303)
+            // Pay cold debrid/CDN TTFB on a tiny Range so the real 4 MB head + moov/Tracks tail
+            // run on a warmed origin/connection instead of racing the preflight budget.
+            warmHttpOriginForAfrProbe(targetUrl, headers)
+
+            // Pass 1: Head Range Probe (first 4 MB - bytes=0-4194303)
             val headMaxBytes = 4_194_304L + 65_536L
             val headResult = fetchHttpRangeToFile(
                 targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L

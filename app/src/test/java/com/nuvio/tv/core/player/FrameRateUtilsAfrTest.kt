@@ -344,6 +344,22 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
+    fun `warmHttpOriginForAfrProbe rejects non-http schemes without network`() {
+        assertFalse(
+            FrameRateUtils.warmHttpOriginForAfrProbe(
+                "file:///storage/emulated/0/movie.mkv",
+                emptyMap()
+            )
+        )
+        assertFalse(
+            FrameRateUtils.warmHttpOriginForAfrProbe(
+                "content://media/external/video/media/1",
+                emptyMap()
+            )
+        )
+    }
+
+    @Test
     fun `hasEbmlHeader detects Matroska magic and rejects MP4 ftyp`() {
         val ebmlFile = java.io.File.createTempFile("ebml_", ".tmp")
         val ftypFile = java.io.File.createTempFile("ftyp_", ".tmp")
