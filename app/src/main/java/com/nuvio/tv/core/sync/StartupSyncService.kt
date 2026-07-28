@@ -5,7 +5,6 @@ import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.plugin.PluginManager
 import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.data.local.LibraryPreferences
 import com.nuvio.tv.data.local.StartupSyncPreferences
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.WatchProgressPreferences
@@ -52,7 +51,6 @@ class StartupSyncService @Inject constructor(
     private val traktAuthDataStore: TraktAuthDataStore,
     private val traktSettingsDataStore: com.nuvio.tv.data.local.TraktSettingsDataStore,
     private val watchProgressPreferences: WatchProgressPreferences,
-    private val libraryPreferences: LibraryPreferences,
     private val profileManager: ProfileManager,
     private val startupSyncPreferences: StartupSyncPreferences,
     private val cwEnrichmentCache: com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
@@ -538,11 +536,13 @@ class StartupSyncService @Inject constructor(
                 if (!isTraktLibrary) {
                     libraryRepository.isSyncingFromRemote = true
                     try {
-                        val remoteLibraryItems = librarySyncService.pullFromRemote().getOrElse { throw it }
-                        Log.d(TAG, "Pulled ${remoteLibraryItems.size} library items from remote")
-                        libraryPreferences.mergeRemoteItems(remoteLibraryItems)
+                        val result = librarySyncService.syncFromRemote(profileId).getOrElse { throw it }
                         libraryRepository.hasCompletedInitialPull = true
-                        Log.d(TAG, "Reconciled local library with ${remoteLibraryItems.size} remote items")
+                        Log.d(
+                            TAG,
+                            "Library sync completed profile=$profileId snapshot=${result.usedSnapshot} " +
+                                "upserts=${result.appliedUpserts} deletes=${result.appliedDeletes}"
+                        )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to pull library, continuing with other syncs", e)
                         libraryRepository.hasCompletedInitialPull = true
@@ -635,10 +635,13 @@ class StartupSyncService @Inject constructor(
 
         libraryRepository.isSyncingFromRemote = true
         try {
-            val remoteLibraryItems = librarySyncService.pullFromRemote().getOrElse { throw it }
-            libraryPreferences.mergeRemoteItems(remoteLibraryItems)
+            val result = librarySyncService.syncFromRemote(profileId).getOrElse { throw it }
             libraryRepository.hasCompletedInitialPull = true
-            Log.d(TAG, "Realtime library pull reconciled ${remoteLibraryItems.size} items for profile $profileId")
+            Log.d(
+                TAG,
+                "Library delta pull completed profile=$profileId snapshot=${result.usedSnapshot} " +
+                    "upserts=${result.appliedUpserts} deletes=${result.appliedDeletes}"
+            )
         } catch (e: Exception) {
             libraryRepository.hasCompletedInitialPull = true
             Log.e(TAG, "Realtime library pull failed profile=$profileId", e)

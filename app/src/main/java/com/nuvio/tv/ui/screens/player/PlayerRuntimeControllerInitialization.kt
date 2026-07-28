@@ -2,14 +2,15 @@ package com.nuvio.tv.ui.screens.player
 
 import android.content.Context
 import android.content.res.Resources
+import android.graphics.RectF
+import android.media.MediaFormat
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.os.Build
-import android.util.Log
-import android.view.accessibility.CaptioningManager
-import android.media.MediaFormat
 import android.os.Handler
 import android.os.SystemClock
+import android.util.Log
+import android.view.accessibility.CaptioningManager
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -57,6 +58,8 @@ import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.extractor.ts.TsExtractor
 import androidx.media3.session.MediaSession
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.nuvio.tv.R
 import com.nuvio.tv.core.player.DolbyVisionCodecFallback
 import com.nuvio.tv.core.player.DolbyVisionBaseLayerPolicy
@@ -367,7 +370,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                     selfTest = DoviBridge.SelfTestResult(false, "not-run", 0, 0)
                 )
             }
-            isExperimentalDv7ToDv81ActiveForCurrentPlayback = dv7ToDv81SettingActive && dv7ToDv81Probe.supported
+            // A stream that previously failed with conversion armed is forced to the HEVC
+            // base layer via dv7ToHevcForcedStreamUrls; that override must also disarm the
+            // conversion/extractor path, otherwise the retry rebuilds the exact same broken
+            // pipeline (stock extractor + no vendored MKV path) and fails identically.
+            val dv7ConversionDisarmedForUrl = dv7ToHevcForcedStreamUrls.contains(url)
+            isExperimentalDv7ToDv81ActiveForCurrentPlayback =
+                dv7ToDv81SettingActive && dv7ToDv81Probe.supported && !dv7ConversionDisarmedForUrl
             // AUTO fallback: if AUTO chose DV81 but the probe failed for this stream,
             // downgrade to HDR10_BASE_LAYER so the user still gets a picture.
             if (playerSettings.dv7HandlingMode == Dv7HandlingMode.AUTO &&
@@ -773,6 +782,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                 isBuiltInSubtitleProvider = {
                     _uiState.value.selectedAddonSubtitle == null
                 },
+                videoBoundsFractionProvider = {
+                    val pv = exoPlayerView
+                    if (pv != null) pv.videoBoundsFraction(videoAspectRatio) else null
+                },
                 gainAudioProcessor = gainAudioProcessor,
                 downmixEnabled = playerSettings.downmixEnabled,
                 audioOutputChannels = playerSettings.audioOutputChannels,
@@ -1151,9 +1164,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                             tryShowParentalGuide()
                             emitScrobbleStart()
                         } else {
-                            if (!isInBackground) {
-                                userPausedManually = true
-                            }
                             if (userPausedManually) schedulePauseOverlay() else cancelPauseOverlay()
                             if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                                 stopProgressUpdates()
@@ -1263,6 +1273,48 @@ internal fun PlayerRuntimeController.initializePlayer(
                             return
                         }
 
+                        // DV conversion armed for this stream but the player hit a
+                        // FAILED_RUNTIME_CHECK (8000): the converted bitstream trips a
+                        // renderer/extractor assertion before the codec ever reports a
+                        // decoding failure. That is a video-path failure, so take the same
+                        // fallback ladder as a DV decoder failure instead of burning the
+                        // audio fallbacks (safe-audio/audio-disabled) on it — they rebuild
+                        // the player with the same broken conversion and fail identically.
+                        if (error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK &&
+                            (isExperimentalDv7ToDv81ActiveForCurrentPlayback ||
+                                isManualDv81Mode2ActiveForCurrentPlayback) &&
+                            !isMapDv7ToHevcActiveForCurrentPlayback
+                        ) {
+                            if (isManualDv81Mode2ActiveForCurrentPlayback &&
+                                !dv7Mode1ForcedStreamUrls.contains(currentStreamUrl)
+                            ) {
+                                dv7Mode1ForcedStreamUrls.add(currentStreamUrl)
+                                Log.i(
+                                    PlayerRuntimeController.TAG,
+                                    "DV7_MODE2_RUNTIME_CHECK_FALLBACK: mode 2 hit FAILED_RUNTIME_CHECK; " +
+                                            "retrying stream at mode 1 host=${currentStreamUrl.safeHost()}"
+                                )
+                                retryCurrentStreamWithDv7Mode1Fallback(currentPosition)
+                                return
+                            }
+                            if (isExperimentalDv7ToDv81ActiveForCurrentPlayback &&
+                                !hasAttemptedDv7ToDv81ForCurrentPlayback
+                            ) {
+                                hasAttemptedDv7ToDv81ForCurrentPlayback = true
+                                val probe = DoviBridge.probeRealtimeConversionSupport(currentStreamUrl)
+                                dv7ToDv81LastProbeReasonForCurrentPlayback = probe.reason
+                                dv7ToDv81BridgeVersionForCurrentPlayback = probe.bridgeVersion
+                            }
+                            Log.i(
+                                PlayerRuntimeController.TAG,
+                                "DV_RUNTIME_CHECK_FALLBACK: FAILED_RUNTIME_CHECK with DV conversion active; " +
+                                        "forcing HDR10 base layer for host=${currentStreamUrl.safeHost()}"
+                            )
+                            dv7ToHevcForcedStreamUrls.add(currentStreamUrl)
+                            retryCurrentStreamWithDolbyVisionFallback(currentPosition)
+                            return
+                        }
+
                         if ((error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
                              error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK) &&
                             !autoSwitchInternalPlayerOnErrorEnabled) {
@@ -1329,7 +1381,7 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                         val responseCode = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
                         if (responseCode == 416 && !hasRetriedCurrentStreamAfter416) {
-                            retryCurrentStreamFromStartAfter416()
+                            retryCurrentStreamFromStartAfter416(currentPosition)
                             return
                         }
 
@@ -1921,6 +1973,7 @@ private class SubtitleOffsetRenderersFactory(
     private val audioDelayUsProvider: () -> Long,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
     private val isBuiltInSubtitleProvider: () -> Boolean,
+    private val videoBoundsFractionProvider: () -> RectF?,
     private val gainAudioProcessor: GainAudioProcessor,
     private val downmixEnabled: Boolean,
     private val audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
@@ -2001,7 +2054,8 @@ private class SubtitleOffsetRenderersFactory(
         val normalizingOutput = CueNormalizingTextOutput(
             delegate = output,
             shouldNormalizeCuePositionProvider = shouldNormalizeCuePositionProvider,
-            isBuiltInSubtitleProvider = isBuiltInSubtitleProvider
+            isBuiltInSubtitleProvider = isBuiltInSubtitleProvider,
+            videoBoundsFractionProvider = videoBoundsFractionProvider
         )
         val startIndex = out.size
         super.buildTextRenderers(context, normalizingOutput, outputLooper, extensionRendererMode, out)
@@ -2049,26 +2103,53 @@ private fun FfmpegAudioRenderer.applyDownmixSettings(
 private class CueNormalizingTextOutput(
     private val delegate: TextOutput,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
-    private val isBuiltInSubtitleProvider: () -> Boolean
+    private val isBuiltInSubtitleProvider: () -> Boolean,
+    private val videoBoundsFractionProvider: () -> RectF?
 ) : TextOutput {
 
     override fun onCues(cueGroup: CueGroup) {
-        val processed = cueGroup.cues.map { cue ->
-            var c = fixRtlCueText(cue)
-            if (shouldNormalizeCuePositionProvider()) c = normalizeCuePosition(c)
-            c
-        }
+        val processed = cueGroup.cues.map(::processCue)
         delegate.onCues(CueGroup(processed, cueGroup.presentationTimeUs))
     }
 
     @Deprecated("Uses the deprecated Media3 callback for text outputs.")
     override fun onCues(cues: List<Cue>) {
-        val processed = cues.map { cue ->
-            var c = fixRtlCueText(cue)
-            if (shouldNormalizeCuePositionProvider()) c = normalizeCuePosition(c)
-            c
+        delegate.onCues(cues.map(::processCue))
+    }
+
+    private fun processCue(cue: Cue): Cue {
+        var processed = fixRtlCueText(cue)
+        if (shouldNormalizeCuePositionProvider()) {
+            processed = normalizeCuePosition(processed)
         }
-        delegate.onCues(processed)
+        if (processed.bitmap != null) {
+            val bounds = videoBoundsFractionProvider()
+            if (bounds != null && bounds.width() > 0f && bounds.height() > 0f) {
+                val isIdentity = bounds.left == 0f && bounds.top == 0f
+                    && bounds.width() == 1f && bounds.height() == 1f
+                if (!isIdentity) {
+                    processed = remapBitmapCueToVideoBounds(processed, bounds)
+                }
+            }
+        }
+        return processed
+    }
+
+    private fun remapBitmapCueToVideoBounds(cue: Cue, bounds: RectF): Cue {
+        val builder = cue.buildUpon()
+        if (cue.position != Cue.DIMEN_UNSET) {
+            builder.setPosition(bounds.left + cue.position * bounds.width())
+        }
+        if (cue.size != Cue.DIMEN_UNSET) {
+            builder.setSize(cue.size * bounds.width())
+        }
+        if (cue.lineType == Cue.LINE_TYPE_FRACTION && cue.line != Cue.DIMEN_UNSET) {
+            builder.setLine(bounds.top + cue.line * bounds.height(), Cue.LINE_TYPE_FRACTION)
+        }
+        if (cue.bitmapHeight != Cue.DIMEN_UNSET) {
+            builder.setBitmapHeight(cue.bitmapHeight * bounds.height())
+        }
+        return builder.build()
     }
 
     private fun normalizeCuePosition(cue: Cue): Cue {
@@ -2686,4 +2767,42 @@ private fun PlayerRuntimeController.recordFirstFrameDiagnostics(
         }
     }
     return finalDiagnostics
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun PlayerView.videoBoundsFraction(aspectRatio: Float): RectF? {
+    val subtitleView = this.subtitleView ?: return null
+    val viewWidth = subtitleView.width.toFloat()
+    val viewHeight = subtitleView.height.toFloat()
+    if (viewWidth <= 0f || viewHeight <= 0f) return null
+
+    if (aspectRatio > 0f) {
+        val parentRatio = viewWidth / viewHeight
+        return if (parentRatio > aspectRatio) {
+            val fitW = viewHeight * aspectRatio
+            val leftPx = (viewWidth - fitW) / 2f
+            RectF(leftPx / viewWidth, 0f, (leftPx + fitW) / viewWidth, 1f)
+        } else {
+            val fitH = viewWidth / aspectRatio
+            val topPx = (viewHeight - fitH) / 2f
+            RectF(0f, topPx / viewHeight, 1f, (topPx + fitH) / viewHeight)
+        }
+    }
+
+    val contentFrame = getTag(androidx.media3.ui.R.id.exo_content_frame) as? AspectRatioFrameLayout
+        ?: findViewById<AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
+            ?.also { setTag(androidx.media3.ui.R.id.exo_content_frame, it) }
+        ?: return null
+    val frameWidth = contentFrame.width.toFloat()
+    val frameHeight = contentFrame.height.toFloat()
+    if (frameWidth <= 0f || frameHeight <= 0f) return null
+    if (frameWidth > viewWidth || frameHeight > viewHeight) return null
+    val left = contentFrame.x / viewWidth
+    val top = contentFrame.y / viewHeight
+    return RectF(
+        left,
+        top,
+        left + frameWidth / viewWidth,
+        top + frameHeight / viewHeight,
+    )
 }

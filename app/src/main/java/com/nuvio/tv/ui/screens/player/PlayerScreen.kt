@@ -97,6 +97,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Border
@@ -156,6 +157,7 @@ fun PlayerScreen(
     var restoreStreamInfoFocus by remember { mutableStateOf(false) }
     val nextEpisodeFocusRequester = remember { FocusRequester() }
     var subtitleDelayAutoSyncFocused by remember { mutableStateOf(false) }
+    val subtitleDelaySyncLineFocusRequester = remember { FocusRequester() }
     var subtitleTimingConsumeNextConfirmKeyUp by remember { mutableStateOf(false) }
     var reportCodeVisible by remember { mutableStateOf(false) }
     var exitDispatched by remember { mutableStateOf(false) }
@@ -334,10 +336,9 @@ fun PlayerScreen(
                 Lifecycle.Event.ON_PAUSE -> {
                     viewModel.pauseForLifecycle()
                 }
-                Lifecycle.Event.ON_STOP -> {
-                    viewModel.stopForLifecycle()
-                }
                 Lifecycle.Event.ON_RESUME -> {
+                    // Re-create the MediaSession so media controls work in foreground.
+                    // Don't auto-resume playback — let the user press play.
                     viewModel.resumeForLifecycle()
                 }
                 else -> {}
@@ -705,6 +706,7 @@ fun PlayerScreen(
             viewModel.exoPlayer?.let { player ->
                 ExoPlayerSurface(
                     player = player,
+                    controller = viewModel.controller,
                     isPlaying = uiState.isPlaying,
                     isBuffering = uiState.isBuffering,
                     aspectMode = uiState.aspectMode,
@@ -837,7 +839,11 @@ fun PlayerScreen(
             onFocused = { viewModel.scheduleHideControls() },
             focusRequester = skipIntroFocusRequester,
             downFocusRequester = if (uiState.showControls) progressBarFocusRequester else null,
-            upFocusRequester = null,
+            upFocusRequester = if (uiState.showSubtitleDelayOverlay || uiState.showSubtitleTimingDialog) {
+                subtitleDelaySyncLineFocusRequester
+            } else {
+                null
+            },
             onHideControls = {
                 if (uiState.showControls) viewModel.hideControls()
                 else viewModel.onEvent(PlayerEvent.OnToggleControls)
@@ -1067,6 +1073,8 @@ fun PlayerScreen(
                 subtitleDelayMs = uiState.subtitleDelayMs,
                 isAutoSyncButtonFocused = subtitleDelayAutoSyncFocused,
                 isSliderFocused = !subtitleDelayAutoSyncFocused,
+                syncLineFocusRequester = subtitleDelaySyncLineFocusRequester,
+                onSyncLineFocused = { subtitleDelayAutoSyncFocused = true },
                 onOpenSyncByLine = {
                     subtitleDelayAutoSyncFocused = false
                     subtitleTimingConsumeNextConfirmKeyUp = true
@@ -1359,6 +1367,7 @@ private fun MpvPlayerSurface(
 @Composable
 private fun ExoPlayerSurface(
     player: ExoPlayer,
+    controller: PlayerRuntimeController,
     isPlaying: Boolean,
     isBuffering: Boolean,
     aspectMode: AspectMode,
@@ -1369,6 +1378,7 @@ private fun ExoPlayerSurface(
 ) {
     val context = LocalContext.current
     val latestAspectMode by rememberUpdatedState(aspectMode)
+    val latestSubtitleStyle by rememberUpdatedState(subtitleStyle)
     val playerView = remember(context, player) {
         PlayerView(context).apply {
             useController = false
@@ -1403,46 +1413,45 @@ private fun ExoPlayerSurface(
         }
     }
 
+    DisposableEffect(playerView) {
+        controller.exoPlayerView = playerView
+        onDispose {
+            if (controller.exoPlayerView === playerView) {
+                controller.exoPlayerView = null
+            }
+        }
+    }
+
     DisposableEffect(player, playerView) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                controller.videoAspectRatio = if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoSize.width.toFloat() * videoSize.pixelWidthHeightRatio / videoSize.height.toFloat()
+                } else {
+                    0f
+                }
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = videoSize.width,
-                        videoHeight = videoSize.height,
-                        frameRate = fps
-                    )
                 }
             }
 
             override fun onRenderedFirstFrame() {
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val size = player.videoSize
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = size.width,
-                        videoHeight = size.height,
-                        frameRate = fps
-                    )
+                }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                // Re-apply subtitle style when tracks change so style is applied
+                // even when subtitles are enabled after initial player setup.
+                playerView.post {
+                    playerView.applySubtitleStyleIfNeeded(latestSubtitleStyle)
                 }
             }
         }
         player.addListener(listener)
         playerView.post {
             playerView.applyExoAspectMode(latestAspectMode)
-            val size = player.videoSize
-            val fps = player.videoFormat?.frameRate ?: 0f
-            configureHardwareSurfaceOverlay(
-                playerView = playerView,
-                videoWidth = size.width,
-                videoHeight = size.height,
-                frameRate = fps
-            )
         }
         onDispose {
             player.removeListener(listener)
@@ -1502,8 +1511,14 @@ private fun PlayerView.applySubtitleStyleIfNeeded(subtitleStyle: SubtitleStyleSe
     if (getTag(R.id.player_view_subtitle_style_tag) == subtitleStyle) {
         return
     }
+    val subView = subtitleView
+    if (subView == null) {
+        // SubtitleView not yet available (no track selected yet). Don't set the
+        // tag so that when subtitles become active the style is re-applied.
+        return
+    }
     setTag(R.id.player_view_subtitle_style_tag, subtitleStyle)
-    subtitleView?.apply {
+    subView.apply {
         val baseFontSize = 24f
         val scaledFontSize = baseFontSize * (subtitleStyle.size / 100f)
         setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, scaledFontSize)
@@ -2517,7 +2532,9 @@ private fun SubtitleDelayOverlay(
     subtitleDelayMs: Int,
     isAutoSyncButtonFocused: Boolean,
     isSliderFocused: Boolean,
-    onOpenSyncByLine: () -> Unit
+    onOpenSyncByLine: () -> Unit,
+    syncLineFocusRequester: FocusRequester,
+    onSyncLineFocused: () -> Unit = {}
 ) {
     val fraction = ((subtitleDelayMs - SUBTITLE_DELAY_MIN_MS).toFloat() /
         (SUBTITLE_DELAY_MAX_MS - SUBTITLE_DELAY_MIN_MS).toFloat()).coerceIn(0f, 1f)
@@ -2597,6 +2614,13 @@ private fun SubtitleDelayOverlay(
 
         Card(
             onClick = onOpenSyncByLine,
+            modifier = Modifier
+                .focusRequester(syncLineFocusRequester)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        onSyncLineFocused()
+                    }
+                },
             colors = CardDefaults.colors(
                 containerColor = if (isAutoSyncButtonFocused) {
                     Color.White.copy(alpha = 0.22f)
@@ -2698,6 +2722,7 @@ private fun ErrorOverlay(
     onBack: () -> Unit
 ) {
     val exitFocusRequester = remember { FocusRequester() }
+    val reportFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         exitFocusRequester.requestFocus()
@@ -2763,14 +2788,25 @@ private fun ErrorOverlay(
                         onClick = onReport,
                         isPrimary = false,
                         enabled = reportStatus != PlaybackIssueReportStatus.Sending &&
-                            reportStatus != PlaybackIssueReportStatus.Sent
+                            reportStatus != PlaybackIssueReportStatus.Sent,
+                        modifier = Modifier
+                            .focusRequester(reportFocusRequester)
+                            .focusProperties { right = exitFocusRequester }
                     )
                 }
                 DialogButton(
                     text = stringResource(R.string.player_go_back),
                     onClick = onBack,
                     isPrimary = true,
-                    modifier = Modifier.focusRequester(exitFocusRequester)
+                    modifier = Modifier
+                        .focusRequester(exitFocusRequester)
+                        .then(
+                            if (showReportAction) {
+                                Modifier.focusProperties { left = reportFocusRequester }
+                            } else {
+                                Modifier
+                            }
+                        )
                 )
             }
         }

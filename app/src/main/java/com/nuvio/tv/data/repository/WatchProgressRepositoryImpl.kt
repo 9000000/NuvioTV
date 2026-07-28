@@ -726,6 +726,9 @@ class WatchProgressRepositoryImpl @Inject constructor(
                 if (syncRemote && authManager.isAuthenticated) {
                     triggerWatchedItemsSync(listOf(watchedItem), profileId = profileId)
                 }
+                // Emit optimistic continue-watching update so the next episode
+                // appears on the home screen without requiring manual playback.
+                optimisticContinueWatchingUpdates.tryEmit(progress)
             }
             // Mirror to Nuvio Sync so data is ready if user switches source later.
             if (syncRemote && authManager.isAuthenticated) {
@@ -755,6 +758,9 @@ class WatchProgressRepositoryImpl @Inject constructor(
             if (syncRemote && authManager.isAuthenticated) {
                 triggerWatchedItemsSync(listOf(watchedItem), profileId = profileId)
             }
+            // Emit optimistic continue-watching update so the next episode
+            // appears on the home screen without requiring manual playback.
+            optimisticContinueWatchingUpdates.tryEmit(progress)
         }
     }
 

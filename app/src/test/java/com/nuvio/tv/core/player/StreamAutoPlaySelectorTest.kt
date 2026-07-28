@@ -178,7 +178,9 @@ class StreamAutoPlaySelectorTest {
     }
 
     @Test
-    fun `manual mode remains manual even with matching bingeGroup`() {
+    fun `manual mode auto-selects matching bingeGroup when prefer enabled`() {
+        // Binge-group continuity is intentionally allowed in MANUAL mode so
+        // next-episode / resume can skip the picker when a group was locked in.
         val matched = stream(
             addonName = "AddonA",
             url = "https://example.com/match.m3u8",
@@ -197,7 +199,7 @@ class StreamAutoPlaySelectorTest {
             preferBingeGroupInSelection = true
         )
 
-        assertNull(selected)
+        assertEquals(matched, selected)
     }
 
     @Test

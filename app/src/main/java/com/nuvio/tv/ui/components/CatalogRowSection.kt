@@ -307,6 +307,7 @@ fun CatalogRowSection(
                 ) { FocusRequester() }
 
                 val isPlaceholder = item.id.startsWith("__placeholder_")
+                val isNonFirstPlaceholder = isPlaceholder && index > 0
                 val onItemClickStable = remember(item.id, catalogRow.addonBaseUrl) {
                     { if (!isPlaceholder) latestOnItemClick(item.id, item.apiType, catalogRow.addonBaseUrl) }
                 }
@@ -342,6 +343,10 @@ fun CatalogRowSection(
                     onLongPress = onItemLongPressStable,
                     modifier = Modifier
                         .then(directionalFocusModifier)
+                        .then(
+                            if (isNonFirstPlaceholder) Modifier.focusProperties { canFocus = false }
+                            else Modifier
+                        )
                         .then(
                             if (isEntryTarget) Modifier.focusRequester(entryFocusRequester!!) else Modifier
                         ),
