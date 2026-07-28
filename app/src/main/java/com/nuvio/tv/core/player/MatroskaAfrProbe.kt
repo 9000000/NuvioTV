@@ -3,13 +3,7 @@ package com.nuvio.tv.core.player
 import java.io.File
 import java.io.RandomAccessFile
 
-/**
- * Lightweight EBML helpers for AFR OkHttp probing of Matroska/WebM.
- *
- * Supports:
- * - Safe prefix truncation (drop a trailing incomplete top-level element)
- * - SeekHead → Tracks absolute offset resolution for sparse range fetches
- */
+/** Lightweight EBML helpers for AFR OkHttp probing of Matroska/WebM. */
 internal object MatroskaAfrProbe {
 
     const val ID_EBML = 0x1A45DFA3L
@@ -20,6 +14,7 @@ internal object MatroskaAfrProbe {
     const val ID_SEEK_POSITION = 0x53ACL
     const val ID_INFO = 0x1549A966L
     const val ID_TRACKS = 0x1654AE6BL
+    const val ID_ATTACHMENTS = 0x1941A469L
     const val ID_CLUSTER = 0x1F43B675L
 
     /** Max Tracks element we will pull for a sparse AFR probe. */
@@ -43,15 +38,20 @@ internal object MatroskaAfrProbe {
     data class MatroskaHeadLayout(
         /** Byte offset where Segment element payload begins. */
         val segmentDataOffset: Long,
-        /**
-         * Longest prefix of [headBytes]/file] that ends on a complete EBML element boundary.
-         * Suitable to feed NextLib without a torn element at EOF.
-         */
+        /** Longest prefix of file ending on a complete EBML element boundary. */
         val safePrefixLength: Long,
-        /** Absolute file offset of the Tracks element, if SeekHead (or inline scan) found it. */
+        /** Absolute file offset of Tracks element. */
         val tracksAbsoluteOffset: Long?,
-        /** True when a complete Tracks element is fully contained in the safe prefix. */
-        val tracksCompleteInPrefix: Boolean
+        /** True when a complete Tracks element is in the safe prefix. */
+        val tracksCompleteInPrefix: Boolean,
+        /** True when safe prefix already contains a complete Cluster. */
+        val clusterInPrefix: Boolean = false,
+        /** Offset of Segment size VINT, or -1 if unparsed. */
+        val segmentSizeVintOffset: Long = -1L,
+        /** Width of Segment size VINT for in-place rewrites. */
+        val segmentSizeVintLength: Int = 0,
+        /** True when Segment declares an unknown size. */
+        val segmentUnknownSize: Boolean = false
     )
 
     data class Vint(
@@ -104,10 +104,12 @@ internal object MatroskaAfrProbe {
         }
 
         val segmentDataOffset = segment.dataOffset
+        val segmentIdLength = elementIdBytes(ID_SEGMENT).size
         var pos = segmentDataOffset
         var safePrefix = segmentDataOffset
         var tracksAbsoluteOffset: Long? = null
         var tracksCompleteInPrefix = false
+        var clusterInPrefix = false
         val segmentEnd = segment.endExclusiveOrNull()?.coerceAtMost(limit) ?: limit
 
         while (pos < segmentEnd && pos < limit) {
@@ -140,6 +142,7 @@ internal object MatroskaAfrProbe {
                     tracksAbsoluteOffset = child.offset
                     tracksCompleteInPrefix = true
                 }
+                ID_CLUSTER -> clusterInPrefix = true
             }
             pos = childEnd
         }
@@ -148,14 +151,15 @@ internal object MatroskaAfrProbe {
             segmentDataOffset = segmentDataOffset,
             safePrefixLength = safePrefix,
             tracksAbsoluteOffset = tracksAbsoluteOffset,
-            tracksCompleteInPrefix = tracksCompleteInPrefix
+            tracksCompleteInPrefix = tracksCompleteInPrefix,
+            clusterInPrefix = clusterInPrefix,
+            segmentSizeVintOffset = segment.offset + segmentIdLength,
+            segmentSizeVintLength = segment.headerSize - segmentIdLength,
+            segmentUnknownSize = segment.unknownSize
         )
     }
 
-    /**
-     * Truncates [file] to [MatroskaHeadLayout.safePrefixLength] when the file currently ends
-     * mid-element. Returns the applied prefix length, or null when no truncation was needed/possible.
-     */
+    /** Truncates [file] to safe prefix boundary, or null if unneeded/failed. */
     fun truncateToSafePrefix(file: File, layout: MatroskaHeadLayout? = null): Long? {
         val resolved = layout ?: analyzeHead(file) ?: return null
         val prefix = resolved.safePrefixLength
@@ -169,9 +173,45 @@ internal object MatroskaAfrProbe {
     }
 
     /**
-     * Reads an EBML element header at [absoluteOffset] from [bytes] (bytes are relative to offset 0
-     * of the buffer, which must start at [absoluteOffset] in the file — i.e. buffer[0] is file[absoluteOffset]).
+     * Appends an empty Cluster stub and updates Segment size so demuxers publish tracks
+     * from a head that ends before the first real Cluster.
      */
+    fun appendStubClusterForHeadProbe(
+        file: File,
+        layout: MatroskaHeadLayout,
+        contentEnd: Long = file.length()
+    ): Long? {
+        if (layout.segmentSizeVintOffset < 0L) return null
+        if (contentEnd <= layout.segmentDataOffset) return null
+
+        val stub = buildElement(ID_CLUSTER, ByteArray(0))
+        val newLength = contentEnd + stub.size
+        // A known-size Segment declaring the full remote length would still run past EOF.
+        val patchedSize = if (layout.segmentUnknownSize) {
+            null
+        } else {
+            encodeSizeVintFixedWidth(
+                value = newLength - layout.segmentDataOffset,
+                length = layout.segmentSizeVintLength
+            ) ?: return null
+        }
+
+        return runCatching {
+            RandomAccessFile(file, "rw").use { raf ->
+                if (contentEnd > raf.length()) return@use null
+                raf.setLength(contentEnd)
+                raf.seek(contentEnd)
+                raf.write(stub)
+                if (patchedSize != null) {
+                    raf.seek(layout.segmentSizeVintOffset)
+                    raf.write(patchedSize)
+                }
+                newLength
+            }
+        }.getOrNull()
+    }
+
+    /** Reads an EBML element header at [absoluteOffset] from [bytes]. */
     fun readElementFromBufferStart(bytes: ByteArray, absoluteOffset: Long): EbmlElement? {
         val relative = readElement(bytes, 0L) ?: return null
         return relative.copy(offset = absoluteOffset)
@@ -274,10 +314,7 @@ internal object MatroskaAfrProbe {
         return value
     }
 
-    /**
-     * Writes a size VINT (with length mask) for [value] using the smallest width that fits.
-     * Skips the all-ones "unknown size" pattern.
-     */
+    /** Writes a size VINT for [value] using the smallest fitting width. */
     fun encodeSizeVint(value: Long): ByteArray {
         require(value >= 0L)
         for (length in 1..8) {
@@ -298,10 +335,25 @@ internal object MatroskaAfrProbe {
         error("value too large for EBML vint: $value")
     }
 
-    /**
-     * Matroska Element ID constants (e.g. [ID_TRACKS]) are already the on-wire octets including
-     * the VINT length mask. Emit them big-endian at their natural width (do not truncate).
-     */
+    /** Writes a fixed-width size VINT for [value] using [length] bytes, or null if invalid or doesn't fit. */
+    fun encodeSizeVintFixedWidth(value: Long, length: Int): ByteArray? {
+        if (value < 0L || length !in 1..8) return null
+        val dataBits = 7 * length
+        val max = if (dataBits >= 63) Long.MAX_VALUE else (1L shl dataBits) - 1L
+        if (value > max) return null
+        if (isUnknownSize(value, length)) return null
+
+        val out = ByteArray(length)
+        var v = value
+        for (i in length - 1 downTo 0) {
+            out[i] = (v and 0xFFL).toByte()
+            v = v ushr 8
+        }
+        out[0] = (out[0].toInt() or VINT_LENGTH_MASKS[length - 1].toInt()).toByte()
+        return out
+    }
+
+    /** Converts element ID to big-endian byte array. */
     fun elementIdBytes(id: Long): ByteArray {
         require(id > 0L) { "invalid EBML element id: $id" }
         val width = when {

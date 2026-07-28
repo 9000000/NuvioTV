@@ -861,6 +861,20 @@ object FrameRateUtils {
             if (truncated != null && truncated < before) {
                 Log.d(TAG, "MKV safe EBML truncate: $before -> $truncated bytes")
             }
+            // Attachment-heavy releases push the first Cluster tens of MB in, far past the head
+            // window, and a Cluster-less head makes demuxers discard the Tracks they just parsed.
+            if (truncated != null && layout.tracksCompleteInPrefix && !layout.clusterInPrefix) {
+                val patched = MatroskaAfrProbe.appendStubClusterForHeadProbe(
+                    file = tempFile,
+                    layout = layout,
+                    contentEnd = truncated
+                )
+                if (patched != null) {
+                    Log.d(TAG, "MKV head has no Cluster; appended stub Cluster (length=$patched)")
+                } else {
+                    Log.w(TAG, "MKV head has no Cluster and stub Cluster patch failed")
+                }
+            }
         }
 
         detectFrameRateFromLocalFile(
