@@ -134,10 +134,10 @@ class SimklMutationServiceTest {
     }
 
     @Test
-    fun `service reports partial not found and duplicate stop as committed`() = runBlocking {
+    fun `service reports partial not found and duplicate stop as scrobbled`() = runBlocking {
         val engine = RecordingEngine(
             response(201, """{"added":{"movies":[{"to":"completed"}]},"not_found":{"movies":[{"title":"Missing"}],"shows":[]}}"""),
-            response(409)
+            response(409, """{"watched_at":"2026-05-14T23:46:29Z","expires_at":"2026-05-15T00:46:29Z"}""")
         )
         var now = 0L
         var committed = 0
@@ -156,7 +156,7 @@ class SimklMutationServiceTest {
             listOf(movie(), movie().copy(title = "Missing", ids = TrackingExternalIds())),
             TrackingListStatus.PLAN_TO_WATCH
         )
-        testedService.scrobble(
+        val scrobbleResult = testedService.scrobble(
             TrackingScrobbleAction.STOP,
             TrackingScrobbleEvent(movie(), 90.0)
         )
@@ -166,7 +166,9 @@ class SimklMutationServiceTest {
         assertEquals(listOf(TrackingListStatus.COMPLETED), result.resolvedListStatuses)
         assertFalse(result.isComplete)
         assertEquals(listOf("/sync/add-to-list", "/scrobble/stop"), engine.paths)
-        assertEquals(2, committed)
+        assertEquals(SimklScrobbleOutcome.SCROBBLE, scrobbleResult.outcome)
+        assertEquals("2026-05-14T23:46:29Z", scrobbleResult.watchedAt)
+        assertEquals(1, committed)
     }
 
     @Test
@@ -208,13 +210,38 @@ class SimklMutationServiceTest {
         var committed = 0
         val service = SimklMutationService(client(engine)) { committed += 1 }
 
-        service.scrobble(
+        val result = service.scrobble(
             TrackingScrobbleAction.PAUSE,
             TrackingScrobbleEvent(movie(), 45.0)
         )
 
         assertEquals(listOf("/scrobble/pause"), engine.paths)
-        assertEquals(1, committed)
+        assertEquals(SimklScrobbleOutcome.PAUSE, result.outcome)
+        assertEquals(45.0, result.progress, 0.0)
+        assertEquals(0, committed)
+    }
+
+    @Test
+    fun `low progress stop returns a paused playback without invalidating sync`() = runBlocking {
+        val engine = RecordingEngine(
+            response(
+                201,
+                """{"id":42,"action":"pause","progress":30,"movie":{"title":"Terminator 3: Rise of the Machines","year":2003,"ids":{"simkl":53536}}}"""
+            )
+        )
+        var committed = 0
+        val service = SimklMutationService(client(engine)) { committed += 1 }
+
+        val result = service.scrobble(
+            TrackingScrobbleAction.STOP,
+            TrackingScrobbleEvent(movie(), 30.0)
+        )
+
+        assertEquals(listOf("/scrobble/stop"), engine.paths)
+        assertEquals(SimklScrobbleOutcome.PAUSE, result.outcome)
+        assertEquals(42L, result.playbackId)
+        assertEquals(30.0, result.progress, 0.0)
+        assertEquals(0, committed)
     }
 
     @Test
