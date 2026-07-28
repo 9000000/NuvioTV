@@ -3,6 +3,7 @@ package com.nuvio.tv.data.repository
 import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.LibrarySyncService
 import com.nuvio.tv.data.local.LibraryPreferences
 import com.nuvio.tv.data.local.TraktAuthDataStore
@@ -48,6 +49,7 @@ class LibraryRepositoryImpl @Inject constructor(
     private val librarySyncService: LibrarySyncService,
     private val authManager: AuthManager,
     private val metaRepository: MetaRepository,
+    private val profileManager: ProfileManager,
 ) : LibraryRepository {
 
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -57,17 +59,16 @@ class LibraryRepositoryImpl @Inject constructor(
     var isSyncingFromRemote: Boolean
         get() = _isSyncingFromRemote.value
         set(value) { _isSyncingFromRemote.value = value }
+    @Volatile
     var hasCompletedInitialPull = false
 
-    private fun triggerRemoteSync() {
-        // Skip if already syncing from remote, initial pull not complete, or not authenticated
-        if (isSyncingFromRemote) return
+    private fun triggerRemoteSync(profileId: Int) {
         if (!hasCompletedInitialPull) return
         if (!authManager.isAuthenticated) return
         syncJob?.cancel()
         syncJob = syncScope.launch {
             delay(500)
-            librarySyncService.pushToRemote()
+            librarySyncService.pushToRemote(profileId)
         }
     }
 
@@ -163,19 +164,35 @@ class LibraryRepositoryImpl @Inject constructor(
             return
         }
 
-        // Otherwise save to local Nuvio library (syncs to Supabase)
-        val isInLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
+        val profileId = profileManager.activeProfileId.value
+        val isInLocal = libraryPreferences.containsItem(
+            itemId = item.itemId,
+            itemType = item.itemType,
+            profileId = profileId
+        )
         if (isInLocal) {
-            libraryPreferences.removeItem(itemId = item.itemId, itemType = item.itemType)
+            libraryPreferences.removeItem(
+                itemId = item.itemId,
+                itemType = item.itemType,
+                profileId = profileId
+            )
         } else {
-            libraryPreferences.addItem(item.toSavedLibraryItem())
+            libraryPreferences.addItem(
+                item = item.toSavedLibraryItem(),
+                profileId = profileId
+            )
         }
-        triggerRemoteSync()
+        triggerRemoteSync(profileId)
     }
 
     override suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot {
         val isTraktAuth = traktAuthDataStore.isEffectivelyAuthenticated.first()
-        val inLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
+        val profileId = profileManager.activeProfileId.value
+        val inLocal = libraryPreferences.containsItem(
+            itemId = item.itemId,
+            itemType = item.itemType,
+            profileId = profileId
+        )
 
         val membership = mutableMapOf<String, Boolean>()
         membership[LOCAL_LIST_KEY] = inLocal
@@ -192,16 +209,27 @@ class LibraryRepositoryImpl @Inject constructor(
         val isTraktAuth = traktAuthDataStore.isEffectivelyAuthenticated.first()
         val desired = changes.desiredMembership
 
-        // Handle local (Nuvio) library - syncs to Supabase
+        val profileId = profileManager.activeProfileId.value
         val localDesired = desired[LOCAL_LIST_KEY] == true
-        val currentlyInLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
+        val currentlyInLocal = libraryPreferences.containsItem(
+            itemId = item.itemId,
+            itemType = item.itemType,
+            profileId = profileId
+        )
         if (localDesired != currentlyInLocal) {
             if (localDesired) {
-                libraryPreferences.addItem(item.toSavedLibraryItem())
+                libraryPreferences.addItem(
+                    item = item.toSavedLibraryItem(),
+                    profileId = profileId
+                )
             } else {
-                libraryPreferences.removeItem(itemId = item.itemId, itemType = item.itemType)
+                libraryPreferences.removeItem(
+                    itemId = item.itemId,
+                    itemType = item.itemType,
+                    profileId = profileId
+                )
             }
-            triggerRemoteSync()
+            triggerRemoteSync(profileId)
         }
 
         // Handle Trakt lists (only if authenticated)

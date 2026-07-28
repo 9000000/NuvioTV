@@ -7,14 +7,9 @@ class WatchProgressTest {
 
     @Test
     fun `resolveResumePosition returns position when duration and position are both valid`() {
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 60000,
-            duration = 180000,
-            lastWatched = 1000L
+            duration = 180000
         )
         val result = wp.resolveResumePosition(actualDuration = 200000)
         assertEquals(60000, result)
@@ -22,14 +17,9 @@ class WatchProgressTest {
 
     @Test
     fun `resolveResumePosition clamps position to actualDuration`() {
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 300000,
-            duration = 180000,
-            lastWatched = 1000L
+            duration = 180000
         )
         val result = wp.resolveResumePosition(actualDuration = 200000)
         assertEquals(200000, result)
@@ -39,14 +29,9 @@ class WatchProgressTest {
     fun `resolveResumePosition returns position when duration is zero`() {
         // Regression test for #2580: resume-after-pause bug
         // When saved duration is 0 but position is valid, position must be honored.
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 60000,
-            duration = 0,
-            lastWatched = 1000L
+            duration = 0
         )
         val result = wp.resolveResumePosition(actualDuration = 200000)
         assertEquals(60000, result)
@@ -58,14 +43,9 @@ class WatchProgressTest {
         // When exiting while paused, getEffectiveDuration returns 0,
         // saveWatchProgressInternal sets fallbackPercent = 5f.
         // Position must take priority over progressPercent.
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 60000,
             duration = 0,
-            lastWatched = 1000L,
             progressPercent = 5f
         )
         val result = wp.resolveResumePosition(actualDuration = 200000)
@@ -75,14 +55,9 @@ class WatchProgressTest {
 
     @Test
     fun `resolveResumePosition uses progressPercent when position is zero`() {
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 0,
             duration = 0,
-            lastWatched = 1000L,
             progressPercent = 50f
         )
         val result = wp.resolveResumePosition(actualDuration = 200000)
@@ -91,14 +66,9 @@ class WatchProgressTest {
 
     @Test
     fun `resolveResumePosition returns position when actualDuration is zero`() {
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 60000,
-            duration = 0,
-            lastWatched = 1000L
+            duration = 0
         )
         val result = wp.resolveResumePosition(actualDuration = 0)
         assertEquals(60000, result)
@@ -106,16 +76,34 @@ class WatchProgressTest {
 
     @Test
     fun `resolveResumePosition returns zero when everything is zero`() {
-        val wp = WatchProgress(
-            contentId = "tt1234567",
-            contentType = "movie",
-            name = "Test",
-            videoId = "tt1234567",
+        val wp = watchProgress(
             position = 0,
-            duration = 0,
-            lastWatched = 1000L
+            duration = 0
         )
         val result = wp.resolveResumePosition(actualDuration = 0)
         assertEquals(0, result)
+    }
+
+    private fun watchProgress(
+        position: Long,
+        duration: Long,
+        progressPercent: Float? = null
+    ): WatchProgress {
+        return WatchProgress(
+            contentId = "tt1234567",
+            contentType = "movie",
+            name = "Test",
+            poster = null,
+            backdrop = null,
+            logo = null,
+            videoId = "tt1234567",
+            season = null,
+            episode = null,
+            episodeTitle = null,
+            position = position,
+            duration = duration,
+            lastWatched = 1000L,
+            progressPercent = progressPercent
+        )
     }
 }
