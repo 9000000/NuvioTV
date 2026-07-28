@@ -2184,6 +2184,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_episodes_watched, unwatched.size))
         }
     }
@@ -2227,6 +2228,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_episodes_unwatched, watched.size))
         }
     }
@@ -2273,6 +2275,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_previous_watched, unwatched.size))
         }
     }
@@ -2313,6 +2316,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_episodes_watched, unwatched.size))
         }
     }

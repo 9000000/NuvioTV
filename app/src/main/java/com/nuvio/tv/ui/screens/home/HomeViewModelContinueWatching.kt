@@ -683,6 +683,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                     cwLastBadgeEpisodeKeys = currentKeys.toSet()
 
                     val showIdSiblings = watchProgressRepository.getShowIdSiblings()
+                    cwLastShowIdSiblings = showIdSiblings
 
                     // Deduplicate IDs using Trakt's sibling mapping (IMDB ↔ TMDB from
                     // the same show). Resolve meta once per show, then cross-cache the
@@ -2734,12 +2735,20 @@ private fun HomeViewModel.publishBadgeUpdate(
         .toSet()
     // Expand IDs: for each fully-watched IMDB ID, also include the
     // "tmdb:<id>" variant so catalogs that use TMDB IDs get the badge too.
+    // Additionally expand with anime-tracker siblings (mal:, kitsu:, anidb:, anilist:)
+    // so catalogs using those IDs also show the badge.
+    val siblingMap = cwLastShowIdSiblings
     val expandedFullyWatched = buildSet {
         addAll(updatedFullyWatched)
         for (contentId in updatedFullyWatched) {
             if (contentId.startsWith("tt")) {
                 tmdbService.cachedTmdbId(contentId)?.let { tmdbId ->
                     add("tmdb:$tmdbId")
+                }
+            }
+            siblingMap[contentId]?.forEach { siblingId ->
+                if (siblingId != contentId && !siblingId.startsWith("__")) {
+                    add(siblingId)
                 }
             }
         }
@@ -2750,6 +2759,11 @@ private fun HomeViewModel.publishBadgeUpdate(
             if (contentId.startsWith("tt")) {
                 tmdbService.cachedTmdbId(contentId)?.let { tmdbId ->
                     add("tmdb:$tmdbId")
+                }
+            }
+            siblingMap[contentId]?.forEach { siblingId ->
+                if (siblingId != contentId && !siblingId.startsWith("__")) {
+                    add(siblingId)
                 }
             }
         }

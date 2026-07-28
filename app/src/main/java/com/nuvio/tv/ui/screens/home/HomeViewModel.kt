@@ -205,6 +205,9 @@ class HomeViewModel @Inject constructor(
     /** Snapshot of watchedShowEpisodes keys from the last badge evaluation cycle. */
     @Volatile
     internal var cwLastBadgeEpisodeKeys: Set<String> = emptySet()
+    /** Cached show ID siblings from the last badge evaluation cycle (for anime ID expansion). */
+    @Volatile
+    internal var cwLastShowIdSiblings: Map<String, Set<String>> = emptyMap()
     internal val cwTmdbIdCache = Collections.synchronizedMap(mutableMapOf<String, String?>())
     internal val cwNextUpResolutionCache = Collections.synchronizedMap(mutableMapOf<String, NextUpResolution?>())
     internal val cwNextUpNegativeCacheTimestamps = ConcurrentHashMap<String, Long>()
@@ -334,6 +337,7 @@ class HomeViewModel @Inject constructor(
                     cwEnrichedNextUpOverlay.clear()
                     cwEnrichedInProgressOverlay.clear()
                     cwLastBadgeEpisodeKeys = emptySet()
+                    cwLastShowIdSiblings = emptyMap()
                     _uiState.update {
                         it.copy(layoutPreferencesReady = false, continueWatchingItems = emptyList())
                     }
@@ -386,6 +390,7 @@ class HomeViewModel @Inject constructor(
         cwEnrichedNextUpOverlay.clear()
         cwEnrichedInProgressOverlay.clear()
         cwLastBadgeEpisodeKeys = emptySet()
+        cwLastShowIdSiblings = emptyMap()
         watchedSeriesStateHolder.clearValidationState()
         _uiState.update { it.copy(continueWatchingItems = emptyList(), upcomingItems = emptyList()) }
         // Bump trigger so the pipeline's collectLatest restarts with fresh state.
