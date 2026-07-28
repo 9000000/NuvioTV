@@ -977,10 +977,10 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             showControlsTemporarily()
         }
         PlayerEvent.OnSeekForward -> {
-            onEvent(PlayerEvent.OnSeekBy(deltaMs = 10_000L))
+            onEvent(PlayerEvent.OnSeekBy(deltaMs = PlayerScrubRates.STEP_SHORT_MS))
         }
         PlayerEvent.OnSeekBackward -> {
-            onEvent(PlayerEvent.OnSeekBy(deltaMs = -10_000L))
+            onEvent(PlayerEvent.OnSeekBy(deltaMs = -PlayerScrubRates.STEP_SHORT_MS))
         }
         is PlayerEvent.OnSeekBy -> {
             pendingPreviewSeekPosition = null
