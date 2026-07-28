@@ -707,6 +707,7 @@ fun PlayerScreen(
             viewModel.exoPlayer?.let { player ->
                 ExoPlayerSurface(
                     player = player,
+                    controller = viewModel.controller,
                     isPlaying = uiState.isPlaying,
                     isBuffering = uiState.isBuffering,
                     aspectMode = uiState.aspectMode,
@@ -1367,6 +1368,7 @@ private fun MpvPlayerSurface(
 @Composable
 private fun ExoPlayerSurface(
     player: ExoPlayer,
+    controller: PlayerRuntimeController,
     isPlaying: Boolean,
     isBuffering: Boolean,
     aspectMode: AspectMode,
@@ -1412,9 +1414,23 @@ private fun ExoPlayerSurface(
         }
     }
 
+    DisposableEffect(playerView) {
+        controller.exoPlayerView = playerView
+        onDispose {
+            if (controller.exoPlayerView === playerView) {
+                controller.exoPlayerView = null
+            }
+        }
+    }
+
     DisposableEffect(player, playerView) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                controller.videoAspectRatio = if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoSize.width.toFloat() * videoSize.pixelWidthHeightRatio / videoSize.height.toFloat()
+                } else {
+                    0f
+                }
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
                     val fps = player.videoFormat?.frameRate ?: 0f
