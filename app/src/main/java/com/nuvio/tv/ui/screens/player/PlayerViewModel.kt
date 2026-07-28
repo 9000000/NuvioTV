@@ -75,7 +75,7 @@ class PlayerViewModel @Inject constructor(
         trailerPlayerPool.yield()
     }
 
-    private val controller = PlayerRuntimeController(
+    internal val controller = PlayerRuntimeController(
         context = context,
         watchProgressRepository = watchProgressRepository,
         metaRepository = metaRepository,
