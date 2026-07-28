@@ -149,8 +149,10 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
 }
 
 internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
-    autoSubtitleSelected = false
-    subtitleDisabledByPersistedPreference = false
+    val keepDisabled = subtitleDisabledByPersistedPreference ||
+        (rememberedTrackPreference?.subtitle == PlayerRuntimeController.RememberedSubtitleSelection.Disabled)
+    autoSubtitleSelected = keepDisabled
+    subtitleDisabledByPersistedPreference = keepDisabled
     subtitleAddonRestoredByPersistedPreference = false
     pendingRestoredAddonSubtitle = null
     hasScannedTextTracksOnce = false
@@ -163,7 +165,7 @@ internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
         it.copy(
             addonSubtitles = emptyList(),
             selectedAddonSubtitle = null,
-            selectedSubtitleTrackIndex = -1,
+            selectedSubtitleTrackIndex = if (keepDisabled) -1 else -1,
             isLoadingAddonSubtitles = true,
             addonSubtitlesError = null
         )
