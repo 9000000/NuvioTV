@@ -969,7 +969,10 @@ class FolderDetailViewModel @Inject constructor(
                         _uiState.update { s ->
                             val tabs = s.tabs.toMutableList()
                             val currentRow = tabs.getOrNull(tabIndex)?.catalogRow
-                            val filteredData = result.data.filteredForRelease(s.hideUnreleasedContent)
+                            val filteredData = result.data.filteredForRelease(
+                                hideUnreleased = s.hideUnreleasedContent,
+                                treatMissingDateAsUnreleased = true
+                            )
                             val row = if (append && currentRow != null) {
                                 val existingIds = currentRow.items.map { "${it.apiType}:${it.id}" }.toHashSet()
                                 val newItems = filteredData.items.filter { "${it.apiType}:${it.id}" !in existingIds }
@@ -1543,9 +1546,10 @@ class FolderDetailViewModel @Inject constructor(
 /**
  * Drops unreleased items from a freshly-loaded row when the user toggle is on.
  * [treatMissingDateAsUnreleased] additionally drops items that have no release
- * information at all — used for TMDB-resolved rows, where a missing release date
- * means the title is unannounced (#2793). Addon rows keep the lenient behavior
- * because sparse addon metadata often omits dates for released content.
+ * information at all — used for TMDB- and Trakt-resolved rows, where a missing
+ * release date means the title is unannounced (#2793). Addon rows keep the
+ * lenient behavior because sparse addon metadata often omits dates for
+ * released content.
  */
 private fun CatalogRow.filteredForRelease(
     hideUnreleased: Boolean,
