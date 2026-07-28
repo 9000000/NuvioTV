@@ -75,7 +75,7 @@ class PlayerViewModel @Inject constructor(
         trailerPlayerPool.yield()
     }
 
-    private val controller = PlayerRuntimeController(
+    internal val controller = PlayerRuntimeController(
         context = context,
         watchProgressRepository = watchProgressRepository,
         metaRepository = metaRepository,
@@ -148,10 +148,6 @@ class PlayerViewModel @Inject constructor(
 
     fun pauseForLifecycle() {
         controller.pauseForLifecycle()
-    }
-
-    fun stopForLifecycle() {
-        controller.stopForLifecycle()
     }
 
     fun resumeForLifecycle() {

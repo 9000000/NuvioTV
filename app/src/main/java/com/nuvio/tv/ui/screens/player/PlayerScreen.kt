@@ -336,10 +336,9 @@ fun PlayerScreen(
                 Lifecycle.Event.ON_PAUSE -> {
                     viewModel.pauseForLifecycle()
                 }
-                Lifecycle.Event.ON_STOP -> {
-                    viewModel.stopForLifecycle()
-                }
                 Lifecycle.Event.ON_RESUME -> {
+                    // Re-create the MediaSession so media controls work in foreground.
+                    // Don't auto-resume playback — let the user press play.
                     viewModel.resumeForLifecycle()
                 }
                 else -> {}
@@ -707,6 +706,7 @@ fun PlayerScreen(
             viewModel.exoPlayer?.let { player ->
                 ExoPlayerSurface(
                     player = player,
+                    controller = viewModel.controller,
                     isPlaying = uiState.isPlaying,
                     isBuffering = uiState.isBuffering,
                     aspectMode = uiState.aspectMode,
@@ -1367,6 +1367,7 @@ private fun MpvPlayerSurface(
 @Composable
 private fun ExoPlayerSurface(
     player: ExoPlayer,
+    controller: PlayerRuntimeController,
     isPlaying: Boolean,
     isBuffering: Boolean,
     aspectMode: AspectMode,
@@ -1412,32 +1413,31 @@ private fun ExoPlayerSurface(
         }
     }
 
+    DisposableEffect(playerView) {
+        controller.exoPlayerView = playerView
+        onDispose {
+            if (controller.exoPlayerView === playerView) {
+                controller.exoPlayerView = null
+            }
+        }
+    }
+
     DisposableEffect(player, playerView) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                controller.videoAspectRatio = if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoSize.width.toFloat() * videoSize.pixelWidthHeightRatio / videoSize.height.toFloat()
+                } else {
+                    0f
+                }
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = videoSize.width,
-                        videoHeight = videoSize.height,
-                        frameRate = fps
-                    )
                 }
             }
 
             override fun onRenderedFirstFrame() {
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val size = player.videoSize
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = size.width,
-                        videoHeight = size.height,
-                        frameRate = fps
-                    )
                 }
             }
 
@@ -1452,14 +1452,6 @@ private fun ExoPlayerSurface(
         player.addListener(listener)
         playerView.post {
             playerView.applyExoAspectMode(latestAspectMode)
-            val size = player.videoSize
-            val fps = player.videoFormat?.frameRate ?: 0f
-            configureHardwareSurfaceOverlay(
-                playerView = playerView,
-                videoWidth = size.width,
-                videoHeight = size.height,
-                frameRate = fps
-            )
         }
         onDispose {
             player.removeListener(listener)

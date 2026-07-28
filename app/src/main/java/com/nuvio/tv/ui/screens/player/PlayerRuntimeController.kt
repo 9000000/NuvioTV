@@ -281,6 +281,8 @@ class PlayerRuntimeController(
     internal var _exoPlayer: ExoPlayer? = null
     val exoPlayer: ExoPlayer?
         get() = _exoPlayer
+    @Volatile var videoAspectRatio: Float = 0f
+    @Volatile var exoPlayerView: androidx.media3.ui.PlayerView? = null
     internal var _loadControl: DefaultLoadControl? = null
     internal var playbackSpeedAwareAudioSink: PlaybackSpeedAwareAudioSink? = null
 
@@ -360,9 +362,6 @@ class PlayerRuntimeController(
     internal var isInBackground: Boolean = false
     internal var pendingBackgroundCrashRecovery: Boolean = false
     internal var backgroundCrashSavedPositionMs: Long = 0L
-    internal var pendingLifecyclePauseJob: Job? = null
-    internal var wasPlayingBeforeLifecyclePause: Boolean = false
-    internal var wasStoppedByLifecycle: Boolean = false
 
     internal var skipIntervals: List<SkipInterval> = emptyList()
     internal var skipIntroEnabled: Boolean = true
