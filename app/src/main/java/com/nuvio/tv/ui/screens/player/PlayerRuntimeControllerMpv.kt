@@ -269,7 +269,7 @@ internal fun PlayerRuntimeController.resumeForLifecycle() {
         }
     }
 
-    val shouldAutoResume = (wasPendingPause || (wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle)) && !userPausedManually
+    val shouldAutoResume = wasPlayingBeforeLifecyclePause && !wasStoppedByLifecycle && !userPausedManually
     wasPlayingBeforeLifecyclePause = false
     wasStoppedByLifecycle = false
 

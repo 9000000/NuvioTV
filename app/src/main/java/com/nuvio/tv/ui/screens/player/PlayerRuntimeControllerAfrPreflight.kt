@@ -11,8 +11,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 
 /** Exposed for unit tests so timeout regressions are caught against a single source of truth. */
-internal const val AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS = 6000L
-internal const val AFR_PREFLIGHT_FALLBACK_TIMEOUT_MS = 4000L
+internal const val AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS = 10000L
+internal const val AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS = 10000L
+internal const val AFR_PREFLIGHT_FALLBACK_TIMEOUT_MS = 5000L
+internal const val AFR_PREFLIGHT_TOTAL_TIMEOUT_MS = 12000L
 
 internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
     url: String,
@@ -112,29 +114,44 @@ internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
             return
         }
 
-        val nextLibDetection = withTimeoutOrNull(AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS) {
+        val okHttpDetection = withTimeoutOrNull(AFR_PREFLIGHT_OKHTTP_TIMEOUT_MS) {
             withContext(Dispatchers.IO) {
-                FrameRateUtils.detectFrameRateFromNextLib(
+                FrameRateUtils.detectFrameRateWithOkHttpProbe(
                     context = context,
                     sourceUrl = url,
                     headers = streamHeaders
                 )
             }
         }
-        val detection = if (nextLibDetection != null) {
-            nextLibDetection
+
+        val detection = if (okHttpDetection != null) {
+            Log.d(PlayerRuntimeController.TAG, "AFR preflight: OkHttp probe succeeded! FPS=${okHttpDetection.snapped}")
+            okHttpDetection
         } else {
-            Log.w(
-                PlayerRuntimeController.TAG,
-                "AFR preflight NextLib probe failed/timed out after ${AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS}ms; trying extractor fallback"
-            )
-            withTimeoutOrNull(AFR_PREFLIGHT_FALLBACK_TIMEOUT_MS) {
+            val nextLibDetection = withTimeoutOrNull(AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS) {
                 withContext(Dispatchers.IO) {
-                    FrameRateUtils.detectFrameRateFromExtractor(
+                    FrameRateUtils.detectFrameRateFromNextLib(
                         context = context,
                         sourceUrl = url,
-                        headers = probeHeaders
+                        headers = streamHeaders
                     )
+                }
+            }
+            if (nextLibDetection != null) {
+                nextLibDetection
+            } else {
+                Log.w(
+                    PlayerRuntimeController.TAG,
+                    "AFR preflight NextLib probe failed/timed out after ${AFR_PREFLIGHT_NEXTLIB_TIMEOUT_MS}ms; trying extractor fallback"
+                )
+                withTimeoutOrNull(AFR_PREFLIGHT_FALLBACK_TIMEOUT_MS) {
+                    withContext(Dispatchers.IO) {
+                        FrameRateUtils.detectFrameRateFromExtractor(
+                            context = context,
+                            sourceUrl = url,
+                            headers = probeHeaders
+                        )
+                    }
                 }
             }
         }

@@ -372,7 +372,7 @@ internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) 
 
     val positionSec = positionMs / 1000.0
     val active = skipIntervals.find { interval ->
-        positionSec >= interval.startTime && positionSec < (interval.endTime - 0.5)
+        positionSec >= interval.startTime && positionSec < interval.endTime
     }
 
     val currentActive = _uiState.value.activeSkipInterval
@@ -392,8 +392,6 @@ internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) 
             autoSkippedIntervalKeys.add(activeKey)
             skipInterval(active)
         }
-    } else if (currentActive != null) {
-        _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = false) }
     }
 }
 
