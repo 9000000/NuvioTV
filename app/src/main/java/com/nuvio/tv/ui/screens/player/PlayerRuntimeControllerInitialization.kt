@@ -1149,9 +1149,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                             tryShowParentalGuide()
                             emitScrobbleStart()
                         } else {
-                            if (!isInBackground) {
-                                userPausedManually = true
-                            }
                             if (userPausedManually) schedulePauseOverlay() else cancelPauseOverlay()
                             if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                                 stopProgressUpdates()
