@@ -97,6 +97,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Border
@@ -1433,7 +1434,7 @@ private fun ExoPlayerSurface(
                 }
             }
 
-            override fun onTracksChanged(trackGroups: androidx.media3.common.TrackGroups, trackSelections: androidx.media3.common.TrackSelectionArray) {
+            override fun onTracksChanged(tracks: Tracks) {
                 // Re-apply subtitle style when tracks change so style is applied
                 // even when subtitles are enabled after initial player setup.
                 playerView.post {
