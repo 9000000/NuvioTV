@@ -336,10 +336,9 @@ fun PlayerScreen(
                 Lifecycle.Event.ON_PAUSE -> {
                     viewModel.pauseForLifecycle()
                 }
-                Lifecycle.Event.ON_STOP -> {
-                    viewModel.stopForLifecycle()
-                }
                 Lifecycle.Event.ON_RESUME -> {
+                    // Re-create the MediaSession so media controls work in foreground.
+                    // Don't auto-resume playback — let the user press play.
                     viewModel.resumeForLifecycle()
                 }
                 else -> {}
@@ -1433,27 +1432,12 @@ private fun ExoPlayerSurface(
                 }
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = videoSize.width,
-                        videoHeight = videoSize.height,
-                        frameRate = fps
-                    )
                 }
             }
 
             override fun onRenderedFirstFrame() {
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val size = player.videoSize
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = size.width,
-                        videoHeight = size.height,
-                        frameRate = fps
-                    )
                 }
             }
 
@@ -1468,14 +1452,6 @@ private fun ExoPlayerSurface(
         player.addListener(listener)
         playerView.post {
             playerView.applyExoAspectMode(latestAspectMode)
-            val size = player.videoSize
-            val fps = player.videoFormat?.frameRate ?: 0f
-            configureHardwareSurfaceOverlay(
-                playerView = playerView,
-                videoWidth = size.width,
-                videoHeight = size.height,
-                frameRate = fps
-            )
         }
         onDispose {
             player.removeListener(listener)
