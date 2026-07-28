@@ -29,6 +29,7 @@ class SimklSyncRepository @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val loadMutex = Mutex()
+    private val snapshotMutex = Mutex()
     private val refreshGate = SimklRefreshGate()
     private val _state = MutableStateFlow(SimklSyncState())
     private var loadedProfileId: Int? = null
@@ -102,14 +103,35 @@ class SimklSyncRepository @Inject constructor(
     suspend fun removePlaybackSessions(sessionIds: Set<Long>) {
         if (sessionIds.isEmpty()) return
         ensureLoaded()
+        snapshotMutex.withLock {
+            val profileId = profileManager.activeProfileId.value
+            val current = _state.value
+            val playback = current.snapshot.playback.filterNot { session -> session.id in sessionIds }
+            if (playback.size == current.snapshot.playback.size) return@withLock
+            val snapshot = current.snapshot.copy(playback = playback)
+            storage.save(profileId, json.encodeToString(snapshot))
+            if (profileId == profileManager.activeProfileId.value) {
+                _state.value = current.copy(snapshot = snapshot)
+            }
+        }
+    }
+
+    internal suspend fun commitScrobble(result: SimklScrobbleResult) {
+        ensureLoaded()
         val profileId = profileManager.activeProfileId.value
-        val current = _state.value
-        val playback = current.snapshot.playback.filterNot { session -> session.id in sessionIds }
-        if (playback.size == current.snapshot.playback.size) return
-        val snapshot = current.snapshot.copy(playback = playback)
-        storage.save(profileId, json.encodeToString(snapshot))
-        if (profileId == profileManager.activeProfileId.value) {
-            _state.value = current.copy(snapshot = snapshot)
+        val generation = profileGeneration
+        snapshotMutex.withLock {
+            if (!isCurrent(profileId, generation)) return@withLock
+            val current = _state.value
+            val snapshot = current.snapshot.applyScrobbleResult(
+                result = result,
+                committedAtEpochMs = System.currentTimeMillis()
+            )
+            if (snapshot == current.snapshot) return@withLock
+            storage.save(profileId, json.encodeToString(snapshot))
+            if (isCurrent(profileId, generation)) {
+                _state.value = current.copy(snapshot = snapshot)
+            }
         }
     }
 
@@ -130,7 +152,7 @@ class SimklSyncRepository @Inject constructor(
         }
     }
 
-    private suspend fun refreshSnapshot(profileId: Int, generation: Long) {
+    private suspend fun refreshSnapshot(profileId: Int, generation: Long) = snapshotMutex.withLock {
         val previous = _state.value
         _state.value = previous.copy(isLoading = true, errorMessage = null)
         val result = try {
@@ -146,11 +168,11 @@ class SimklSyncRepository @Inject constructor(
                     errorMessage = error.message ?: "Unable to sync Simkl"
                 )
             }
-            return
+            return@withLock
         }
-        if (!isCurrent(profileId, generation)) return
+        if (!isCurrent(profileId, generation)) return@withLock
         authRepository.synchronizeUserSettings(result.activities?.settings?.all)
-        if (!isCurrent(profileId, generation)) return
+        if (!isCurrent(profileId, generation)) return@withLock
         storage.save(profileId, json.encodeToString(result))
         if (isCurrent(profileId, generation)) {
             _state.value = SimklSyncState(snapshot = result, hasLoaded = true)

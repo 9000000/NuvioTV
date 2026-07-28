@@ -172,7 +172,7 @@ private fun TrackingEpisode.toEpisodeDto(
     watchedAt = watchedAtEpochMs.takeIf { includeWatchedAt }?.epochMsToUtcIso()
 )
 
-private fun TrackingExternalIds.toSimklJsonObjectOrNull(): JsonObject? {
+internal fun TrackingExternalIds.toSimklJsonObjectOrNull(): JsonObject? {
     val value = buildJsonObject {
         simkl?.let { put("simkl", it) }
         imdb.nonBlankOrNull()?.let { put("imdb", it) }

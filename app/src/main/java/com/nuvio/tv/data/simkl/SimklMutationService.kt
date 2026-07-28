@@ -88,7 +88,10 @@ class SimklMutationService internal constructor(
         return response.toMutationResult(candidates.size, json)
     }
 
-    suspend fun scrobble(action: TrackingScrobbleAction, event: TrackingScrobbleEvent) {
+    internal suspend fun scrobble(
+        action: TrackingScrobbleAction,
+        event: TrackingScrobbleEvent
+    ): SimklScrobbleResult {
         require(event.media.hasResolvableIdentity) { "Simkl scrobble requires a media ID or title" }
         require(event.media.kind == TrackingMediaKind.MOVIE || event.media.episode != null) {
             "Simkl series scrobble requires an episode"
@@ -121,7 +124,7 @@ class SimklMutationService internal constructor(
             "simkl mutation response action=${action.wireValue} status=${response.status} " +
                 "softSuccess=${response.isSoftSuccess} ${event.scrobbleDiagnosticSummary()}"
         )
-        if (action != TrackingScrobbleAction.START) onMutationCommitted()
+        return response.toSimklScrobbleResult(action, event, json)
     }
 
     private fun Collection<TrackingMediaReference>.validated(): List<TrackingMediaReference> =

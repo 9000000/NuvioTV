@@ -54,10 +54,13 @@ class SimklTrackingScrobbler @Inject constructor(
             TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
             "simkl adapter enriched action=${action.wireValue} ${enrichedEvent.scrobbleDiagnosticSummary()}"
         )
-        mutationService.scrobble(
+        val result = mutationService.scrobble(
             action = action,
             event = enrichedEvent
         )
+        if (action != TrackingScrobbleAction.START) {
+            syncRepository.commitScrobble(result)
+        }
         Log.d(
             TRACKING_SCROBBLE_DIAGNOSTIC_TAG,
             "simkl adapter complete action=${action.wireValue} ${enrichedEvent.scrobbleDiagnosticSummary()}"
