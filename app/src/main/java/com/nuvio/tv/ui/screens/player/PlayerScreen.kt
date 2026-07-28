@@ -1414,41 +1414,18 @@ private fun ExoPlayerSurface(
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = videoSize.width,
-                        videoHeight = videoSize.height,
-                        frameRate = fps
-                    )
                 }
             }
 
             override fun onRenderedFirstFrame() {
                 playerView.post {
                     playerView.applyExoAspectMode(latestAspectMode)
-                    val size = player.videoSize
-                    val fps = player.videoFormat?.frameRate ?: 0f
-                    configureHardwareSurfaceOverlay(
-                        playerView = playerView,
-                        videoWidth = size.width,
-                        videoHeight = size.height,
-                        frameRate = fps
-                    )
                 }
             }
         }
         player.addListener(listener)
         playerView.post {
             playerView.applyExoAspectMode(latestAspectMode)
-            val size = player.videoSize
-            val fps = player.videoFormat?.frameRate ?: 0f
-            configureHardwareSurfaceOverlay(
-                playerView = playerView,
-                videoWidth = size.width,
-                videoHeight = size.height,
-                frameRate = fps
-            )
         }
         onDispose {
             player.removeListener(listener)
