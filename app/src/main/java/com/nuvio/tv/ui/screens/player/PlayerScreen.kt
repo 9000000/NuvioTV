@@ -97,6 +97,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Border
@@ -1376,6 +1377,7 @@ private fun ExoPlayerSurface(
 ) {
     val context = LocalContext.current
     val latestAspectMode by rememberUpdatedState(aspectMode)
+    val latestSubtitleStyle by rememberUpdatedState(subtitleStyle)
     val playerView = remember(context, player) {
         PlayerView(context).apply {
             useController = false
@@ -1436,6 +1438,14 @@ private fun ExoPlayerSurface(
                         videoHeight = size.height,
                         frameRate = fps
                     )
+                }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                // Re-apply subtitle style when tracks change so style is applied
+                // even when subtitles are enabled after initial player setup.
+                playerView.post {
+                    playerView.applySubtitleStyleIfNeeded(latestSubtitleStyle)
                 }
             }
         }
@@ -1509,8 +1519,14 @@ private fun PlayerView.applySubtitleStyleIfNeeded(subtitleStyle: SubtitleStyleSe
     if (getTag(R.id.player_view_subtitle_style_tag) == subtitleStyle) {
         return
     }
+    val subView = subtitleView
+    if (subView == null) {
+        // SubtitleView not yet available (no track selected yet). Don't set the
+        // tag so that when subtitles become active the style is re-applied.
+        return
+    }
     setTag(R.id.player_view_subtitle_style_tag, subtitleStyle)
-    subtitleView?.apply {
+    subView.apply {
         val baseFontSize = 24f
         val scaledFontSize = baseFontSize * (subtitleStyle.size / 100f)
         setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, scaledFontSize)
