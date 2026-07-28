@@ -967,8 +967,7 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                         val pausedDuration = System.currentTimeMillis() - pauseStartTimeMs
                         if (pauseStartTimeMs > 0L && pausedDuration > PlayerRuntimeController.LONG_PAUSE_THRESHOLD_MS) {
                             val pos = player.currentPosition
-                            // Aggressive resync: seek back 3s to force full renderer flush and A/V realignment
-                            player.seekTo((pos - 3000L).coerceAtLeast(0L))
+                            player.seekTo((pos - 1000L).coerceAtLeast(0L))
                         }
                         pauseStartTimeMs = 0L
                         player.play()
