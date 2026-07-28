@@ -537,7 +537,14 @@ private fun RowsContent(
     onItemFocus: (MetaPreview) -> Unit = {},
     onItemLongPress: (MetaPreview, String) -> Unit = { _, _ -> }
 ) {
-    val sourceTabs = uiState.tabs.filter { !it.isAllTab }
+    val sourceTabs = uiState.tabs.filter { tab ->
+        if (tab.isAllTab) return@filter false
+        // Hide sources that returned zero results after loading completed
+        if (!tab.isLoading && tab.error == null &&
+            tab.catalogRow != null && tab.catalogRow.items.isEmpty()
+        ) return@filter false
+        true
+    }
     
     // Nested prefetch: pre-compose cards in nested LazyRows to prevent frame spikes
     val nestedPrefetchStrategy = remember { LazyListPrefetchStrategy(nestedPrefetchItemCount = 2) }
