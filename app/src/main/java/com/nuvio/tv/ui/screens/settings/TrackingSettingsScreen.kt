@@ -33,6 +33,7 @@ import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.data.local.MoreLikeThisSourcePreference
 import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.local.WatchProgressSource
+import com.nuvio.tv.data.simkl.SimklAnimeIdPreference
 import com.nuvio.tv.data.simkl.SimklConnectionMode
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.ui.components.NuvioDialog
@@ -64,13 +65,15 @@ fun TrackingSettingsScreen(
     var showWatchProgressDialog by remember { mutableStateOf(false) }
     var showDaysCapDialog by remember { mutableStateOf(false) }
     var showMoreLikeThisSourceDialog by remember { mutableStateOf(false) }
+    var showAnimeIdDialog by remember { mutableStateOf(false) }
 
     val hasOverlay = activeProvider != null ||
         disconnectProvider != null ||
         showLibrarySourceDialog ||
         showWatchProgressDialog ||
         showDaysCapDialog ||
-        showMoreLikeThisSourceDialog
+        showMoreLikeThisSourceDialog ||
+        showAnimeIdDialog
 
     BackHandler(enabled = !hasOverlay) {
         onBackPress()
@@ -174,6 +177,9 @@ fun TrackingSettingsScreen(
         onMoreLikeThisClick = {
             restoreFocusTarget = TrackingFocusTarget.MORE_LIKE_THIS
             showMoreLikeThisSourceDialog = true
+        },
+        onAnimeIdClick = {
+            showAnimeIdDialog = true
         }
     )
 
@@ -349,6 +355,35 @@ fun TrackingSettingsScreen(
             maxHeight = 320.dp
         )
     }
+
+    if (showAnimeIdDialog) {
+        SettingsSingleChoiceDialog(
+            title = stringResource(R.string.tracking_simkl_anime_id_title),
+            subtitle = stringResource(R.string.tracking_simkl_anime_id_subtitle),
+            options = listOf(
+                SettingsPickerOption(
+                    SimklAnimeIdPreference.IMDB,
+                    stringResource(R.string.tracking_simkl_anime_id_imdb)
+                ),
+                SettingsPickerOption(
+                    SimklAnimeIdPreference.MAL,
+                    stringResource(R.string.tracking_simkl_anime_id_mal)
+                ),
+                SettingsPickerOption(
+                    SimklAnimeIdPreference.KITSU,
+                    stringResource(R.string.tracking_simkl_anime_id_kitsu)
+                )
+            ),
+            selectedValue = trackingState.simklAnimeIdPreference,
+            onOptionSelected = { preference ->
+                trackingViewModel.selectSimklAnimeIdPreference(preference)
+                showAnimeIdDialog = false
+            },
+            onDismiss = { showAnimeIdDialog = false },
+            width = 620.dp,
+            maxHeight = 360.dp
+        )
+    }
 }
 
 @Composable
@@ -368,7 +403,8 @@ internal fun TrackingSettingsOverview(
     onWatchProgressClick: () -> Unit,
     onContinueWatchingWindowClick: () -> Unit,
     onCommentsChanged: (Boolean) -> Unit,
-    onMoreLikeThisClick: () -> Unit
+    onMoreLikeThisClick: () -> Unit,
+    onAnimeIdClick: () -> Unit
 ) {
     val listState = rememberLazyListState()
     val traktPresentation = traktConnectionPresentation(traktState)
@@ -456,45 +492,63 @@ internal fun TrackingSettingsOverview(
                             )
                         }
                     }
-                    item(key = "tracking_trakt_features") {
-                        SettingsGroupCard(
-                            title = stringResource(R.string.tracking_trakt_features_title),
-                            subtitle = stringResource(R.string.tracking_trakt_features_subtitle)
-                        ) {
-                            SettingsActionRow(
-                                title = stringResource(R.string.trakt_continue_watching_window),
-                                subtitle = if (traktConnected && !traktProgressActive) {
-                                    stringResource(R.string.tracking_trakt_progress_required)
-                                } else {
-                                    stringResource(R.string.trakt_continue_watching_subtitle)
-                                },
-                                value = continueWatchingWindowLabel(traktState.continueWatchingDaysCap),
-                                enabled = traktConnected && traktProgressActive,
-                                onClick = onContinueWatchingWindowClick,
-                                modifier = Modifier
-                                    .focusRequester(continueWatchingFocusRequester)
-                                    .testTag(TrackingSettingsTestTags.CONTINUE_WATCHING)
-                            )
-                            SettingsToggleRow(
-                                title = stringResource(R.string.trakt_comments_title),
-                                subtitle = stringResource(R.string.trakt_comments_subtitle),
-                                checked = traktState.showMetaComments,
-                                enabled = traktConnected,
-                                onToggle = {
-                                    onCommentsChanged(!traktState.showMetaComments)
-                                },
-                                modifier = Modifier.testTag(TrackingSettingsTestTags.COMMENTS)
-                            )
-                            SettingsActionRow(
-                                title = stringResource(R.string.trakt_more_like_this_source_title),
-                                subtitle = stringResource(R.string.trakt_more_like_this_source_subtitle),
-                                value = moreLikeThisSourceLabel(traktState.moreLikeThisSource),
-                                enabled = traktConnected,
-                                onClick = onMoreLikeThisClick,
-                                modifier = Modifier
-                                    .focusRequester(moreLikeThisFocusRequester)
-                                    .testTag(TrackingSettingsTestTags.MORE_LIKE_THIS)
-                            )
+                    if (traktConnected) {
+                        item(key = "tracking_trakt_features") {
+                            SettingsGroupCard(
+                                title = stringResource(R.string.tracking_trakt_features_title),
+                                subtitle = stringResource(R.string.tracking_trakt_features_subtitle)
+                            ) {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.trakt_continue_watching_window),
+                                    subtitle = if (!traktProgressActive) {
+                                        stringResource(R.string.tracking_trakt_progress_required)
+                                    } else {
+                                        stringResource(R.string.trakt_continue_watching_subtitle)
+                                    },
+                                    value = continueWatchingWindowLabel(traktState.continueWatchingDaysCap),
+                                    enabled = traktProgressActive,
+                                    onClick = onContinueWatchingWindowClick,
+                                    modifier = Modifier
+                                        .focusRequester(continueWatchingFocusRequester)
+                                        .testTag(TrackingSettingsTestTags.CONTINUE_WATCHING)
+                                )
+                                SettingsToggleRow(
+                                    title = stringResource(R.string.trakt_comments_title),
+                                    subtitle = stringResource(R.string.trakt_comments_subtitle),
+                                    checked = traktState.showMetaComments,
+                                    enabled = true,
+                                    onToggle = {
+                                        onCommentsChanged(!traktState.showMetaComments)
+                                    },
+                                    modifier = Modifier.testTag(TrackingSettingsTestTags.COMMENTS)
+                                )
+                                SettingsActionRow(
+                                    title = stringResource(R.string.trakt_more_like_this_source_title),
+                                    subtitle = stringResource(R.string.trakt_more_like_this_source_subtitle),
+                                    value = moreLikeThisSourceLabel(traktState.moreLikeThisSource),
+                                    enabled = true,
+                                    onClick = onMoreLikeThisClick,
+                                    modifier = Modifier
+                                        .focusRequester(moreLikeThisFocusRequester)
+                                        .testTag(TrackingSettingsTestTags.MORE_LIKE_THIS)
+                                )
+                            }
+                        }
+                    }
+                    if (simklState.mode == SimklConnectionMode.CONNECTED) {
+                        item(key = "tracking_simkl_features") {
+                            SettingsGroupCard(
+                                title = stringResource(R.string.tracking_simkl_features_title),
+                                subtitle = stringResource(R.string.tracking_simkl_features_subtitle)
+                            ) {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.tracking_simkl_anime_id_title),
+                                    subtitle = stringResource(R.string.tracking_simkl_anime_id_subtitle),
+                                    value = animeIdPreferenceLabel(trackingState.simklAnimeIdPreference),
+                                    onClick = onAnimeIdClick,
+                                    modifier = Modifier.testTag("tracking_simkl_anime_id")
+                                )
+                            }
                         }
                     }
                 }
@@ -595,6 +649,13 @@ private fun continueWatchingWindowLabel(days: Int): String {
     } else {
         stringResource(R.string.trakt_days_format, days)
     }
+}
+
+@Composable
+private fun animeIdPreferenceLabel(preference: SimklAnimeIdPreference): String = when (preference) {
+    SimklAnimeIdPreference.IMDB -> stringResource(R.string.tracking_simkl_anime_id_imdb)
+    SimklAnimeIdPreference.MAL -> stringResource(R.string.tracking_simkl_anime_id_mal)
+    SimklAnimeIdPreference.KITSU -> stringResource(R.string.tracking_simkl_anime_id_kitsu)
 }
 
 private enum class TrackingFocusTarget {

@@ -143,6 +143,7 @@ class MetaDetailsViewModel @Inject constructor(
      *  This ensures progress is read from the same key it was written under. */
     private val _effectiveContentId = MutableStateFlow(itemId)
     private val _optimisticMarks = mutableSetOf<Pair<Int, Int>>()
+    private val _optimisticUnmarks = mutableSetOf<Pair<Int, Int>>()
 
     init {
         posterOptions.bind(viewModelScope)
@@ -499,13 +500,16 @@ class MetaDetailsViewModel @Inject constructor(
                 ) { localWatched, progressMap, videos ->
                     val fromProgress = progressMap.filterValues { it.isCompleted() }.keys
                     val merged = (localWatched + fromProgress).toMutableSet()
+                    // Remove optimistic unmarks — episodes the user just batch-unmarked
+                    // that may still linger in localWatched/fromProgress briefly.
+                    merged -= _optimisticUnmarks
                     if (videos.isNullOrEmpty()) return@combine merged
                     for (video in videos) {
                         val s = video.season ?: continue
                         val e = video.episode ?: continue
                         val key = s to e
                         val watchedByVideoId = watchProgressRepository.isWatchedByVideoId(video.id, e)
-                        if (watchedByVideoId && key !in merged) {
+                        if (watchedByVideoId && key !in merged && key !in _optimisticUnmarks) {
                             merged += key
                         } else if (!watchedByVideoId && key in merged && key !in fromProgress && key !in _optimisticMarks) {
                             merged -= key
@@ -648,7 +652,8 @@ class MetaDetailsViewModel @Inject constructor(
                             } else if (tryApplyTmdbFallbackMeta()) {
                                 Unit
                             } else {
-                                _uiState.update { it.copy(isLoading = false, error = result.message) }
+                                val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
+                                _uiState.update { it.copy(isLoading = false, error = errorMsg) }
                             }
                         }
                         NetworkResult.Loading -> {
@@ -675,7 +680,8 @@ class MetaDetailsViewModel @Inject constructor(
                             is NetworkResult.Success -> applyMetaWithEnrichment(result.data)
                             is NetworkResult.Error -> {
                                 if (!tryApplyTmdbFallbackMeta()) {
-                                    _uiState.update { it.copy(isLoading = false, error = result.message) }
+                                    val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
+                                    _uiState.update { it.copy(isLoading = false, error = errorMsg) }
                                 }
                             }
                             NetworkResult.Loading -> {
@@ -757,6 +763,11 @@ class MetaDetailsViewModel @Inject constructor(
         }
             ?.takeIf { it.isNotBlank() }
             ?: raw
+    }
+
+    private fun buildMetaLoadErrorMessage(originalMessage: String?, lookupId: String): String {
+        val base = originalMessage ?: "Failed to load metadata"
+        return "$base\n\nID: $lookupId"
     }
 
     private fun applyMeta(meta: Meta) {
@@ -2109,9 +2120,11 @@ class MetaDetailsViewModel @Inject constructor(
             runCatching {
                 if (isWatched) {
                     _optimisticMarks -= season to episode
+                    _optimisticUnmarks += season to episode
                     watchProgressRepository.removeFromHistory(_effectiveContentId.value, videoId = video.id, season = season, episode = episode)
                     showMessage(localizedContext.getString(R.string.detail_episode_marked_unwatched))
                 } else {
+                    _optimisticUnmarks -= season to episode
                     _optimisticMarks += season to episode
                     watchProgressRepository.markAsCompleted(buildCompletedEpisodeProgress(meta, video))
                     showMessage(localizedContext.getString(R.string.detail_episode_marked_watched))
@@ -2169,6 +2182,10 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
+            val optimisticKeys = unwatched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticUnmarks -= optimisticKeys
+            _optimisticMarks += optimisticKeys
+
             val pendingKeys = unwatched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys + pendingKeys)
@@ -2208,6 +2225,10 @@ class MetaDetailsViewModel @Inject constructor(
                 showMessage(localizedContext.getString(R.string.detail_no_watched_episodes))
                 return@launch
             }
+
+            val optimisticKeys = watched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticMarks -= optimisticKeys
+            _optimisticUnmarks += optimisticKeys
 
             val pendingKeys = watched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
@@ -2260,6 +2281,10 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
+            val optimisticKeys = unwatched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticUnmarks -= optimisticKeys
+            _optimisticMarks += optimisticKeys
+
             val pendingKeys = unwatched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys + pendingKeys)
@@ -2300,6 +2325,10 @@ class MetaDetailsViewModel @Inject constructor(
                 showMessage(localizedContext.getString(R.string.detail_all_previous_seasons_watched))
                 return@launch
             }
+
+            val optimisticKeys = unwatched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticUnmarks -= optimisticKeys
+            _optimisticMarks += optimisticKeys
 
             val pendingKeys = unwatched.map { episodePendingKey(it) }.toSet()
             _uiState.update {

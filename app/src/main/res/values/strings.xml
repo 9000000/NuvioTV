@@ -402,6 +402,13 @@
     <string name="tracking_sources_subtitle">Choose where Nuvio reads your library and watch progress. Playback scrobbles to every connected service.</string>
     <string name="tracking_trakt_features_title">Trakt features</string>
     <string name="tracking_trakt_features_subtitle">Trakt-specific history, reviews, and recommendations</string>
+    <string name="tracking_simkl_features_title">Simkl features</string>
+    <string name="tracking_simkl_features_subtitle">Simkl-specific anime ID resolution settings</string>
+    <string name="tracking_simkl_anime_id_title">Anime ID preference</string>
+    <string name="tracking_simkl_anime_id_subtitle">Controls how anime series are identified. Choosing MAL or Kitsu gives each season its own entry instead of grouping under one IMDB ID.</string>
+    <string name="tracking_simkl_anime_id_imdb">Prefer IMDB</string>
+    <string name="tracking_simkl_anime_id_mal">Prefer MyAnimeList</string>
+    <string name="tracking_simkl_anime_id_kitsu">Prefer Kitsu</string>
     <string name="tracking_status_connected">Connected</string>
     <string name="tracking_status_disconnected">Not connected</string>
     <string name="tracking_status_waiting">Waiting for approval</string>
