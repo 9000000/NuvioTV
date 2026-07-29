@@ -827,14 +827,7 @@ internal fun ModernRowSection(
                             ?: itemFocusRequesters[0]
                             ?: FocusRequester.Default
                     }
-                    .focusGroup()
-                    .then(
-                        if (row.isLoading) {
-                            Modifier.onPreviewKeyEvent { event ->
-                                event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight
-                            }
-                        } else Modifier
-                    ),
+                    .focusGroup(),
                 contentPadding = PaddingValues(horizontal = rowStartPadding),
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
             ) {
@@ -893,6 +886,8 @@ internal fun ModernRowSection(
                             val nextCatalogItem = row.items.list.getOrNull(index + 1)?.metaPreview
                             val prevCatalogItem = row.items.list.getOrNull(index - 1)?.metaPreview
                             val metaPreview = item.metaPreview
+                            val isPlaceholder = payload is ModernPayload.Catalog &&
+                                payload.itemId.startsWith("__placeholder_")
                             val onLongPress: () -> Unit = when {
                                 payload is ModernPayload.Catalog && metaPreview != null -> remember(metaPreview, payload.addonBaseUrl) {
                                     {
@@ -918,6 +913,10 @@ internal fun ModernRowSection(
                                         expandedCatalogFocusKey.value == expandedFocusKey
                                 }
                             }
+                            val placeholderFocusBlock = isPlaceholder && index > 0
+                            Box(modifier = if (placeholderFocusBlock) {
+                                Modifier.focusProperties { canFocus = false }
+                            } else Modifier) {
                             ModernCatalogRowItem(
                                 item = item,
                                 payload = payload,
@@ -955,6 +954,7 @@ internal fun ModernRowSection(
                                 onExpandedCatalogFocusKeyChange = onExpandedCatalogFocusKeyChange,
                                 enrichedPreviews = enrichedPreviews
                             )
+                            } // Box
                         }
                     }
                 }

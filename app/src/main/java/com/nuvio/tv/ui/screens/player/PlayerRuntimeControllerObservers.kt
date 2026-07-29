@@ -149,8 +149,10 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
 }
 
 internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
-    autoSubtitleSelected = false
-    subtitleDisabledByPersistedPreference = false
+    val keepDisabled = subtitleDisabledByPersistedPreference ||
+        (rememberedTrackPreference?.subtitle == PlayerRuntimeController.RememberedSubtitleSelection.Disabled)
+    autoSubtitleSelected = keepDisabled
+    subtitleDisabledByPersistedPreference = keepDisabled
     subtitleAddonRestoredByPersistedPreference = false
     pendingRestoredAddonSubtitle = null
     hasScannedTextTracksOnce = false
@@ -164,7 +166,7 @@ internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
         it.copy(
             addonSubtitles = emptyList(),
             selectedAddonSubtitle = null,
-            selectedSubtitleTrackIndex = -1,
+            selectedSubtitleTrackIndex = if (keepDisabled) -1 else -1,
             isLoadingAddonSubtitles = true,
             addonSubtitlesError = null
         )
@@ -608,11 +610,17 @@ internal fun PlayerRuntimeController.clearPendingInitialResumePosition() {
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(UnstableApi::class)
-internal fun PlayerRuntimeController.retryCurrentStreamFromStartAfter416() {
+internal fun PlayerRuntimeController.retryCurrentStreamFromStartAfter416(fromPositionMs: Long) {
     if (hasRetriedCurrentStreamAfter416) return
     hasRetriedCurrentStreamAfter416 = true
-    pendingResumeProgress = null
-    scheduleDeferredPlayerReinitialize(fromPositionMs = 0L, clearResumeProgress = true)
+    // Preserve the current position instead of resetting to the beginning.
+    // A 416 (Range Not Satisfiable) often happens when seeking forward beyond
+    // what the server's current response can serve. Restarting from position 0
+    // loses all playback progress and forces the user to re-seek.
+    // Keep pendingResumeProgress intact so the resume logic can re-apply it
+    // after reinitialization, complementing fromPositionMs.
+    val safePosition = fromPositionMs.takeIf { it > 0L } ?: 0L
+    scheduleDeferredPlayerReinitialize(fromPositionMs = safePosition, clearResumeProgress = false)
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
