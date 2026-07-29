@@ -110,7 +110,7 @@ private fun SimklLibraryEntry.toLibraryEntry(
     val simklId = media.ids.simklIdValue()?.toLongOrNull()
     val entryType = when (mediaType) {
         SimklMediaType.MOVIES -> "movie"
-        SimklMediaType.ANIME -> "anime"
+        SimklMediaType.ANIME -> if (animeType == "movie") "movie" else "series"
         SimklMediaType.SHOWS -> "series"
     }
     return LibraryEntry(
@@ -139,3 +139,4 @@ private fun SimklLibraryEntry.toLibraryEntry(
         trackingSourceUrl = buildSimklSourceUrl(mediaType, media)
     )
 }
+

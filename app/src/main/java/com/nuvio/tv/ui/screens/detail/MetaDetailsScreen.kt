@@ -38,7 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.rememberUpdatedState
@@ -1314,10 +1313,9 @@ private fun MetaDetailsContent(
     }
     var activePeopleTab by rememberSaveable(meta.id) { mutableStateOf(initialPeopleTab) }
     var seasonOptionsDialogSeason by remember { mutableStateOf<Int?>(null) }
-    // Tracks whether the initial auto-scroll to the "next to play" episode has fired
-    // for each season.  Until it fires we must keep passing scrollToEpisodeId even if
-    // the user already focused an episode (which sets lastFocusedEpisodeIdBySeason).
-    val nextToWatchScrolledSeasons = remember(meta.id) { mutableStateMapOf<Int, Boolean>() }
+    // Tracks whether the initial auto-scroll to the "next to play" episode has fired.
+    // Once it fires, no more auto-scrolls happen for the lifetime of this detail screen.
+    var initialEpisodeScrollDone by remember(meta.id) { mutableStateOf(false) }
     val episodeFocusRequestersBySeason = remember(meta.id) { mutableMapOf<Int, MutableMap<String, FocusRequester>>() }
     val seasonEpisodeFocusRequesters = remember(selectedSeason, episodesForSeason) {
         val byEpisodeId = episodeFocusRequestersBySeason.getOrPut(selectedSeason) { mutableMapOf() }
@@ -1746,25 +1744,25 @@ private fun MetaDetailsContent(
                             },
                             scrollToEpisodeId = if (lastFocusedEpisodeIdBySeason[selectedSeason] != null) {
                                 null
-                            } else if (nextToWatchScrolledSeasons[selectedSeason] != true && pendingRestoreType != RestoreTarget.EPISODE) {
+                            } else if (!initialEpisodeScrollDone && pendingRestoreType != RestoreTarget.EPISODE) {
                                 val ntwId = nextToWatch?.nextVideoId
                                     ?: nextToWatch?.let { ntw -> episodesForSeason.firstOrNull { it.season == ntw.nextSeason && it.episode == ntw.nextEpisode }?.id }
                                 if (ntwId != null) {
                                     ntwId
                                 } else if (nextToWatch != null) {
                                     // nextToWatch resolved but target is in a different season — mark done and fall through.
-                                    nextToWatchScrolledSeasons[selectedSeason] = true
+                                    initialEpisodeScrollDone = true
                                     defaultSeriesVideo?.id?.takeIf { defaultId -> episodesForSeason.any { it.id == defaultId } }
                                 } else {
                                     // nextToWatch not yet calculated — emit null so LaunchedEffect waits.
                                     null
                                 }
-                            } else if (lastFocusedEpisodeIdBySeason[selectedSeason] == null && pendingRestoreType != RestoreTarget.EPISODE) {
-                                // nextToWatch scroll already done; fall back to default only if user hasn't focused anything yet.
+                            } else if (lastFocusedEpisodeIdBySeason[selectedSeason] == null && !initialEpisodeScrollDone && pendingRestoreType != RestoreTarget.EPISODE) {
+                                // Initial scroll not yet done; fall back to default only if user hasn't focused anything yet.
                                 defaultSeriesVideo?.id?.takeIf { defaultId -> episodesForSeason.any { it.id == defaultId } }
                             } else null,
                             onScrollToEpisodeHandled = {
-                                nextToWatchScrolledSeasons[selectedSeason] = true
+                                initialEpisodeScrollDone = true
                             }
                         )
                     }
