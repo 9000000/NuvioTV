@@ -29,7 +29,12 @@ class TraktTrackingLibraryProvider @Inject constructor(
     override fun observeMembership(itemId: String, itemType: String) =
         service.observeMembership(itemId, itemType)
 
-    override suspend fun toggleDefault(item: LibraryEntryInput) = service.toggleWatchlist(item)
+    override fun toggledDefaultMembership(
+        currentMembership: Map<String, Boolean>
+    ): Map<String, Boolean> {
+        val watchlistKey = TraktLibraryService.WATCHLIST_KEY
+        return currentMembership + (watchlistKey to (currentMembership[watchlistKey] != true))
+    }
 
     override suspend fun getMembershipSnapshot(item: LibraryEntryInput) =
         service.getMembershipSnapshot(item)

@@ -52,6 +52,7 @@ data class MetaDetailsUiState(
     val pickerMembership: Map<String, Boolean> = emptyMap(),
     val pickerPending: Boolean = false,
     val pickerError: String? = null,
+    val defaultLibraryTogglePending: Boolean = false,
     val removalConfirmations: List<TrackingMembershipRemovalConfirmation> = emptyList(),
     val isMovieWatched: Boolean = false,
     val isMovieWatchedPending: Boolean = false,

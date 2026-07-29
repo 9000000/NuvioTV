@@ -5,6 +5,8 @@ import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.sync.LibrarySyncService
 import com.nuvio.tv.core.tracking.TrackingLibraryProvider
 import com.nuvio.tv.core.tracking.TrackingLibraryProviderRegistry
+import com.nuvio.tv.core.tracking.TrackingMembershipRemovalConfirmation
+import com.nuvio.tv.core.tracking.TrackingMembershipRemovalImpact
 import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.LibraryPreferences
@@ -25,9 +27,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class LibraryRepositoryTabsTest {
+class LibraryRepositoryTrackingTest {
     @Test
     fun `screen tabs follow active provider while membership tabs include every connection`() = runTest {
         val sourceMode = MutableStateFlow(LibrarySourceMode.SIMKL)
@@ -75,6 +79,70 @@ class LibraryRepositoryTabsTest {
         assertEquals(listOf(TrackingRefreshIntent.USER_INITIATED), simkl.refreshIntents)
     }
 
+    @Test
+    fun `default toggle waits for destructive removal confirmation`() = runTest {
+        val sourceMode = MutableStateFlow(LibrarySourceMode.SIMKL)
+        val simklTab = tab("simkl:status:plantowatch", TrackingProviderId.SIMKL)
+        val confirmation = TrackingMembershipRemovalConfirmation(
+            providerId = TrackingProviderId.SIMKL,
+            impacts = setOf(TrackingMembershipRemovalImpact.WATCHED_HISTORY)
+        )
+        val simkl = FakeLibraryProvider(
+            providerId = TrackingProviderId.SIMKL,
+            tab = simklTab,
+            membership = mapOf(simklTab.key to true),
+            removalConfirmation = confirmation
+        )
+        val repository = repository(sourceMode, setOf(simkl))
+        val item = LibraryEntryInput("tt123", "series", "Series")
+
+        val preflight = repository.toggleDefault(item)
+
+        assertTrue(preflight.requiresRemovalConfirmation)
+        assertEquals(listOf(confirmation), preflight.requiredRemovalConfirmations)
+        assertEquals(0, simkl.applyCalls)
+
+        val confirmed = repository.toggleDefault(
+            item = item,
+            confirmedRemovalProviders = setOf(TrackingProviderId.SIMKL)
+        )
+
+        assertFalse(confirmed.requiresRemovalConfirmation)
+        assertEquals(1, simkl.applyCalls)
+        assertEquals(mapOf(simklTab.key to false), simkl.lastChanges?.desiredMembership)
+        assertTrue(simkl.lastConfirmed)
+    }
+
+    @Test
+    fun `default toggle applies active provider immediately when confirmation is not required`() = runTest {
+        val sourceMode = MutableStateFlow(LibrarySourceMode.TRAKT)
+        val traktTab = tab("watchlist", TrackingProviderId.TRAKT)
+        val trakt = FakeLibraryProvider(
+            providerId = TrackingProviderId.TRAKT,
+            tab = traktTab,
+            membership = mapOf(
+                traktTab.key to true,
+                "personal:42" to true
+            )
+        )
+        val repository = repository(sourceMode, setOf(trakt))
+
+        val result = repository.toggleDefault(
+            LibraryEntryInput("tt456", "movie", "Movie")
+        )
+
+        assertFalse(result.requiresRemovalConfirmation)
+        assertEquals(1, trakt.applyCalls)
+        assertEquals(
+            mapOf(
+                traktTab.key to false,
+                "personal:42" to true
+            ),
+            trakt.lastChanges?.desiredMembership
+        )
+        assertFalse(trakt.lastConfirmed)
+    }
+
     private fun repository(
         sourceMode: MutableStateFlow<LibrarySourceMode>,
         providers: Set<TrackingLibraryProvider>
@@ -104,9 +172,14 @@ class LibraryRepositoryTabsTest {
 
     private class FakeLibraryProvider(
         override val providerId: TrackingProviderId,
-        tab: LibraryListTab
+        private val tab: LibraryListTab,
+        private val membership: Map<String, Boolean> = emptyMap(),
+        private val removalConfirmation: TrackingMembershipRemovalConfirmation? = null
     ) : TrackingLibraryProvider {
         val refreshIntents = mutableListOf<TrackingRefreshIntent>()
+        var applyCalls = 0
+        var lastChanges: ListMembershipChanges? = null
+        var lastConfirmed = false
         override val isAuthenticated = flowOf(true)
         override val isRefreshing = flowOf(false)
         override val items = flowOf(emptyList<LibraryEntry>())
@@ -117,15 +190,28 @@ class LibraryRepositoryTabsTest {
         override fun observeMembership(itemId: String, itemType: String): Flow<Set<String>> =
             flowOf(emptySet())
 
-        override suspend fun toggleDefault(item: LibraryEntryInput) = Unit
+        override fun toggledDefaultMembership(
+            currentMembership: Map<String, Boolean>
+        ): Map<String, Boolean> =
+            currentMembership + (tab.key to (currentMembership[tab.key] != true))
 
-        override suspend fun getMembershipSnapshot(item: LibraryEntryInput) = ListMembershipSnapshot()
+        override suspend fun getMembershipSnapshot(item: LibraryEntryInput) =
+            ListMembershipSnapshot(membership)
+
+        override suspend fun membershipRemovalConfirmation(
+            item: LibraryEntryInput,
+            changes: ListMembershipChanges
+        ) = removalConfirmation
 
         override suspend fun applyMembershipChanges(
             item: LibraryEntryInput,
             changes: ListMembershipChanges,
             destructiveRemovalConfirmed: Boolean
-        ) = Unit
+        ) {
+            applyCalls += 1
+            lastChanges = changes
+            lastConfirmed = destructiveRemovalConfirmed
+        }
 
         override suspend fun refresh(intent: TrackingRefreshIntent) {
             refreshIntents += intent

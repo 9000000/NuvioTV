@@ -767,7 +767,7 @@ fun MetaDetailsScreen(
             TrackingRemovalConfirmationDialog(
                 itemTitle = uiState.meta?.name.orEmpty(),
                 confirmations = uiState.removalConfirmations,
-                isPending = uiState.pickerPending,
+                isPending = uiState.pickerPending || uiState.defaultLibraryTogglePending,
                 onConfirm = { viewModel.onEvent(MetaDetailsEvent.OnRemovalConfirmed) },
                 onDismiss = { viewModel.onEvent(MetaDetailsEvent.OnRemovalCancelled) }
             )

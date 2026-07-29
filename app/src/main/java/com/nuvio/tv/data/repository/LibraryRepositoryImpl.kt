@@ -181,14 +181,31 @@ class LibraryRepositoryImpl @Inject constructor(
         }.distinctUntilChanged()
     }
 
-    override suspend fun toggleDefault(item: LibraryEntryInput) {
+    override suspend fun toggleDefault(
+        item: LibraryEntryInput,
+        confirmedRemovalProviders: Set<TrackingProviderId>
+    ): TrackingMembershipApplyResult {
         val provider = sourceMode.first().providerId?.let(trackingProviders::provider)
         if (provider != null) {
-            provider.toggleDefault(item)
-            return
+            val currentMembership = provider.getMembershipSnapshot(item).listMembership
+            val changes = ListMembershipChanges(
+                provider.toggledDefaultMembership(currentMembership)
+            )
+            val confirmation = provider.membershipRemovalConfirmation(item, changes)
+                ?.takeUnless { required ->
+                    required.providerId in confirmedRemovalProviders
+                }
+            if (confirmation != null) {
+                return TrackingMembershipApplyResult(listOf(confirmation))
+            }
+            provider.applyMembershipChanges(
+                item = item,
+                changes = changes,
+                destructiveRemovalConfirmed = provider.providerId in confirmedRemovalProviders
+            )
+            return TrackingMembershipApplyResult()
         }
 
-        // Otherwise save to local Nuvio library (syncs to Supabase)
         val isInLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
         if (isInLocal) {
             libraryPreferences.removeItem(itemId = item.itemId, itemType = item.itemType)
@@ -196,6 +213,7 @@ class LibraryRepositoryImpl @Inject constructor(
             libraryPreferences.addItem(item.toSavedLibraryItem())
         }
         triggerRemoteSync()
+        return TrackingMembershipApplyResult()
     }
 
     override suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot {

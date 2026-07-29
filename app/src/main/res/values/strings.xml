@@ -2599,10 +2599,10 @@
     <string name="simkl_error_authorization_revoked">Simkl authorization was revoked. Connect again.</string>
     <string name="simkl_error_network">Unable to reach Simkl. Try again.</string>
     <string name="tracking_removal_title">Remove from %1$s?</string>
-    <string name="tracking_removal_message">Removing %1$s can also clear %2$s on the provider.</string>
+    <string name="tracking_removal_message">Removing “%1$s” from %2$s will also clear its %3$s there. This can’t be undone.</string>
     <string name="tracking_removal_impact_history">watched history</string>
-    <string name="tracking_removal_impact_rating">the rating</string>
-    <string name="tracking_removal_impact_history_rating">watched history and the rating</string>
+    <string name="tracking_removal_impact_rating">rating</string>
+    <string name="tracking_removal_impact_history_rating">watched history and rating</string>
     <string name="action_remove_anyway">Remove anyway</string>
     <string name="cd_simkl_qr">Simkl activation QR</string>
     <string name="cd_simkl_logo">Simkl logo</string>

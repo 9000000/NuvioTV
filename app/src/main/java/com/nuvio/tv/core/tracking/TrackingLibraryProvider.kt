@@ -18,7 +18,7 @@ interface TrackingLibraryProvider {
 
     fun recognizesListKey(key: String): Boolean
     fun observeMembership(itemId: String, itemType: String): Flow<Set<String>>
-    suspend fun toggleDefault(item: LibraryEntryInput)
+    fun toggledDefaultMembership(currentMembership: Map<String, Boolean>): Map<String, Boolean>
     suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot
     suspend fun membershipRemovalConfirmation(
         item: LibraryEntryInput,

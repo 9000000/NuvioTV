@@ -301,7 +301,7 @@ fun TrackingRemovalConfirmationDialog(
     NuvioDialog(
         onDismiss = onDismiss,
         title = stringResource(R.string.tracking_removal_title, providers),
-        subtitle = stringResource(R.string.tracking_removal_message, itemTitle, impact),
+        subtitle = stringResource(R.string.tracking_removal_message, itemTitle, providers, impact),
         width = 560.dp,
         suppressFirstKeyUp = false
     ) {

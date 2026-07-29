@@ -125,6 +125,7 @@ class MetaDetailsViewModel @Inject constructor(
     private var nextToWatchJob: Job? = null
     private var commentsJob: Job? = null
     private var commentsLoadMoreJob: Job? = null
+    private var pendingDefaultLibraryToggle: LibraryEntryInput? = null
 
     private var trailerDelayMs = 7000L
     private var trailerAutoplayEnabled = false
@@ -1914,13 +1915,33 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun toggleLibrary() {
+        if (
+            _uiState.value.defaultLibraryTogglePending ||
+            _uiState.value.removalConfirmations.isNotEmpty()
+        ) {
+            return
+        }
         val meta = _uiState.value.meta ?: return
         viewModelScope.launch {
             val input = meta.toLibraryEntryInput()
             val wasInWatchlist = _uiState.value.isInWatchlist
             val wasInLibrary = _uiState.value.isInLibrary
+            _uiState.update { it.copy(defaultLibraryTogglePending = true) }
             runCatching {
                 libraryRepository.toggleDefault(input)
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    pendingDefaultLibraryToggle = input
+                    _uiState.update {
+                        it.copy(
+                            defaultLibraryTogglePending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                    return@onSuccess
+                }
+                pendingDefaultLibraryToggle = null
+                _uiState.update { it.copy(defaultLibraryTogglePending = false) }
                 val message = if (wasInLibrary || wasInWatchlist) {
                     localizedContext.getString(R.string.detail_removed_from_library)
                 } else {
@@ -1928,6 +1949,8 @@ class MetaDetailsViewModel @Inject constructor(
                 }
                 showMessage(message)
             }.onFailure { error ->
+                pendingDefaultLibraryToggle = null
+                _uiState.update { it.copy(defaultLibraryTogglePending = false) }
                 showMessage(
                     message = error.message ?: context.getString(com.nuvio.tv.R.string.detail_error_update_library_failed),
                     isError = true
@@ -1993,6 +2016,7 @@ class MetaDetailsViewModel @Inject constructor(
                 )
             }.onSuccess { result ->
                 if (result.requiresRemovalConfirmation) {
+                    pendingDefaultLibraryToggle = null
                     _uiState.update {
                         it.copy(
                             pickerPending = false,
@@ -2015,21 +2039,28 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun dismissListPicker() {
+        pendingDefaultLibraryToggle = null
         _uiState.update {
             it.copy(
                 showListPicker = false,
                 pickerPending = false,
                 pickerError = null,
+                defaultLibraryTogglePending = false,
                 removalConfirmations = emptyList()
             )
         }
     }
 
     private fun confirmPickerRemoval() {
-        if (_uiState.value.pickerPending) return
+        if (_uiState.value.pickerPending || _uiState.value.defaultLibraryTogglePending) return
         val meta = _uiState.value.meta ?: return
         val confirmations = _uiState.value.removalConfirmations
         if (confirmations.isEmpty()) return
+        val defaultToggle = pendingDefaultLibraryToggle
+        if (defaultToggle != null) {
+            confirmDefaultLibraryRemoval(defaultToggle, confirmations)
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(pickerPending = true) }
             runCatching {
@@ -2062,16 +2093,73 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
+    private fun confirmDefaultLibraryRemoval(
+        input: LibraryEntryInput,
+        confirmations: List<TrackingMembershipRemovalConfirmation>
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(defaultLibraryTogglePending = true) }
+            runCatching {
+                libraryRepository.toggleDefault(
+                    item = input,
+                    confirmedRemovalProviders = confirmations.mapTo(
+                        linkedSetOf(),
+                        TrackingMembershipRemovalConfirmation::providerId
+                    )
+                )
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    _uiState.update {
+                        it.copy(
+                            defaultLibraryTogglePending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                } else {
+                    pendingDefaultLibraryToggle = null
+                    _uiState.update {
+                        it.copy(
+                            defaultLibraryTogglePending = false,
+                            removalConfirmations = emptyList()
+                        )
+                    }
+                    showMessage(localizedContext.getString(R.string.detail_removed_from_library))
+                }
+            }.onFailure { error ->
+                pendingDefaultLibraryToggle = null
+                _uiState.update {
+                    it.copy(
+                        defaultLibraryTogglePending = false,
+                        removalConfirmations = emptyList()
+                    )
+                }
+                showMessage(
+                    message = error.message
+                        ?: context.getString(com.nuvio.tv.R.string.detail_error_update_library_failed),
+                    isError = true
+                )
+            }
+        }
+    }
+
     private fun cancelPickerRemoval() {
-        _uiState.update { it.copy(removalConfirmations = emptyList()) }
+        pendingDefaultLibraryToggle = null
+        _uiState.update {
+            it.copy(
+                defaultLibraryTogglePending = false,
+                removalConfirmations = emptyList()
+            )
+        }
     }
 
     private fun completePickerSave() {
+        pendingDefaultLibraryToggle = null
         _uiState.update {
             it.copy(
                 pickerPending = false,
                 showListPicker = false,
                 pickerError = null,
+                defaultLibraryTogglePending = false,
                 removalConfirmations = emptyList()
             )
         }

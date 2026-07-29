@@ -131,7 +131,9 @@ class TrackingLibraryMembershipTest {
         override fun observeMembership(itemId: String, itemType: String): Flow<Set<String>> =
             flowOf(emptySet())
 
-        override suspend fun toggleDefault(item: LibraryEntryInput) = Unit
+        override fun toggledDefaultMembership(
+            currentMembership: Map<String, Boolean>
+        ): Map<String, Boolean> = currentMembership
         override suspend fun getMembershipSnapshot(item: LibraryEntryInput) = ListMembershipSnapshot()
 
         override suspend fun applyMembershipChanges(
