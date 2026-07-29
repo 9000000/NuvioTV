@@ -181,7 +181,8 @@ data class SimklSyncState(
     val snapshot: SimklSyncSnapshot = SimklSyncSnapshot(),
     val isLoading: Boolean = false,
     val hasLoaded: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val projectionVersion: Long = 0L
 )
 
 fun Map<String, JsonElement>.idValue(key: String): String? =

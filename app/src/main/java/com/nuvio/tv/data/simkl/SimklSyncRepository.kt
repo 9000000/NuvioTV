@@ -182,6 +182,15 @@ class SimklSyncRepository @Inject constructor(
     private fun isCurrent(profileId: Int, generation: Long): Boolean =
         profileId == profileManager.activeProfileId.value && generation == profileGeneration
 
+    /**
+     * Bumps the projection version to force downstream collectors (CW, library, watched badges)
+     * to recompute their projections without re-fetching from the network.
+     */
+    fun invalidateProjections() {
+        val current = _state.value
+        _state.value = current.copy(projectionVersion = current.projectionVersion + 1L)
+    }
+
     private companion object {
         const val TAG = "SimklSync"
     }
