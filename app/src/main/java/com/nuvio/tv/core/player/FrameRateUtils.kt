@@ -802,7 +802,7 @@ object FrameRateUtils {
                 }
                 if (isCancelled()) return null
                 val contentLength = headResult.totalContentLength
-                    ?: fetchContentLength(targetUrl, headers)
+                    ?: fetchContentLength(targetUrl, headers, isCancelled)
                 if (contentLength > 4_194_304L) {
                     val nextBoxOffset = resolveMp4TailStartAfterMdat(
                         targetUrl = targetUrl,
@@ -880,7 +880,7 @@ object FrameRateUtils {
      * 1) Truncate torn EBML at the last complete Segment child, probe locally (no sample loop)
      * 2) If Tracks is missing/incomplete and CDN supports Range, SeekHead-sparse-fetch Tracks
      */
-    private fun probeMkvFromHeadAndSparseTracks(
+    internal fun probeMkvFromHeadAndSparseTracks(
         context: Context,
         targetUrl: String,
         headers: Map<String, String>,
@@ -993,6 +993,21 @@ object FrameRateUtils {
             if (!tracksResult.success || !tracksResult.rangeSatisfied) {
                 Log.w(TAG, "MKV Tracks sparse fetch failed")
                 return null
+            }
+
+            // Same rule as Pass 1: a Cluster-less file makes demuxers discard the Tracks they
+            // just parsed, so terminate the sparse file with a stub Cluster + patched Segment size.
+            if (!layout.clusterInPrefix) {
+                val patched = MatroskaAfrProbe.appendStubClusterForHeadProbe(
+                    file = tempFile,
+                    layout = layout,
+                    contentEnd = tempFile.length()
+                )
+                if (patched != null) {
+                    Log.d(TAG, "MKV sparse Tracks file has no Cluster; appended stub Cluster (length=$patched)")
+                } else {
+                    Log.w(TAG, "MKV sparse Tracks stub Cluster patch failed")
+                }
             }
 
             detectFrameRateFromLocalFile(
@@ -1226,7 +1241,12 @@ object FrameRateUtils {
         }
     }
 
-    private fun fetchContentLength(url: String, headers: Map<String, String>): Long {
+    internal fun fetchContentLength(
+        url: String,
+        headers: Map<String, String>,
+        isCancelled: () -> Boolean = NEVER_CANCELLED
+    ): Long {
+        if (isCancelled()) return -1L
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
             .head()

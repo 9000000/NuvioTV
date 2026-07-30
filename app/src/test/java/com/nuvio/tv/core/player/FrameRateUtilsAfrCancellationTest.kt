@@ -111,6 +111,35 @@ class FrameRateUtilsAfrCancellationTest {
     }
 
     @Test
+    fun `fetchContentLength does not open a connection when already cancelled`() {
+        val serverSocket = ServerSocket(0)
+        val acceptedConnections = AtomicInteger(0)
+        val acceptThread = Thread {
+            runCatching {
+                while (true) {
+                    serverSocket.accept().use { acceptedConnections.incrementAndGet() }
+                }
+            }
+        }
+        acceptThread.isDaemon = true
+        acceptThread.start()
+
+        try {
+            val length = FrameRateUtils.fetchContentLength(
+                url = "http://127.0.0.1:${serverSocket.localPort}/video.mp4",
+                headers = emptyMap(),
+                isCancelled = { true }
+            )
+            Thread.sleep(300)
+
+            assertEquals("Pre-cancelled HEAD must report failure", -1L, length)
+            assertEquals("Pre-cancelled HEAD must not touch the network", 0, acceptedConnections.get())
+        } finally {
+            runCatching { serverSocket.close() }
+        }
+    }
+
+    @Test
     fun `warmHttpOriginForAfrProbe does not open a connection when already cancelled`() {
         val serverSocket = ServerSocket(0)
         val acceptedConnections = AtomicInteger(0)
