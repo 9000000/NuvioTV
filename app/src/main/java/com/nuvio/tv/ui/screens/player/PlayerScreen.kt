@@ -472,6 +472,20 @@ fun PlayerScreen(
             .focusRequester(containerFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
+                // Consume the confirm KEY_UP that opened the subtitle timing dialog before
+                // the newly focused "Sync" button can treat it as a second click. Preview
+                // is required: after open, focus moves into the dialog so onKeyEvent on
+                // this container no longer receives the release.
+                if (subtitleTimingConsumeNextConfirmKeyUp &&
+                    keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP &&
+                    (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+                ) {
+                    subtitleTimingConsumeNextConfirmKeyUp = false
+                    return@onPreviewKeyEvent true
+                }
+
                 if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
                 ) {
@@ -509,14 +523,8 @@ fun PlayerScreen(
                 true
             }
             .onKeyEvent { keyEvent ->
-                if (subtitleTimingConsumeNextConfirmKeyUp &&
-                    keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP &&
-                    (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER)
-                ) {
-                    subtitleTimingConsumeNextConfirmKeyUp = false
-                    return@onKeyEvent true
-                }
+                // KEY_UP confirm for Sync Line is consumed in onPreviewKeyEvent so it still
+                // runs after focus moves into the timing dialog.
                 if (uiState.showSubtitleDelayOverlay) {
                     if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                         when (subtitleDelayFocusTarget) {
@@ -536,6 +544,7 @@ fun PlayerScreen(
                                     }
                                     KeyEvent.KEYCODE_DPAD_CENTER,
                                     KeyEvent.KEYCODE_ENTER,
+                                    KeyEvent.KEYCODE_NUMPAD_ENTER,
                                     KeyEvent.KEYCODE_DPAD_UP -> {
                                         return@onKeyEvent true
                                     }
@@ -544,7 +553,8 @@ fun PlayerScreen(
                             SubtitleDelayFocusTarget.RESET -> {
                                 when (keyEvent.nativeKeyEvent.keyCode) {
                                     KeyEvent.KEYCODE_DPAD_CENTER,
-                                    KeyEvent.KEYCODE_ENTER -> {
+                                    KeyEvent.KEYCODE_ENTER,
+                                    KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                                         viewModel.onEvent(PlayerEvent.OnResetSubtitleDelay())
                                         subtitleDelayFocusTarget = SubtitleDelayFocusTarget.SLIDER
                                         return@onKeyEvent true
@@ -566,8 +576,11 @@ fun PlayerScreen(
                             SubtitleDelayFocusTarget.SYNC_LINE -> {
                                 when (keyEvent.nativeKeyEvent.keyCode) {
                                     KeyEvent.KEYCODE_DPAD_CENTER,
-                                    KeyEvent.KEYCODE_ENTER -> {
+                                    KeyEvent.KEYCODE_ENTER,
+                                    KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                                         subtitleDelayFocusTarget = SubtitleDelayFocusTarget.SLIDER
+                                        // KEY_DOWN open: swallow the trailing KEY_UP so the
+                                        // dialog's Sync control does not treat it as a click.
                                         subtitleTimingConsumeNextConfirmKeyUp = true
                                         viewModel.onEvent(PlayerEvent.OnShowSubtitleTimingDialog)
                                         return@onKeyEvent true
@@ -1165,7 +1178,8 @@ fun PlayerScreen(
                 },
                 onOpenSyncByLine = {
                     subtitleDelayFocusTarget = SubtitleDelayFocusTarget.SLIDER
-                    subtitleTimingConsumeNextConfirmKeyUp = true
+                    // Card onClick already runs on confirm KEY_UP — no trailing release
+                    // to swallow. KEY_DOWN open (SYNC_LINE branch above) sets the flag.
                     viewModel.onEvent(PlayerEvent.OnShowSubtitleTimingDialog)
                 }
             )
