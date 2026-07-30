@@ -6,6 +6,7 @@ import android.util.Log
 import com.nuvio.tv.core.player.FrameRateUtils
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
@@ -134,12 +135,16 @@ internal suspend fun PlayerRuntimeController.runAfrPreflightIfEnabled(
         val okHttpDetection = if (okHttpBudget >= AFR_PREFLIGHT_MIN_STAGE_MS) {
             withTimeoutOrNull(okHttpBudget) {
                 withContext(Dispatchers.IO) {
+                    // Blocking OkHttp calls ignore coroutine cancellation; hand the probe a
+                    // signal tied to this job so timeout/cancel actually stops the downloads.
+                    val probeJob = coroutineContext[Job]
                     FrameRateUtils.detectFrameRateWithOkHttpProbe(
                         context = context,
                         sourceUrl = url,
                         headers = streamHeaders,
                         mimeType = effectiveMimeType,
-                        filename = filename
+                        filename = filename,
+                        isCancelled = { probeJob?.isActive != true }
                     )
                 }
             }

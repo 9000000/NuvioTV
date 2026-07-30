@@ -454,6 +454,10 @@ object FrameRateUtils {
     /** Tiny Range used only to pay cold debrid/CDN TTFB before the real head/tail probe. */
     internal const val AFR_CDN_WARMUP_MAX_BYTES = 262_144L // 256 KiB
 
+    // Coroutine cancellation cannot interrupt blocking OkHttp calls; the probe chain polls this
+    // between stages and inside download loops so a cancelled preflight stops downloading.
+    internal val NEVER_CANCELLED: () -> Boolean = { false }
+
     /**
      * Issues a small `bytes=0-(N-1)` GET so TLS + debrid origin spin-up happen on a cheap
      * request. The following 4 MB head / moov tail then reuse the warmed connection pool.
@@ -461,10 +465,12 @@ object FrameRateUtils {
      */
     internal fun warmHttpOriginForAfrProbe(
         url: String,
-        headers: Map<String, String>
+        headers: Map<String, String>,
+        isCancelled: () -> Boolean = NEVER_CANCELLED
     ): Boolean {
         val scheme = parseUriScheme(url)
         if (scheme != "http" && scheme != "https") return false
+        if (isCancelled()) return false
 
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
@@ -494,6 +500,10 @@ object FrameRateUtils {
                     val buffer = ByteArray(8192)
                     var total = 0L
                     while (total < AFR_CDN_WARMUP_MAX_BYTES) {
+                        if (isCancelled()) {
+                            call.cancel()
+                            return false
+                        }
                         val read = input.read(
                             buffer,
                             0,
@@ -698,7 +708,8 @@ object FrameRateUtils {
         sourceUrl: String,
         headers: Map<String, String> = emptyMap(),
         mimeType: String? = null,
-        filename: String? = null
+        filename: String? = null,
+        isCancelled: () -> Boolean = NEVER_CANCELLED
     ): FrameRateDetection? {
         val scheme = parseUriScheme(sourceUrl)
         if (scheme != "http" && scheme != "https") return null
@@ -720,13 +731,15 @@ object FrameRateUtils {
         try {
             // Pay cold debrid/CDN TTFB on a tiny Range so the real 4 MB head + moov/Tracks tail
             // run on a warmed origin/connection instead of racing the preflight budget.
-            warmHttpOriginForAfrProbe(targetUrl, headers)
+            warmHttpOriginForAfrProbe(targetUrl, headers, isCancelled)
 
             // Pass 1: Head Range Probe (first 4 MB - bytes=0-4194303)
             val headMaxBytes = 4_194_304L + 65_536L
             val headResult = fetchHttpRangeToFile(
-                targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
+                targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L,
+                isCancelled = isCancelled
             )
+            if (isCancelled()) return null
             val isMp4Detected = isMp4Source(targetUrl, mimeType, filename) || hasFtypAtom(tempFile)
             val isMkvDetected = isMkvSource(targetUrl, mimeType, filename) || hasEbmlHeader(tempFile)
 
@@ -744,7 +757,8 @@ object FrameRateUtils {
                         targetUrl = targetUrl,
                         headers = headers,
                         tempFile = tempFile,
-                        rangeSatisfied = headResult.rangeSatisfied
+                        rangeSatisfied = headResult.rangeSatisfied,
+                        isCancelled = isCancelled
                     )
                     if (mkvDetection != null) return mkvDetection
                     Log.d(TAG, "MKV OkHttp probe exhausted; aborting for full-URL NextLib/extractor fallback")
@@ -773,6 +787,7 @@ object FrameRateUtils {
                     Log.w(TAG, "CDN did not satisfy Range (no HTTP 206); skipping MP4 tail probe")
                     return null
                 }
+                if (isCancelled()) return null
                 val contentLength = headResult.totalContentLength
                     ?: fetchContentLength(targetUrl, headers)
                 if (contentLength > 4_194_304L) {
@@ -780,7 +795,8 @@ object FrameRateUtils {
                         targetUrl = targetUrl,
                         headers = headers,
                         tempFile = tempFile,
-                        contentLength = contentLength
+                        contentLength = contentLength,
+                        isCancelled = isCancelled
                     )
                     if (nextBoxOffset == null || nextBoxOffset >= contentLength) {
                         Log.w(TAG, "MP4 box parsing could not resolve mdat end, aborting probe")
@@ -802,7 +818,8 @@ object FrameRateUtils {
                     val usableSpace = runCatching { context.cacheDir.usableSpace }.getOrDefault(0L)
                     if (usableSpace > 50_000_000L) { // Requires only 50 MB usable disk space for 14 MB sparse blocks
                         val tailResultSparse = fetchHttpRangeToFile(
-                            targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = tailStart
+                            targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = tailStart,
+                            isCancelled = isCancelled
                         )
                         if (tailResultSparse.success && tailResultSparse.rangeSatisfied && tempFile.length() > 0) {
                             val detection = detectFrameRateFromLocalFile(context, tempFile)
@@ -814,14 +831,17 @@ object FrameRateUtils {
                     }
 
                     // Strategy B: Compact file fallback (Head 4MB + Tail concatenated)
+                    if (isCancelled()) return null
                     tempFile.delete()
                     val headResultCompact = fetchHttpRangeToFile(
-                        targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L
+                        targetUrl, headers, "bytes=0-4194303", headMaxBytes, tempFile, fileOffset = 0L,
+                        isCancelled = isCancelled
                     )
                     if (headResultCompact.success && headResultCompact.rangeSatisfied) {
                         val compactOffset = tempFile.length()
                         val tailResultCompact = fetchHttpRangeToFile(
-                            targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = compactOffset
+                            targetUrl, headers, tailRange, tailMaxBytes, tempFile, fileOffset = compactOffset,
+                            isCancelled = isCancelled
                         )
                         if (tailResultCompact.success && tailResultCompact.rangeSatisfied && tempFile.length() > 0) {
                             patchMdatHeaderForCompactMp4(tempFile, compactOffset)
@@ -852,7 +872,8 @@ object FrameRateUtils {
         targetUrl: String,
         headers: Map<String, String>,
         tempFile: java.io.File,
-        rangeSatisfied: Boolean
+        rangeSatisfied: Boolean,
+        isCancelled: () -> Boolean = NEVER_CANCELLED
     ): FrameRateDetection? {
         val layout = MatroskaAfrProbe.analyzeHead(tempFile)
         if (layout != null) {
@@ -911,6 +932,7 @@ object FrameRateUtils {
         }
 
         // Peek Tracks header to learn exact element size, then fetch the full element (capped).
+        if (isCancelled()) return null
         val peekBytes = 64L
         val peekFile = java.io.File(tempFile.parentFile, "afr_mkv_tracks_peek_${tempFile.name}")
         try {
@@ -920,7 +942,8 @@ object FrameRateUtils {
                 rangeHeader = "bytes=$tracksOffset-${tracksOffset + peekBytes - 1}",
                 maxBytes = peekBytes,
                 targetFile = peekFile,
-                fileOffset = 0L
+                fileOffset = 0L,
+                isCancelled = isCancelled
             )
             if (!peekResult.success || !peekResult.rangeSatisfied || peekFile.length() < 4L) {
                 Log.w(TAG, "MKV Tracks header peek failed")
@@ -951,7 +974,8 @@ object FrameRateUtils {
                 rangeHeader = tracksRange,
                 maxBytes = tracksTotalSize + 4_096L,
                 targetFile = tempFile,
-                fileOffset = tracksOffset
+                fileOffset = tracksOffset,
+                isCancelled = isCancelled
             )
             if (!tracksResult.success || !tracksResult.rangeSatisfied) {
                 Log.w(TAG, "MKV Tracks sparse fetch failed")
@@ -993,10 +1017,12 @@ object FrameRateUtils {
         targetUrl: String,
         headers: Map<String, String>,
         tempFile: java.io.File,
-        contentLength: Long
+        contentLength: Long,
+        isCancelled: () -> Boolean = NEVER_CANCELLED
     ): Long? {
         var startPos = 0L
         repeat(12) {
+            if (isCancelled()) return null
             when (val walk = walkMp4BoxesForMdatEnd(tempFile, contentLength, startPos)) {
                 is Mp4MdatWalkResult.Found -> {
                     Log.d(TAG, "MP4 mdat end resolved at ${walk.mdatEnd}")
@@ -1018,7 +1044,8 @@ object FrameRateUtils {
                         rangeHeader = "bytes=$peekAt-$peekEnd",
                         maxBytes = peekLen,
                         targetFile = tempFile,
-                        fileOffset = peekAt
+                        fileOffset = peekAt,
+                        isCancelled = isCancelled
                     )
                     if (!peekResult.success || !peekResult.rangeSatisfied) {
                         Log.w(TAG, "MP4 header peek failed at $peekAt")
@@ -1116,8 +1143,10 @@ object FrameRateUtils {
         rangeHeader: String,
         maxBytes: Long,
         targetFile: java.io.File,
-        fileOffset: Long = 0L
+        fileOffset: Long = 0L,
+        isCancelled: () -> Boolean = NEVER_CANCELLED
     ): HttpRangeFetchResult {
+        if (isCancelled()) return HttpRangeFetchResult(success = false)
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
             .header("Range", rangeHeader)
@@ -1151,6 +1180,10 @@ object FrameRateUtils {
                         val buffer = ByteArray(8192)
                         var totalRead = 0L
                         while (totalRead < maxBytes) {
+                            if (isCancelled()) {
+                                call.cancel()
+                                return HttpRangeFetchResult(success = false)
+                            }
                             val toRead = minOf(buffer.size.toLong(), maxBytes - totalRead).toInt()
                             val bytesRead = input.read(buffer, 0, toRead)
                             if (bytesRead <= 0) break
