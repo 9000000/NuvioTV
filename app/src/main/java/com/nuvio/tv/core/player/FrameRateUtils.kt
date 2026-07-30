@@ -1021,6 +1021,7 @@ object FrameRateUtils {
         isCancelled: () -> Boolean = NEVER_CANCELLED
     ): Long? {
         var startPos = 0L
+        var lastPeekAt = -1L
         repeat(12) {
             if (isCancelled()) return null
             when (val walk = walkMp4BoxesForMdatEnd(tempFile, contentLength, startPos)) {
@@ -1035,6 +1036,13 @@ object FrameRateUtils {
                 is Mp4MdatWalkResult.NeedHeaderAt -> {
                     val peekAt = walk.offset
                     if (peekAt < 0L || peekAt >= contentLength) return null
+                    // Same offset after a successful peek means the server returned fewer bytes
+                    // than the box header needs; re-requesting would repeat identically.
+                    if (peekAt == lastPeekAt) {
+                        Log.w(TAG, "MP4 header peek at $peekAt made no progress; aborting")
+                        return null
+                    }
+                    lastPeekAt = peekAt
                     val peekLen = 64L
                     val peekEnd = minOf(peekAt + peekLen - 1L, contentLength - 1L)
                     Log.d(TAG, "MP4 box walk needs header peek at $peekAt")
