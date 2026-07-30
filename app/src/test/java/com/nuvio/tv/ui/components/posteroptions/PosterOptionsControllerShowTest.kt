@@ -18,7 +18,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -47,10 +47,10 @@ class PosterOptionsControllerShowTest {
             isInLibrary = true,
             isWatched = false
         )
-        controller.bind(this)
+        controller.bind(backgroundScope)
 
         controller.show(samplePreview(), addonBaseUrl = null)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = controller.state.value
         assertEquals(true, state.isInLibrary)
@@ -65,10 +65,10 @@ class PosterOptionsControllerShowTest {
             isInLibrary = false,
             isWatched = false
         )
-        controller.bind(this)
+        controller.bind(backgroundScope)
 
         controller.show(samplePreview(), addonBaseUrl = null)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = controller.state.value
         assertEquals(false, state.isInLibrary)
@@ -82,10 +82,10 @@ class PosterOptionsControllerShowTest {
             isInLibrary = false,
             isWatched = true
         )
-        controller.bind(this)
+        controller.bind(backgroundScope)
 
         controller.show(samplePreview(), addonBaseUrl = null)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = controller.state.value
         assertEquals(true, state.isWatched)
@@ -122,11 +122,11 @@ class PosterOptionsControllerShowTest {
             watchedSeriesStateHolder = watchedSeriesStateHolder,
             tmdbService = tmdbService
         )
-        controller.bind(this)
+        controller.bind(backgroundScope)
 
         controller.show(samplePreview(id = "tmdb:111"), addonBaseUrl = null)
         controller.show(samplePreview(id = "tmdb:222"), addonBaseUrl = null)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = controller.state.value
         assertEquals("tt0000002", state.target?.id)
@@ -164,10 +164,10 @@ class PosterOptionsControllerShowTest {
             watchedSeriesStateHolder = watchedSeriesStateHolder,
             tmdbService = tmdbService
         )
-        controller.bind(this)
+        controller.bind(backgroundScope)
 
         controller.show(samplePreview(id = tmdbId), addonBaseUrl = null)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = controller.state.value
         assertEquals(true, state.isInLibrary)
