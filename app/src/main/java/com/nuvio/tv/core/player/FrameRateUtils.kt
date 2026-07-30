@@ -914,7 +914,7 @@ object FrameRateUtils {
         detectFrameRateFromLocalFile(
             context = context,
             file = tempFile,
-            allowTimestampSampling = false
+            allowTimestampSampling = allowMkvLocalTimestampSampling(tempFile)
         )?.let { detection ->
             Log.d(TAG, "OkHttp AFR MKV Pass 1 (safe head) succeeded: FPS=${detection.snapped}")
             return detection
@@ -974,20 +974,22 @@ object FrameRateUtils {
                 return null
             }
 
-            // Ensure safe prefix remains at offset 0; write Tracks at its absolute file offset.
+            // Keep the safe prefix at 0, then append Tracks contiguously at EOF. Writing at the
+            // remote absolute offset creates a sparse hole that breaks Matroska demuxers.
             if (layout != null && layout.safePrefixLength > 0L && tempFile.length() > layout.safePrefixLength) {
                 MatroskaAfrProbe.truncateToSafePrefix(tempFile, layout)
             }
+            val tracksWriteOffset = tempFile.length()
 
             val tracksRange = "bytes=$tracksOffset-${tracksOffset + tracksTotalSize - 1}"
-            Log.d(TAG, "OkHttp AFR MKV Pass 2 fetching Tracks range $tracksRange")
+            Log.d(TAG, "OkHttp AFR MKV Pass 2 fetching Tracks range $tracksRange (append at $tracksWriteOffset)")
             val tracksResult = fetchHttpRangeToFile(
                 url = targetUrl,
                 headers = headers,
                 rangeHeader = tracksRange,
                 maxBytes = tracksTotalSize + 4_096L,
                 targetFile = tempFile,
-                fileOffset = tracksOffset,
+                fileOffset = tracksWriteOffset,
                 isCancelled = isCancelled
             )
             if (!tracksResult.success || !tracksResult.rangeSatisfied) {
@@ -1013,7 +1015,7 @@ object FrameRateUtils {
             detectFrameRateFromLocalFile(
                 context = context,
                 file = tempFile,
-                allowTimestampSampling = false
+                allowTimestampSampling = allowMkvLocalTimestampSampling(tempFile)
             )?.let { detection ->
                 Log.d(TAG, "OkHttp AFR MKV Pass 2 (sparse Tracks) succeeded: FPS=${detection.snapped}")
                 return detection
@@ -1273,10 +1275,29 @@ object FrameRateUtils {
         }
     }
 
-    private fun detectFrameRateFromLocalFile(
+    private fun allowMkvLocalTimestampSampling(file: java.io.File): Boolean {
+        val layout = MatroskaAfrProbe.analyzeHead(file) ?: return false
+        return layout.clusterInPrefix
+    }
+
+    internal fun detectFrameRateFromLocalFile(
         context: Context,
         file: java.io.File,
         allowTimestampSampling: Boolean = true
+    ): FrameRateDetection? {
+        detectFrameRateWithNextLibFromLocalFile(context, file)?.let { return it }
+
+        return detectFrameRateWithExtractor(
+            context = context,
+            sourceUrl = file.absolutePath,
+            headers = emptyMap(),
+            allowTimestampSampling = allowTimestampSampling
+        )
+    }
+
+    internal fun detectFrameRateWithNextLibFromLocalFile(
+        context: Context,
+        file: java.io.File
     ): FrameRateDetection? {
         try {
             val uri = Uri.fromFile(file)
@@ -1302,13 +1323,7 @@ object FrameRateUtils {
         } catch (e: Throwable) {
             Log.d(TAG, "Local NextLib probe failed: ${e.message}")
         }
-
-        return detectFrameRateWithExtractor(
-            context = context,
-            sourceUrl = file.absolutePath,
-            headers = emptyMap(),
-            allowTimestampSampling = allowTimestampSampling
-        )
+        return null
     }
 
     private fun detectFrameRateWithNextLib(
