@@ -311,7 +311,7 @@ class FrameRateUtilsAfrTest {
 
     @Test
     fun `isMkvSource and isMp4Source respect mimeType and filename for extensionless proxy URLs`() {
-        val proxyUrl = "https://meteorfortheweebs.midnightignite.me/p/eyJ.../0?svc=0"
+        val proxyUrl = "https://proxy.example.com/p/eyJ.../0?svc=0"
         
         // Without mimeType or filename, extensionless URL returns false
         assertFalse(FrameRateUtils.isMkvSource(proxyUrl))
