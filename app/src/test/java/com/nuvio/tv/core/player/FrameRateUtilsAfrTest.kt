@@ -328,6 +328,44 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
+    fun `hasFtypAtom detects 8-byte files and fMP4 or QuickTime leading boxes`() {
+        fun tempFileWith(bytes: ByteArray): java.io.File {
+            val f = java.io.File.createTempFile("mp4sig_", ".tmp")
+            f.writeBytes(bytes)
+            return f
+        }
+
+        fun leadingBox(type: String, size: Int = 16): ByteArray {
+            val bos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(bos)
+            dos.writeInt(size)
+            dos.write(type.toByteArray(Charsets.US_ASCII))
+            return bos.toByteArray()
+        }
+
+        val files = mutableListOf<java.io.File>()
+        try {
+            // Exactly 8 bytes: a valid box header alone must be detected (guard allows >= 8).
+            val eightByteFtyp = tempFileWith(leadingBox("ftyp")).also { files.add(it) }
+            assertTrue("8-byte ftyp header must be detected", FrameRateUtils.hasFtypAtom(eightByteFtyp))
+
+            // Extensionless fMP4/DASH and QuickTime layouts start with these boxes.
+            listOf("styp", "free", "skip", "wide", "mdat").forEach { type ->
+                val f = tempFileWith(leadingBox(type) + ByteArray(8)).also { files.add(it) }
+                assertTrue("Leading '$type' box must be detected as MP4", FrameRateUtils.hasFtypAtom(f))
+            }
+
+            // Unknown type and garbage must not match.
+            val unknownBox = tempFileWith(leadingBox("abcd") + ByteArray(8)).also { files.add(it) }
+            assertFalse("Unknown box type must not be detected", FrameRateUtils.hasFtypAtom(unknownBox))
+            val garbage = tempFileWith(ByteArray(16) { (it * 7).toByte() }).also { files.add(it) }
+            assertFalse("Garbage must not be detected as MP4", FrameRateUtils.hasFtypAtom(garbage))
+        } finally {
+            files.forEach { it.delete() }
+        }
+    }
+
+    @Test
     fun `hasFtypAtom detects ftyp and moov header magic bytes`() {
         val ftypFile = java.io.File.createTempFile("ftyp_", ".tmp")
         val nonFtypFile = java.io.File.createTempFile("other_", ".tmp")

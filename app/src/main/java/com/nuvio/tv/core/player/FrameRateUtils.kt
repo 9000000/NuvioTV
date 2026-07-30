@@ -635,14 +635,27 @@ object FrameRateUtils {
         }
     }
 
+    // Box types a valid MP4/MOV/fMP4 stream can start with: ftyp/styp (ISO BMFF / DASH),
+    // moov/moof/sidx (header or segment first), free/skip/wide/pnot (QuickTime padding),
+    // mdat (raw QuickTime with moov at the end), uuid (camera vendor boxes).
+    private val MP4_LEADING_BOX_TYPES = setOf(
+        "ftyp", "styp", "moov", "moof", "sidx", "free", "skip", "wide", "mdat", "pnot", "uuid"
+    )
+
     internal fun hasFtypAtom(file: java.io.File): Boolean {
         if (!file.exists() || file.length() < 8) return false
         return runCatching {
             java.io.RandomAccessFile(file, "r").use { raf ->
-                val bytes = ByteArray(12)
+                val bytes = ByteArray(8)
                 raf.readFully(bytes)
-                (bytes[4] == 0x66.toByte() && bytes[5] == 0x74.toByte() && bytes[6] == 0x79.toByte() && bytes[7] == 0x70.toByte()) ||
-                (bytes[4] == 0x6d.toByte() && bytes[5] == 0x6f.toByte() && bytes[6] == 0x6f.toByte() && bytes[7] == 0x76.toByte())
+                val size32 = ((bytes[0].toLong() and 0xFF) shl 24) or
+                    ((bytes[1].toLong() and 0xFF) shl 16) or
+                    ((bytes[2].toLong() and 0xFF) shl 8) or
+                    (bytes[3].toLong() and 0xFF)
+                // 0 = box extends to EOF, 1 = 64-bit size follows, otherwise header-inclusive size.
+                val sizePlausible = size32 == 0L || size32 == 1L || size32 >= 8L
+                val type = String(bytes, 4, 4, java.nio.charset.StandardCharsets.US_ASCII)
+                sizePlausible && type in MP4_LEADING_BOX_TYPES
             }
         }.getOrDefault(false)
     }
