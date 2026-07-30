@@ -134,7 +134,6 @@ class SimklLibraryService @Inject constructor(
         check(result.isComplete) {
             "Simkl could not match ${result.notFoundCount} of ${result.attemptedCount} library items"
         }
-        syncRepository.refresh(TrackingRefreshIntent.INVALIDATED)
     }
 
     override suspend fun refresh(intent: TrackingRefreshIntent) = syncRepository.refresh(intent)

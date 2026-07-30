@@ -169,7 +169,6 @@ class SimklTrackingProgressProvider @Inject constructor(
             }
         }
         syncRepository.removePlaybackSessions(removed)
-        if (removed.isNotEmpty()) syncRepository.refreshAsync(TrackingRefreshIntent.INVALIDATED)
     }
 
     override fun applyOptimisticProgress(progress: WatchProgress, quiet: Boolean) = Unit

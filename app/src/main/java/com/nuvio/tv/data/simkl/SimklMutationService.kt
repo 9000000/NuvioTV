@@ -6,7 +6,6 @@ import com.nuvio.tv.core.tracking.TrackingHistoryItem
 import com.nuvio.tv.core.tracking.TrackingListStatus
 import com.nuvio.tv.core.tracking.TrackingMediaKind
 import com.nuvio.tv.core.tracking.TrackingMediaReference
-import com.nuvio.tv.core.tracking.TrackingMutationResolution
 import com.nuvio.tv.core.tracking.TrackingMutationResult
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
@@ -15,20 +14,21 @@ import com.nuvio.tv.core.tracking.scrobbleDiagnosticSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 @Singleton
 class SimklMutationService internal constructor(
     private val client: SimklApiClient,
-    private val onMutationCommitted: () -> Unit = {}
+    private val onMutationCommitted: suspend (SimklMutationReceipt) -> Unit = {}
 ) {
     @Inject
     constructor(client: SimklApiClient, syncRepository: SimklSyncRepository) : this(
         client,
-        { syncRepository.refreshAsync(TrackingRefreshIntent.INVALIDATED) }
+        { receipt ->
+            syncRepository.commitMutation(receipt)
+            if (receipt.requiresReconciliation) {
+                syncRepository.refreshAsync(TrackingRefreshIntent.INVALIDATED)
+            }
+        }
     )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false; explicitNulls = false }
@@ -47,8 +47,9 @@ class SimklMutationService internal constructor(
                 retryPolicy = SimklRetryPolicy.SYNC_WRITE
             )
         )
-        onMutationCommitted()
-        return response.toMutationResult(candidates.size, json)
+        val receipt = response.toListMutationReceipt(candidates, json)
+        onMutationCommitted(receipt)
+        return receipt.result
     }
 
     suspend fun removeFromList(items: Collection<TrackingMediaReference>): TrackingMutationResult =
@@ -69,8 +70,9 @@ class SimklMutationService internal constructor(
                 retryPolicy = SimklRetryPolicy.SYNC_WRITE
             )
         )
-        onMutationCommitted()
-        return response.toMutationResult(candidates.size, json)
+        val receipt = response.toHistoryMutationReceipt(candidates, json)
+        onMutationCommitted(receipt)
+        return receipt.result
     }
 
     suspend fun removeFromHistory(items: Collection<TrackingMediaReference>): TrackingMutationResult {
@@ -84,8 +86,9 @@ class SimklMutationService internal constructor(
                 retryPolicy = SimklRetryPolicy.SYNC_WRITE
             )
         )
-        onMutationCommitted()
-        return response.toMutationResult(candidates.size, json)
+        val receipt = response.toHistoryRemovalReceipt(candidates, json)
+        onMutationCommitted(receipt)
+        return receipt.result
     }
 
     internal suspend fun scrobble(
@@ -133,66 +136,4 @@ class SimklMutationService internal constructor(
                 "Simkl mutation requires a media ID or title for every item"
             }
         }
-}
-
-private fun SimklApiResponse.toMutationResult(
-    attemptedCount: Int,
-    json: Json
-): TrackingMutationResult {
-    val payload = body.takeIf(String::isNotBlank)
-        ?.let { value -> runCatching { json.parseToJsonElement(value).jsonObject }.getOrNull() }
-    val notFound = payload?.get("not_found")
-        ?.let { value -> runCatching { value.jsonObject }.getOrNull() }
-    val notFoundCount = notFound?.values?.sumOf { value -> (value as? JsonArray)?.size ?: 0 } ?: 0
-    val added = payload?.get("added")
-        ?.let { value -> runCatching { value.jsonObject }.getOrNull() }
-    return TrackingMutationResult(
-        attemptedCount = attemptedCount,
-        notFoundCount = notFoundCount,
-        resolutions = added?.toMutationResolutions().orEmpty()
-    )
-}
-
-private fun JsonObject.toMutationResolutions(): List<TrackingMutationResolution> {
-    val historyResolutions = (get("statuses") as? JsonArray)
-        .orEmpty()
-        .mapNotNull { element ->
-            val response = runCatching { element.jsonObject["response"]?.jsonObject }.getOrNull()
-                ?: return@mapNotNull null
-            response.toMutationResolution(statusKey = "status")
-        }
-    if (historyResolutions.isNotEmpty()) return historyResolutions
-
-    return entries.flatMap { (bucket, value) ->
-        (value as? JsonArray).orEmpty().mapNotNull { element ->
-            runCatching { element.jsonObject }.getOrNull()
-                ?.toMutationResolution(statusKey = "to", fallbackKind = bucket.toTrackingMediaKind())
-        }
-    }
-}
-
-private fun JsonObject.toMutationResolution(
-    statusKey: String,
-    fallbackKind: TrackingMediaKind? = null
-): TrackingMutationResolution? {
-    val status = TrackingListStatus.fromWireValue(stringValue(statusKey))
-    val mediaKind = stringValue("simkl_type")?.toTrackingMediaKind()
-        ?: stringValue("type")?.toTrackingMediaKind()
-        ?: fallbackKind
-    val providerSubtype = stringValue("anime_type")
-    if (status == null && mediaKind == null && providerSubtype == null) return null
-    return TrackingMutationResolution(status, mediaKind, providerSubtype)
-}
-
-private fun JsonObject.stringValue(key: String): String? =
-    runCatching { get(key)?.jsonPrimitive?.content }
-        .getOrNull()
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
-
-private fun String.toTrackingMediaKind(): TrackingMediaKind? = when (lowercase()) {
-    "movie", "movies" -> TrackingMediaKind.MOVIE
-    "anime" -> TrackingMediaKind.ANIME
-    "tv", "show", "shows" -> TrackingMediaKind.SHOW
-    else -> null
 }
