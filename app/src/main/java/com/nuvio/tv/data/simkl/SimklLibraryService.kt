@@ -111,7 +111,8 @@ class SimklLibraryService @Inject constructor(
             contentId = item.itemId,
             contentType = item.itemType,
             title = item.title,
-            releaseInfo = item.releaseInfo ?: item.year?.toString()
+            releaseInfo = item.releaseInfo ?: item.year?.toString(),
+            posterUrl = item.poster
         ).let { reference ->
             reference.copy(
                 ids = reference.ids.mergeMissing(

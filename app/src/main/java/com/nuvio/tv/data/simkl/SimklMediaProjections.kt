@@ -83,7 +83,8 @@ fun SimklSyncSnapshot.mediaReference(
     releaseInfo: String? = null,
     season: Int? = null,
     episode: Int? = null,
-    episodeTitle: String? = null
+    episodeTitle: String? = null,
+    posterUrl: String? = null
 ): TrackingMediaReference {
     val entry = entries.firstOrNull { candidate -> candidate.matchesSimklContentId(contentId) }
     val media = entry?.media
@@ -100,7 +101,8 @@ fun SimklSyncSnapshot.mediaReference(
         title = media?.title?.takeIf(String::isNotBlank) ?: title?.takeIf(String::isNotBlank),
         year = media?.year ?: extractTrackingYear(releaseInfo),
         ids = ids,
-        episode = episode?.let { number -> TrackingEpisode(season, number, episodeTitle) }
+        episode = episode?.let { number -> TrackingEpisode(season, number, episodeTitle) },
+        posterUrl = posterUrl?.trim()?.takeIf(String::isNotBlank)
     )
 }
 
@@ -171,6 +173,9 @@ fun simklPosterUrl(path: String?): String? = path?.trim()?.trim('/')
     ?.takeIf(String::isNotBlank)
     ?.let { normalized -> "https://wsrv.nl/?url=https://simkl.in/posters/${normalized}_ca.webp&q=90" }
 
+fun SimklLibraryEntry.resolvedPosterUrl(): String? =
+    simklPosterUrl(media?.poster) ?: localPosterUrl?.trim()?.takeIf(String::isNotBlank)
+
 fun buildSimklSourceUrl(mediaType: SimklMediaType, media: SimklMedia): String? {
     val id = media.ids.simklIdValue()?.toLongOrNull()?.takeIf { it > 0L } ?: return null
     val category = when (mediaType) {
@@ -225,7 +230,7 @@ private fun SimklLibraryEntry.toWatchedItem(
     season = season,
     episode = episode,
     watchedAt = watchedAt,
-    poster = simklPosterUrl(media.poster),
+    poster = resolvedPosterUrl(),
     releaseInfo = media.year?.toString(),
     trackingProviderId = TrackingProviderId.SIMKL.storageId,
     trackingProviderItemId = media.simklTrackingProviderItemId(),

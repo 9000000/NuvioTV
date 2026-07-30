@@ -117,7 +117,7 @@ private fun SimklLibraryEntry.toLibraryEntry(
         id = contentId,
         type = entryType,
         name = media.title?.takeIf(String::isNotBlank) ?: contentId,
-        poster = simklPosterUrl(media.poster),
+        poster = resolvedPosterUrl(),
         posterShape = PosterShape.POSTER,
         background = null,
         logo = null,
@@ -139,4 +139,3 @@ private fun SimklLibraryEntry.toLibraryEntry(
         trackingSourceUrl = buildSimklSourceUrl(mediaType, media)
     )
 }
-

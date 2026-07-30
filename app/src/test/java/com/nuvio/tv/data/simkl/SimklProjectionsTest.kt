@@ -272,7 +272,8 @@ class SimklProjectionsTest {
             "tt2560140",
             "series",
             season = 2,
-            episode = 4
+            episode = 4,
+            posterUrl = "https://catalog.example/anime.webp"
         )
 
         assertEquals(TrackingMediaKind.ANIME, reference.kind)
@@ -280,6 +281,7 @@ class SimklProjectionsTest {
         assertEquals(16498L, reference.ids.mal)
         assertEquals(2, reference.episode?.season)
         assertEquals(4, reference.episode?.number)
+        assertEquals("https://catalog.example/anime.webp", reference.posterUrl)
     }
 
     @Test
