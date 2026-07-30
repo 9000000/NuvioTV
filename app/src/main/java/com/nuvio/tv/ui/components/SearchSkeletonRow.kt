@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -13,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 private val SKELETON_TITLE_WIDTH = 180.dp
@@ -37,6 +39,8 @@ fun SearchSkeletonRow(
     modifier: Modifier = Modifier
 ) {
     val shimmerOffsetState = rememberPlaceholderShimmerOffsetState(label = "searchSkeletonShimmer")
+    val cardDepthStyle = LocalCardDepthStyle.current
+    val cardShape = RoundedCornerShape(posterCardStyle.cornerRadius)
 
     Column(modifier = modifier) {
         Column(
@@ -70,12 +74,22 @@ fun SearchSkeletonRow(
                     modifier = Modifier
                         .width(posterCardStyle.width)
                         .height(posterCardStyle.height)
-                        .clip(RoundedCornerShape(posterCardStyle.cornerRadius))
-                        .placeholderCardShimmer(
-                            shimmerOffsetState = shimmerOffsetState,
-                            backgroundColor = NuvioTheme.colors.SurfaceVariant
+                        .clip(cardShape)
+                        .nuvioCardDepth(
+                            shape = cardShape,
+                            surface = CardDepthSurface.POSTERS,
+                            style = cardDepthStyle
                         )
-                )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .placeholderCardShimmer(
+                                shimmerOffsetState = shimmerOffsetState,
+                                backgroundColor = NuvioTheme.colors.SurfaceVariant
+                            )
+                    )
+                }
             }
         }
     }

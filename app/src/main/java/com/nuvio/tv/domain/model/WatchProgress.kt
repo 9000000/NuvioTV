@@ -79,7 +79,10 @@ data class WatchProgress(
 
     fun resolveResumePosition(actualDuration: Long): Long {
         if (actualDuration <= 0) return position.coerceAtLeast(0L)
-        if (duration > 0 && position > 0) {
+        // Position is the most precise resume indicator. Prefer it over
+        // progressPercent even when saved duration is 0 (e.g. progress was
+        // saved while paused and getEffectiveDuration returned 0).
+        if (position > 0) {
             return position.coerceIn(0L, actualDuration)
         }
         progressPercent?.let { explicitPercent ->

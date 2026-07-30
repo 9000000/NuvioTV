@@ -3,6 +3,7 @@ package com.nuvio.tv.data.repository
 import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.LibrarySyncService
 import com.nuvio.tv.core.tracking.TrackingLibraryProviderRegistry
 import com.nuvio.tv.core.tracking.TrackingMembershipApplyResult
@@ -59,6 +60,7 @@ class LibraryRepositoryImpl @Inject constructor(
     private val authManager: AuthManager,
     private val metaRepository: MetaRepository,
     private val trackingProviders: TrackingLibraryProviderRegistry,
+    private val profileManager: ProfileManager,
 ) : LibraryRepository {
 
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -68,17 +70,16 @@ class LibraryRepositoryImpl @Inject constructor(
     var isSyncingFromRemote: Boolean
         get() = _isSyncingFromRemote.value
         set(value) { _isSyncingFromRemote.value = value }
+    @Volatile
     var hasCompletedInitialPull = false
 
-    private fun triggerRemoteSync() {
-        // Skip if already syncing from remote, initial pull not complete, or not authenticated
-        if (isSyncingFromRemote) return
+    private fun triggerRemoteSync(profileId: Int) {
         if (!hasCompletedInitialPull) return
         if (!authManager.isAuthenticated) return
         syncJob?.cancel()
         syncJob = syncScope.launch {
             delay(500)
-            librarySyncService.pushToRemote()
+            librarySyncService.pushToRemote(profileId)
         }
     }
 
@@ -206,18 +207,36 @@ class LibraryRepositoryImpl @Inject constructor(
             return TrackingMembershipApplyResult()
         }
 
-        val isInLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
+        val profileId = profileManager.activeProfileId.value
+        val isInLocal = libraryPreferences.containsItem(
+            itemId = item.itemId,
+            itemType = item.itemType,
+            profileId = profileId
+        )
         if (isInLocal) {
-            libraryPreferences.removeItem(itemId = item.itemId, itemType = item.itemType)
+            libraryPreferences.removeItem(
+                itemId = item.itemId,
+                itemType = item.itemType,
+                profileId = profileId
+            )
         } else {
-            libraryPreferences.addItem(item.toSavedLibraryItem())
+            libraryPreferences.addItem(
+                item = item.toSavedLibraryItem(),
+                profileId = profileId
+            )
         }
-        triggerRemoteSync()
+        triggerRemoteSync(profileId)
         return TrackingMembershipApplyResult()
     }
 
     override suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot {
-        val inLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
+        val profileId = profileManager.activeProfileId.value
+        val inLocal = libraryPreferences.containsItem(
+            itemId = item.itemId,
+            itemType = item.itemType,
+            profileId = profileId
+        )
+
         val membership = mutableMapOf<String, Boolean>()
         membership[LOCAL_LIBRARY_LIST_KEY] = inLocal
 
@@ -250,15 +269,27 @@ class LibraryRepositoryImpl @Inject constructor(
             return TrackingMembershipApplyResult(requiredConfirmations)
         }
 
+        val profileId = profileManager.activeProfileId.value
         val localDesired = desired[LOCAL_LIBRARY_LIST_KEY] == true
-        val currentlyInLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
+        val currentlyInLocal = libraryPreferences.containsItem(
+            itemId = item.itemId,
+            itemType = item.itemType,
+            profileId = profileId
+        )
         if (localDesired != currentlyInLocal) {
             if (localDesired) {
-                libraryPreferences.addItem(item.toSavedLibraryItem())
+                libraryPreferences.addItem(
+                    item = item.toSavedLibraryItem(),
+                    profileId = profileId
+                )
             } else {
-                libraryPreferences.removeItem(itemId = item.itemId, itemType = item.itemType)
+                libraryPreferences.removeItem(
+                    itemId = item.itemId,
+                    itemType = item.itemType,
+                    profileId = profileId
+                )
             }
-            triggerRemoteSync()
+            triggerRemoteSync(profileId)
         }
 
         val failures = dispatchTrackingMembershipChanges(
