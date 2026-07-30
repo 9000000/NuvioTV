@@ -16,6 +16,8 @@ internal object MatroskaAfrProbe {
     const val ID_TRACKS = 0x1654AE6BL
     const val ID_ATTACHMENTS = 0x1941A469L
     const val ID_CLUSTER = 0x1F43B675L
+    private const val ID_CLUSTER_TIMECODE = 0xE7L
+    private const val ID_SIMPLE_BLOCK = 0xA3L
 
     /** Max Tracks element we will pull for a sparse AFR probe. */
     const val MAX_TRACKS_FETCH_BYTES = 8_388_608L
@@ -67,8 +69,29 @@ internal object MatroskaAfrProbe {
             RandomAccessFile(file, "r").use { raf ->
                 raf.readFully(bytes)
             }
-            analyzeHeadBytes(bytes)
+            val layout = analyzeHeadBytes(bytes) ?: return@runCatching null
+            if (layout.clusterInPrefix || !hasClusterAtEof(file)) return@runCatching layout
+            layout.copy(clusterInPrefix = true)
         }.getOrNull()
+    }
+
+    /** True when the file ends on a Cluster element (sparse Pass 2 stub past the head window). */
+    fun hasClusterAtEof(file: File, scanBytes: Long = 8_192L): Boolean {
+        val fileLen = file.length()
+        if (fileLen < 12L) return false
+        val scan = minOf(scanBytes, fileLen).toInt()
+        val buf = ByteArray(scan)
+        RandomAccessFile(file, "r").use { raf ->
+            raf.seek(fileLen - scan)
+            raf.readFully(buf)
+        }
+        val baseOffset = fileLen - scan
+        for (start in (scan - 12).downTo(0)) {
+            val element = readElement(buf, start.toLong()) ?: continue
+            val end = element.endExclusiveOrNull() ?: continue
+            if (element.id == ID_CLUSTER && baseOffset + end == fileLen) return true
+        }
+        return false
     }
 
     fun analyzeHeadBytes(bytes: ByteArray): MatroskaHeadLayout? {
@@ -173,8 +196,9 @@ internal object MatroskaAfrProbe {
     }
 
     /**
-     * Appends an empty Cluster stub and updates Segment size so demuxers publish tracks
-     * from a head that ends before the first real Cluster.
+     * Appends a minimal Cluster stub (Timecode + timed SimpleBlocks) and updates Segment size
+     * so demuxers publish tracks from a head that ends before the first real Cluster.
+     * An empty Cluster is not enough for NextLib/FFmpeg — they need block timing metadata.
      */
     fun appendStubClusterForHeadProbe(
         file: File,
@@ -184,7 +208,7 @@ internal object MatroskaAfrProbe {
         if (layout.segmentSizeVintOffset < 0L) return null
         if (contentEnd <= layout.segmentDataOffset) return null
 
-        val stub = buildElement(ID_CLUSTER, ByteArray(0))
+        val stub = buildMinimalStubCluster()
         val newLength = contentEnd + stub.size
         // A known-size Segment declaring the full remote length would still run past EOF.
         val patchedSize = if (layout.segmentUnknownSize) {
@@ -209,6 +233,51 @@ internal object MatroskaAfrProbe {
                 newLength
             }
         }.getOrNull()
+    }
+
+    /** Minimal Cluster with block timing so demuxers expose Tracks on truncated heads. */
+    fun buildMinimalStubCluster(
+        frameCount: Int = 40,
+        frameDurationMs: Int = 42
+    ): ByteArray {
+        val blocks = buildSimpleBlockPayload(
+            frameCount = frameCount,
+            frameDurationMs = frameDurationMs
+        )
+        val payload = buildElement(ID_CLUSTER_TIMECODE, encodeUint(0L)) + blocks
+        return buildElement(ID_CLUSTER, payload)
+    }
+
+    private fun buildSimpleBlockPayload(frameCount: Int, frameDurationMs: Int): ByteArray {
+        val frame = byteArrayOf(
+            0x00, 0x00, 0x00, 0x01,
+            0x65.toByte(), 0x88.toByte(), 0x84.toByte()
+        )
+        val out = java.io.ByteArrayOutputStream(frameCount * 24)
+        repeat(frameCount) { index ->
+            val relativeMs = index * frameDurationMs
+            val payload = byteArrayOf(0x81.toByte()) +
+                byteArrayOf(
+                    ((relativeMs shr 8) and 0xFF).toByte(),
+                    (relativeMs and 0xFF).toByte()
+                ) +
+                byteArrayOf(0x80.toByte()) +
+                frame
+            out.write(buildElement(ID_SIMPLE_BLOCK, payload))
+        }
+        return out.toByteArray()
+    }
+
+    private fun encodeUint(value: Long): ByteArray {
+        require(value >= 0L)
+        if (value == 0L) return byteArrayOf(0x00)
+        var remaining = value
+        val bytes = ArrayList<Byte>()
+        while (remaining > 0L) {
+            bytes.add(0, (remaining and 0xFF).toByte())
+            remaining = remaining ushr 8
+        }
+        return bytes.toByteArray()
     }
 
     /** Reads an EBML element header at [absoluteOffset] from [bytes]. */
