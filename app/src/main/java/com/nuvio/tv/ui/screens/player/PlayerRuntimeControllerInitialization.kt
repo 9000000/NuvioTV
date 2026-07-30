@@ -1321,6 +1321,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 retryCurrentStreamWithSafeAudioFallback(currentPosition)
                                 return
                             }
+                            if (!hasTriedAudioPcmFallback) {
+                                hasTriedAudioPcmFallback = true
+                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                return
+                            }
                             if (!isAudioDisabledForCurrentPlayback) {
                                 audioDisabledForcedStreamUrls.add(currentStreamUrl)
                                 retryCurrentStreamWithAudioDisabled(currentPosition)
@@ -1339,6 +1344,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 retryCurrentStreamWithSafeAudioFallback(currentPosition)
                                 return
                             }
+                            if (!hasTriedAudioPcmFallback) {
+                                hasTriedAudioPcmFallback = true
+                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                return
+                            }
                             if (!isAudioDisabledForCurrentPlayback) {
                                 audioDisabledForcedStreamUrls.add(currentStreamUrl)
                                 retryCurrentStreamWithAudioDisabled(currentPosition)
@@ -1349,6 +1359,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (error.isStuckPlayingNoProgress()) {
                             if (!isSafeAudioModeActiveForCurrentPlayback) {
                                 safeAudioForcedStreamUrls.add(currentStreamUrl)
+                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                return
+                            }
+                            if (!hasTriedAudioPcmFallback) {
+                                hasTriedAudioPcmFallback = true
                                 retryCurrentStreamWithSafeAudioFallback(currentPosition)
                                 return
                             }
