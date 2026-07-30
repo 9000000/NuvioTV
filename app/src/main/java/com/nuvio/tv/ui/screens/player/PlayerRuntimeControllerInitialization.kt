@@ -987,12 +987,22 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (playerDuration > lastKnownDuration) { lastKnownDuration = playerDuration }
                         val isBuffering = playbackState == Player.STATE_BUFFERING
                         updatePlaybackTimeline(duration = playerDuration.coerceAtLeast(0L))
+                        // Only mark playbackEnded for real finishes so PlayerScreen does not
+                        // dispatch next-episode navigation for short debrid/error placeholders.
+                        val naturalEnded = playbackState == Player.STATE_ENDED &&
+                            shouldTreatAsNaturalPlaybackCompletion(
+                                hasRenderedFirstFrame = hasRenderedFirstFrame,
+                                hasFatalError = !_uiState.value.error.isNullOrBlank(),
+                                durationMs = playerDuration.coerceAtLeast(0L).let { d ->
+                                    maxOf(d, lastKnownDuration)
+                                }
+                            )
                         _uiState.update {
                             it.copy(
                                 isBuffering = if (NuvioExoPlayerPerformanceHelper.shouldSuppressBufferingUi(
                                     suppressBufferingUiForSeek, seekBufferingUiDeferred, isBuffering
                                 )) false else isBuffering,
-                                playbackEnded = playbackState == Player.STATE_ENDED
+                                playbackEnded = naturalEnded
                             )
                         }
                         updateAudioControlAvailability()
@@ -1125,7 +1135,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                         }
 
                         if (playbackState == Player.STATE_ENDED) {
-                            emitCompletionScrobbleStop(progressPercent = 99.5f)
                             // Re-persist diagnostics with the final rebuffer totals (the
                             // first-frame snapshot captured 0, since rebuffers accrue after).
                             Log.i(
@@ -1144,8 +1153,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                                     runCatching { playerSettingsDataStore.setLastPlaybackDiagnostics(endDiagnostics) }
                                 }
                             }
-                            saveWatchProgress()
-                            resetPostPlayStateAfterPlaybackEnded()
+                            // Marks watched + auto-play next only for real episode finishes;
+                            // short debrid/error placeholders are ignored (see #2819).
+                            handleNaturalPlaybackEnded()
                         }
 
                         refreshStableProgressResetGate()
@@ -1434,13 +1444,18 @@ internal fun PlayerRuntimeController.initializePlayer(
                             }
                         }
 
+                        // Fatal error: stop any next-episode auto-play that may have been
+                        // armed by a short placeholder ENDED or residual post-play state.
+                        cancelNextEpisodeAutoPlayOnFatalError()
                         _uiState.update {
                             it.copy(
                                 error = detailedError,
                                 showLoadingOverlay = false,
                                 showPauseOverlay = false,
                                 loadingIssueReportVisible = false,
-                                loadingIssueElapsedMs = 0L
+                                loadingIssueElapsedMs = 0L,
+                                playbackEnded = false,
+                                postPlayMode = null
                             )
                         }
                     }

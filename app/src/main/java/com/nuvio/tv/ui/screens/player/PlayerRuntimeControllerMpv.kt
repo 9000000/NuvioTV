@@ -61,10 +61,13 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
         ) {
             return@onFailure
         }
+        cancelNextEpisodeAutoPlayOnFatalError()
         _uiState.update { state ->
             state.copy(
                 error = detailedError,
-                showLoadingOverlay = false
+                showLoadingOverlay = false,
+                playbackEnded = false,
+                postPlayMode = null
             )
         }
     }
@@ -165,11 +168,14 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
         ) {
             return@onFailure
         }
+        cancelNextEpisodeAutoPlayOnFatalError()
         _uiState.update {
             it.copy(
                 error = detailedError,
                 showLoadingOverlay = false,
-                isBuffering = false
+                isBuffering = false,
+                playbackEnded = false,
+                postPlayMode = null
             )
         }
     }
