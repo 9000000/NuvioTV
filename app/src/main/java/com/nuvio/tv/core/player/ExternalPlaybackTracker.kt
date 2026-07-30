@@ -323,6 +323,47 @@ class ExternalPlaybackTracker @Inject constructor(
     }
 
     /**
+     * Enqueues [launchPlayer] on the tracker's process-scoped [scope] so the launch
+     * survives ViewModel / composition clear (e.g. leaving PlayerScreen immediately
+     * after "Open in External Player" — see #2560).
+     *
+     * Optional [prepareSubtitles] runs on this same scope before the intent is fired
+     * (subtitle downloads must not be cancelled by ViewModel clear).
+     */
+    fun launchPlayerInBackground(
+        metadata: ExternalPlaybackMetadata,
+        url: String,
+        title: String?,
+        headers: Map<String, String>?,
+        resumePositionMs: Long = 0L,
+        subtitles: List<SubtitleInput>? = null,
+        autoLaunch: Boolean = false,
+        nextEpisodeSnapshot: ExternalNextEpisodeSnapshot? = null,
+        context: Context,
+        prepareSubtitles: (suspend () -> List<SubtitleInput>?)? = null
+    ) {
+        scope.launch {
+            val resolvedSubtitles = try {
+                prepareSubtitles?.invoke() ?: subtitles
+            } catch (e: Exception) {
+                Log.w(TAG, "Subtitle prep for external player failed; launching without", e)
+                subtitles
+            }
+            launchPlayer(
+                metadata = metadata,
+                url = url,
+                title = title,
+                headers = headers,
+                resumePositionMs = resumePositionMs,
+                subtitles = resolvedSubtitles,
+                autoLaunch = autoLaunch,
+                nextEpisodeSnapshot = nextEpisodeSnapshot,
+                context = context
+            )
+        }
+    }
+
+    /**
      * Launch external player with progress tracking.
      * Uses the Activity-level launcher for ActivityResult, or fire-and-forget on Zidoo.
      * If resumePositionMs is 0, fetches the saved position from the repository.

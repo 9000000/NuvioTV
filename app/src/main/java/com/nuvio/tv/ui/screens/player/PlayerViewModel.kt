@@ -188,23 +188,40 @@ class PlayerViewModel @Inject constructor(
 
     /**
      * Launch the current stream in an external player via the centralized tracker.
-     * The tracker handles progress saving independently of PlayerScreen lifecycle.
+     *
+     * Captures stream metadata **before** stopping the internal player, then enqueues
+     * the external launch on the tracker's process-scoped scope. Caller typically
+     * navigates away immediately; using [viewModelScope] alone would cancel the launch
+     * when the ViewModel is cleared (#2560).
      */
     fun launchInExternalPlayer(activityContext: Context, resumePositionMs: Long) {
         val url = controller.getCurrentStreamUrl()
+        if (url.isBlank()) return
+        val contentId = controller.contentId ?: return
+        val videoId = controller.currentVideoId ?: contentId
         val metadata = com.nuvio.tv.core.player.ExternalPlaybackMetadata(
-            contentId = controller.contentId ?: return,
+            contentId = contentId,
             contentType = controller.contentType ?: "movie",
             contentName = controller.contentName ?: controller.title,
             poster = controller.poster,
             backdrop = controller.backdrop,
             logo = controller.logo,
-            videoId = controller.currentVideoId ?: controller.contentId ?: return,
+            videoId = videoId,
             season = controller.currentSeason,
             episode = controller.currentEpisode,
             episodeTitle = controller.currentEpisodeTitle,
             year = controller.year
         )
+        val headers = controller.getCurrentHeaders()
+        val nextEpisodeSnapshot = controller.metaVideos
+            .takeIf { it.isNotEmpty() }
+            ?.let { videos ->
+                com.nuvio.tv.core.player.resolveExternalNextEpisodeSnapshot(
+                    videos = videos,
+                    currentSeason = metadata.season,
+                    currentEpisode = metadata.episode
+                )
+            }
 
         // Pass already-loaded addon subtitles if forward setting is enabled
         val subtitleInputs = if (controller.uiState.value.subtitleStyle.preferredLanguage.trim().lowercase() != "none") {
@@ -220,28 +237,21 @@ class PlayerViewModel @Inject constructor(
             } else null
         } else null
 
-        // Cache subtitle files locally and launch player in background
-        viewModelScope.launch {
-            val cachedSubtitles = subtitleInputs?.let { subtitleFileCache.cacheSubtitles(it) }
+        // Free internal player resources before the external intent takes over.
+        controller.stopAndRelease()
 
-            externalPlaybackTracker.launchPlayer(
-                metadata = metadata,
-                url = url,
-                title = metadata.buildPlayerTitle(),
-                headers = controller.getCurrentHeaders(),
-                resumePositionMs = resumePositionMs,
-                subtitles = cachedSubtitles,
-                nextEpisodeSnapshot = controller.metaVideos
-                    .takeIf { it.isNotEmpty() }
-                    ?.let { videos ->
-                        com.nuvio.tv.core.player.resolveExternalNextEpisodeSnapshot(
-                            videos = videos,
-                            currentSeason = metadata.season,
-                            currentEpisode = metadata.episode
-                        )
-                    },
-                context = activityContext
-            )
-        }
+        // Tracker scope survives PlayerScreen / ViewModel teardown after onBackPress.
+        externalPlaybackTracker.launchPlayerInBackground(
+            metadata = metadata,
+            url = url,
+            title = metadata.buildPlayerTitle(),
+            headers = headers,
+            resumePositionMs = resumePositionMs,
+            nextEpisodeSnapshot = nextEpisodeSnapshot,
+            context = activityContext,
+            prepareSubtitles = {
+                subtitleInputs?.let { subtitleFileCache.cacheSubtitles(it) }
+            }
+        )
     }
 }
