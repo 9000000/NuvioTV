@@ -1878,6 +1878,11 @@ private suspend fun HomeViewModel.enrichInProgressItem(
     val settings = currentTmdbSettings
     item.copy(
         progress = item.progress.copy(
+            videoId = if (item.progress.source != WatchProgress.SOURCE_LOCAL && video != null) {
+                video.id.takeIf { it.isNotBlank() } ?: item.progress.videoId
+            } else {
+                item.progress.videoId
+            },
             name = if (settings.useBasicInfo) tmdbData?.name ?: meta.name else meta.name,
             poster = item.progress.poster ?: meta.poster.normalizeImageUrl() ?: if (settings.useArtwork) tmdbData?.poster.normalizeImageUrl() else null,
             backdrop = if (settings.useArtwork) tmdbData?.backdrop.normalizeImageUrl() ?: meta.backdropUrl.normalizeImageUrl() ?: item.progress.backdrop else meta.backdropUrl.normalizeImageUrl() ?: item.progress.backdrop,
