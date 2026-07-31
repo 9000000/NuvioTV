@@ -189,15 +189,24 @@ class PlayerViewModel @Inject constructor(
     /**
      * Launch the current stream in an external player via the centralized tracker.
      *
-     * Captures stream metadata **before** stopping the internal player, then enqueues
-     * the external launch on the tracker's process-scoped scope. Caller typically
-     * navigates away immediately; using [viewModelScope] alone would cancel the launch
-     * when the ViewModel is cleared (#2560).
+     * Keep the ViewModel alive until the external intent has been handed to the launcher.
+     * This lets the caller navigate away only after a successful handoff, while failures
+     * remain visible on the current player screen (#2560).
      */
-    fun launchInExternalPlayer(activityContext: Context, resumePositionMs: Long) {
+    fun launchInExternalPlayer(
+        activityContext: Context,
+        resumePositionMs: Long,
+        onResult: (Boolean) -> Unit
+    ) {
         val url = controller.getCurrentStreamUrl()
-        if (url.isBlank()) return
-        val contentId = controller.contentId ?: return
+        if (url.isBlank()) {
+            onResult(false)
+            return
+        }
+        val contentId = controller.contentId ?: run {
+            onResult(false)
+            return
+        }
         val videoId = controller.currentVideoId ?: contentId
         val metadata = com.nuvio.tv.core.player.ExternalPlaybackMetadata(
             contentId = contentId,
@@ -223,7 +232,8 @@ class PlayerViewModel @Inject constructor(
                 )
             }
 
-        // Pass already-loaded addon subtitles if forward setting is enabled
+        // Capture already-loaded addon subtitles before handing off. Preparation stays in the
+        // ViewModel scope because the player screen remains alive until the intent is sent.
         val subtitleInputs = if (controller.uiState.value.subtitleStyle.preferredLanguage.trim().lowercase() != "none") {
             val addonSubtitles = controller.uiState.value.addonSubtitles
             if (addonSubtitles.isNotEmpty()) {
@@ -237,21 +247,35 @@ class PlayerViewModel @Inject constructor(
             } else null
         } else null
 
-        // Free internal player resources before the external intent takes over.
-        controller.stopAndRelease()
-
-        // Tracker scope survives PlayerScreen / ViewModel teardown after onBackPress.
-        externalPlaybackTracker.launchPlayerInBackground(
-            metadata = metadata,
-            url = url,
-            title = metadata.buildPlayerTitle(),
-            headers = headers,
-            resumePositionMs = resumePositionMs,
-            nextEpisodeSnapshot = nextEpisodeSnapshot,
-            context = activityContext,
-            prepareSubtitles = {
-                subtitleInputs?.let { subtitleFileCache.cacheSubtitles(it) }
+        viewModelScope.launch {
+            val cachedSubtitles = subtitleInputs?.let { inputs ->
+                try {
+                    subtitleFileCache.cacheSubtitles(inputs)
+                } catch (_: Exception) {
+                    // Subtitle forwarding is best-effort; the external launch must still proceed.
+                    null
+                }
             }
-        )
+
+            // Stop the internal player only after preparation has completed and immediately
+            // before sending the external intent.
+            controller.stopAndRelease()
+            val launched = try {
+                externalPlaybackTracker.launchPlayer(
+                    metadata = metadata,
+                    url = url,
+                    title = metadata.buildPlayerTitle(),
+                    headers = headers,
+                    resumePositionMs = resumePositionMs,
+                    subtitles = cachedSubtitles,
+                    nextEpisodeSnapshot = nextEpisodeSnapshot,
+                    context = activityContext
+                )
+            } catch (_: Exception) {
+                false
+            }
+            onResult(launched)
+        }
+    }
     }
 }
