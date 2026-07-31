@@ -280,5 +280,4 @@ class PlayerViewModel @Inject constructor(
             onResult(launched)
         }
     }
-    }
 }
