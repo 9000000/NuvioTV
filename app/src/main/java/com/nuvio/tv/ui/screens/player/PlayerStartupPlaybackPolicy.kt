@@ -20,6 +20,14 @@ internal object PlayerStartupPlaybackPolicy {
             val setPlayWhenReady: Boolean,
             val callPlay: Boolean,
         ) : ReadyAction()
+        /**
+         * Initial cold start reached READY: prime the decoder with [setPlayWhenReady] but defer
+         * [callPlay] until [onRenderedFirstFrame] so audio does not race ahead of video.
+         */
+        data class ColdStartPrime(
+            val setPlayWhenReady: Boolean,
+            val callPlay: Boolean,
+        ) : ReadyAction()
         data class PostFirstFrameResume(val callPlay: Boolean) : ReadyAction()
         /** Resume seek / track rebuild reached READY again before first frame. */
         data class PreFirstFrameResume(
@@ -43,6 +51,14 @@ internal object PlayerStartupPlaybackPolicy {
                         setPlayWhenReady = !state.startPaused && !state.userPausedManually,
                         callPlay = !state.startPaused && !state.userPausedManually,
                     )
+                )
+            } else if (!state.startPaused && !state.userPausedManually) {
+                ReadyTransition(
+                    nextState = next,
+                    action = ReadyAction.ColdStartPrime(
+                        setPlayWhenReady = true,
+                        callPlay = false,
+                    ),
                 )
             } else {
                 ReadyTransition(nextState = next, action = ReadyAction.None)

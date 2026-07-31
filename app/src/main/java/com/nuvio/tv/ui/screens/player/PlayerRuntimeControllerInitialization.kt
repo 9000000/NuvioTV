@@ -968,15 +968,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                     message = context.getString(R.string.player_loading_starting)
                 )
                 val isTunneledPlayback = playerSettings.tunnelingEnabled
-                // Always start paused — playback begins in onRenderedFirstFrame()
-                // so audio and video start in perfect sync. Without this, the
-                // audio renderer races ahead by 1-2s while the video decoder
-                // is still decoding the first I-frame.
+                // Hold playWhenReady=false through prepare() so audio does not race ahead
+                // while the video decoder is still opening. The first STATE_READY primes the
+                // pipeline (ColdStartPrime); synchronized play() begins in onRenderedFirstFrame().
                 //
-                // Exception: tunneled playback bypasses the normal video
-                // rendering pipeline so onRenderedFirstFrame() never fires.
-                // In that case we fall back to starting on STATE_READY.
-                playWhenReady = !startPaused && !userPausedManually
+                // Exception: tunneled playback bypasses the normal video rendering pipeline
+                // so onRenderedFirstFrame() never fires — TunneledFirstReady starts on READY.
+                playWhenReady = false
                 prepare()
 
                 addListener(object : Player.Listener {
@@ -1117,6 +1115,14 @@ internal fun PlayerRuntimeController.initializePlayer(
                                             loadingProgress = if (it.loadingProgress != null) 1f else null,
                                             showPlayerEngineSwitchInfo = false
                                         )
+                                    }
+                                }
+                                is PlayerStartupPlaybackPolicy.ReadyAction.ColdStartPrime -> {
+                                    if (action.setPlayWhenReady) {
+                                        playWhenReady = true
+                                    }
+                                    if (action.callPlay) {
+                                        play()
                                     }
                                 }
                                 is PlayerStartupPlaybackPolicy.ReadyAction.PreFirstFrameResume -> {
