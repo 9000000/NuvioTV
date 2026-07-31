@@ -54,15 +54,22 @@ class SimklTrackingProgressProvider @Inject constructor(
         seeds
     }.distinctUntilChanged()
     override val watchedMovieIds = syncRepository.state.map { state ->
-        val watched = state.snapshot.toSimklWatchedProjection().items
-            .filter { item -> item.season == null && item.episode == null && item.contentType == "movie" }
-            .mapTo(mutableSetOf(), WatchedItem::contentId)
+        val watched = mutableSetOf<String>()
+        state.snapshot.entries.forEach { entry ->
+            if (entry.mediaType != SimklMediaType.MOVIES) return@forEach
+            if (entry.lastWatchedAt == null && entry.status != SimklListStatus.COMPLETED) return@forEach
+            val media = entry.media ?: return@forEach
+            media.canonicalContentId()?.let(watched::add)
+            media.ids.idValue("imdb")?.takeIf(String::isNotBlank)?.let(watched::add)
+            media.ids.idValue("tmdb")?.takeIf(String::isNotBlank)?.let { watched.add("tmdb:$it") }
+            media.ids.idValue("tvdb")?.takeIf(String::isNotBlank)?.let { watched.add("tvdb:$it") }
+        }
         state.snapshot.toSimklProgressEntries()
             .filter { progress ->
                 progress.contentType == "movie" && progress.progressPercentage > 0f && !progress.isCompleted()
             }
             .forEach { progress -> watched.remove(progress.contentId) }
-        watched
+        watched as Set<String>
     }.distinctUntilChanged()
     override val watchedItems = syncRepository.state.map { state ->
         state.snapshot.toSimklWatchedProjection().items
