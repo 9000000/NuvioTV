@@ -483,7 +483,7 @@
     <string name="advanced_clear_cw_cache_subtitle">Odstrániť uložené miniatúry, názvy a obohatené dáta pre Pokračovať v sledovaní</string>
     <string name="advanced_clear_cw_cache_done">Cache vymazaná</string>
     <string name="advanced_remember_last_profile">Zapamätať posledný profil</string>
-    <string name="advanced_remember_last_profile_subtitle">Zapamätať posledný vybraný profil pri spustení</string>
+    <string name="advanced_remember_last_profile_subtitle">Zapamätať posledný vybraný profil pri spustení.</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_debug_subtitle">Nástroje pre vývojárov a funkčné prepínače</string>
     <string name="settings_plugins_section_subtitle">Spravovať repozitáre, poskytovateľov a stavy pluginov</string>
@@ -514,7 +514,7 @@
     <!-- SupportersContributorsScreen -->
     <string name="supporters_contributors_title">Podporovatelia &amp; Prispievatelia</string>
     <string name="supporters_contributors_subtitle">Ľudia podporujúci Nuvio a prispievatelia budujúci ho pre TV a mobil.</string>
-    <string name="supporters_contributors_supporters_copy">Podporovatelia a darcovia pomáhajú udržiavať projekt v pohybe a umožňujú realizáciu ambicióznych nových funkcií.</string>
+    <string name="supporters_contributors_supporters_copy">Podporovatelia a darcovia pomáhajú posúvať projekt vpred, financujú infraštruktúru a vytvárajú priestor pre vývoj náročnejších funkcií.</string>
     <string name="supporters_contributors_donate_copy">Nuvio zostane bezplatné a Open Source. Ak chcete podporiť projekt, môžete prispieť.</string>
     <string name="supporters_contributors_donate_button">Prispieť Nuvio</string>
     <string name="supporters_contributors_qr_title">Naskenujte pre príspevok</string>
@@ -609,7 +609,7 @@
     <!-- PlaybackAudioSettings -->
     <string name="audio_trailer_section">Trailer</string>
     <string name="audio_autoplay_trailers">Automaticky prehrávať trailery</string>
-    <string name="audio_autoplay_trailers_sub">Automaticky prehrať trailery na detailnej obrazovke po období nečinnosti</string>
+    <string name="audio_autoplay_trailers_sub">Automaticky prehrať trailery na detailnej obrazovke po čase nečinnosti.</string>
     <string name="audio_trailer_delay">Oneskorenie traileru</string>
     <string name="audio_section">Audio</string>
     <string name="audio_lang_default">Predvolené (mediálny súbor)</string>
@@ -658,9 +658,9 @@
     <string name="sub_preferred_lang">Preferovaný jazyk</string>
     <string name="sub_secondary_lang">Sekundárny preferovaný jazyk</string>
     <string name="sub_use_forced_subtitles">Použiť vynútené titulky</string>
-    <string name="sub_use_forced_subtitles_desc">Uprednostniť vynútené titulky, keď sa jazyk audia zhoduje s jazykom titulkov; ak nie sú dostupné, nevyberať nič</string>
+    <string name="sub_use_forced_subtitles_desc">Uprednostniť vynútené titulky, keď sa jazyk audia zhoduje s jazykom titulkov; ak nie sú dostupné, nevyberať nič.</string>
     <string name="sub_show_only_preferred_languages">Zobraziť iba preferované jazyky</string>
-    <string name="sub_show_only_preferred_languages_desc">Skryť všetky ostatné jazyky titulkov zo zoznamu výberu</string>
+    <string name="sub_show_only_preferred_languages_desc">Skryť všetky ostatné jazyky titulkov zo zoznamu výberu.</string>
     <string name="sub_organization">Usporiadanie titulkov</string>
     <string name="sub_size">Veľkosť</string>
     <string name="sub_vertical_offset">Vertikálny posun</string>
@@ -700,7 +700,7 @@
 
     <!-- PlaybackAutoPlaySettings -->
     <string name="autoplay_reuse_last_link">Použiť posledný odkaz</string>
-    <string name="autoplay_reuse_last_link_sub">Automaticky prehrať váš posledný funkčný stream pre ten istý film/epizódu, ak je cache stále platná</string>
+    <string name="autoplay_reuse_last_link_sub">Automaticky prehrať váš posledný funkčný stream pre ten istý film/epizódu, ak je cache stále platná.</string>
     <string name="autoplay_last_link_cache">Doba platnosti cache posledného odkazu</string>
     <string name="cache_duration_hour_one">%1$d hodina</string>
     <string name="cache_duration_hour_other">%1$d hodín</string>
@@ -813,14 +813,14 @@
     <string name="layout_show_unaired_next_up">Zobraziť nevysielané epizódy v Ďalší diel</string>
     <string name="layout_show_unaired_next_up_sub">Zahrnúť nadchádzajúce epizódy do Pokračovať v sledovaní pred ich odvysielaním.</string>
     <string name="layout_cw_sort_mode">Poradie zoradenia</string>
-    <string name="layout_cw_sort_mode_sub">Ako sú usporiadané položky Pokračovať v sledovaní</string>
+    <string name="layout_cw_sort_mode_sub">Ako sú usporiadané položky Pokračovať v sledovaní.</string>
     <string name="layout_cw_sort_default">Predvolené</string>
     <string name="layout_cw_sort_default_desc">Zoradiť všetky položky podľa aktuálnosti</string>
     <string name="layout_cw_sort_streaming">Štýl streamovania</string>
     <string name="layout_cw_sort_streaming_desc">Vydané položky ako prvé, nadchádzajúce na konci</string>
     <string name="layout_trailer_button">Zobraziť tlačidlo traileru</string>
     <string name="layout_trailer_button_sub">Zobraziť tlačidlo traileru na detailnej stránke (iba ak je dostupný).</string>
-    <string name="layout_prefer_external_meta">Preferovať externé meta</string>
+    <string name="layout_prefer_external_meta">Preferovať externé metadáta</string>
     <string name="layout_prefer_external_meta_sub">Použiť metadáta z externého doplnku namiesto katalógového.</string>
     <string name="layout_show_full_release_date">Zobraziť úplný dátum vydania</string>
     <string name="layout_show_full_release_date_sub">Pre filmy zobraziť úplný dátum vydania namiesto iba roku.</string>
@@ -1318,7 +1318,7 @@
     <string name="p2p_consent_enable">Povoliť P2P</string>
     <string name="p2p_consent_cancel">Zrušiť</string>
     <string name="settings_p2p_title">P2P streamovanie</string>
-    <string name="settings_p2p_subtitle">Povoliť peer-to-peer (torrent) streamy</string>
+    <string name="settings_p2p_subtitle">Povoliť peer-to-peer (torrent) streamy.</string>
     <string name="settings_p2p_hide_stats_title">Skryť štatistiky torrentu</string>
     <string name="settings_p2p_hide_stats_subtitle">Skryť buffer, seeds, peers a rýchlosť sťahovania počas načítavania a prehrávania</string>
     <string name="p2p_download_title">Sťahuje sa P2P engine</string>
@@ -1364,10 +1364,10 @@
     <string name="parental_violence">Násilie</string>
     <string name="parental_profanity">Vulgarizmy</string>
     <string name="parental_alcohol">Alkohol/Drogy</string>
-    <string name="parental_frightening">Desivé</string>
-    <string name="parental_severity_severe">Silné</string>
-    <string name="parental_severity_moderate">Stredné</string>
-    <string name="parental_severity_mild">Mierne</string>
+    <string name="parental_frightening">Strašidelnosť</string>
+    <string name="parental_severity_severe">Intenzívne</string>
+    <string name="parental_severity_moderate">Mierne</string>
+    <string name="parental_severity_mild">Nízke</string>
     <string name="player_ends_at">Končí o %1$s</string>
     <string name="player_via">cez %1$s</string>
     <!-- Season/episode code shown in player UI (e.g. S01E02). %1$d = season, %2$d = episode. -->
@@ -1556,7 +1556,7 @@
     <string name="genre_music">Hudobný</string>
     <string name="genre_mystery">Mysteriózny</string>
     <string name="genre_romance">Romantický</string>
-    <string name="genre_science_fiction">Sci-fi</string>
+    <string name="genre_science_fiction">Science Fiction</string>
     <string name="genre_tv_movie">TV film</string>
     <string name="genre_thriller">Thriller</string>
     <string name="genre_war">Vojnový</string>
@@ -2493,13 +2493,13 @@
 <string name="licenses_attributions_torbox_body">Nuvio sa pripája k TorBox na overenie účtu, prístup do cloudovej knižnice, kontrolu vyrovnávacej pamäte a funkcie cloudového prehrávania. Nuvio nie je spojený s TorBox a nie je ním podporovaný.</string>
 <string name="settings_content_discovery">Obsah a objavovanie</string>
 <string name="settings_content_discovery_subtitle">Doplnky, pluginy, katalógy a zdroje objavovania</string>
-<string name="settings_content_discovery_addons_subtitle">Spravuj doplnky, poradie katalógu a kolekcie</string>
-<string name="settings_content_discovery_plugins_subtitle">Spravuj repozitáre a poskytovateľov streamov</string>
+<string name="settings_content_discovery_addons_subtitle">Spravovať doplnky, poradie katalógu a kolekcie.</string>
+<string name="settings_content_discovery_plugins_subtitle">Spravovať repozitáre a poskytovateľov streamov.</string>
 <string name="external_auto_next_loading">Načítavanie ďalšej epizódy…</string>
 <string name="advanced_sentry_reports">Správy o zlyhaní Sentry</string>
 <string name="advanced_sentry_reports_subtitle">Posielaj správy o zlyhaní a ANR s bezpečným kontextom. Štandardne zapnuté.</string>
 <string name="advanced_playback_issue_reports">Správy o problémoch s prehrávaním</string>
-<string name="advanced_playback_issue_reports_subtitle">Zobraz tlačidlá správ počas prehrávania, dlhého načítavania a chýb prehrávania</string>
+<string name="advanced_playback_issue_reports_subtitle">Zobraz tlačidlá správ počas prehrávania, dlhého načítavania a chýb prehrávania.</string>
 <string name="sentry_enable_dialog_title">Zapnúť správy o zlyhaní?</string>
 <string name="sentry_enable_dialog_subtitle">Správy o zlyhaní pomáhajú identifikovať chyby špecifické pre zariadenie bez potreby reprodukovať problém pomocou ADB logov.</string>
 <string name="sentry_disable_dialog_title">Vypnúť správy o zlyhaní?</string>
@@ -2548,10 +2548,10 @@
 <string name="audio_dv5_to_dv81_title">Konvertuj DV5 na DV8.1</string>
 <string name="audio_dv5_to_dv81_sub">Signalizuj streamy Profile 5 ako Profile 8.1 pre výstup kompatibilný s HDR10. Pomáha na zariadeniach, ktoré nemajú natívny dekodér DV5.</string>
 <string name="audio_strip_hdr10plus_title">Odstráň metaúdaje HDR10+</string>
-<string name="audio_strip_hdr10plus_sub">Odstráň dynamické metaúdaje HDR10+ zo streamov. Keď je tiež povolená konverzia na DV8.1, odstránenie prebieha po konverzii.</string>
+<string name="audio_strip_hdr10plus_sub">Odstráňte dynamické metadáta HDR10+ zo streamov. Ak je zároveň zapnutá možnosť Konvertuj na DV8.1, odstránenie prebehne až po konverzii.</string>
 <string name="audio_dv7_preserve_mapping_title">Zachovaj mapovanie DV (DV7 na DV8.1)</string>
 <string name="audio_dv7_preserve_mapping_sub">Zachováva pôvodnú mapovanie tónov určené tvorcom za cenu mierne väčšieho spracovania na snímok.</string>
-<string name="dv7_libdovi_mode_caption">Režim konverzie (automaticky vybraný, nemeň pokiaľ nie si poučený). Vyber jeden na vynútenie; Žiadny používa automatiku. Aktívny iba keď je DV7 Handling nastavený na Konvertuj na DV8.1.</string>
+<string name="dv7_libdovi_mode_caption">Režim konverzie (automaticky vybraný, nemeňte, kým na to nebudete vyzvaní). Vyberte jednu možnosť na jej vynútenie; nastavenie Žiadny použije automatický režim. Aktívne iba vtedy, keď je spracovanie DV7 nastavené na Konvertuj na DV8.1</string>
 <string name="dv7_libdovi_mode_row_title">Režim konverzie</string>
 <string name="dv7_libdovi_mode_none_title">Žiadny</string>
 <string name="dv7_libdovi_mode_none_sub">Bez prepisu. Používa automaticky vybraný režim konverzie.</string>
@@ -2576,7 +2576,7 @@
 <string name="settings_card_depth_edge">Žiara okraja</string>
 <string name="settings_card_depth_edge_subtle">Jemná</string>
 <string name="settings_card_depth_edge_balanced">Vyvážená</string>
-<string name="settings_card_depth_edge_bold">Odvážna</string>
+<string name="settings_card_depth_edge_bold">Tučná</string>
 <string name="settings_card_depth_sheen">Horný lesk</string>
 <string name="settings_card_depth_sheen_off">Vypnuté</string>
 <string name="settings_card_depth_sheen_soft">Jemný</string>
@@ -2607,11 +2607,11 @@
 <string name="debrid_stream_sort_language">Jazyk najskôr</string>
 <string name="settings_stream_badges_section">Štýl Fusion</string>
 <string name="settings_stream_size_badges_title">Odznaky veľkosti</string>
-<string name="settings_stream_size_badges_description">Zobraz odznaky veľkosti súboru vo výsledkoch streamov a paneloch zdrojov prehrávača.</string>
+<string name="settings_stream_size_badges_description">Zobraziť odznaky veľkosti súboru vo výsledkoch streamov a paneloch zdrojov prehrávača.</string>
 <string name="settings_stream_addon_logo_title">Logo doplnku</string>
-<string name="settings_stream_addon_logo_description">Zobraz logo a názov doplnku vedľa zdrojov streamov.</string>
+<string name="settings_stream_addon_logo_description">Zobraziť logo a názov doplnku vedľa zdrojov streamov.</string>
 <string name="settings_stream_display_section">Zobrazenie</string>
-<string name="settings_stream_badge_position_title">Pozícia odznaku</string>
+<string name="settings_stream_badge_position_title">Pozícia odznakov</string>
 <string name="settings_stream_badge_position_description">Vyber, či sa odznaky Fusion a veľkosti zobrazujú nad alebo pod kartami streamov.</string>
 <string name="settings_stream_badge_position_dialog_title">Pozícia odznaku</string>
 <string name="settings_stream_badge_position_dialog_description">Vyber, kde sa odznaky streamov zobrazujú na kartách streamov.</string>
@@ -2789,7 +2789,7 @@
 <string name="playback_buffer_allow_large_sub">Odstráni limit pamäte zariadenia na posuvníku cieľovej veľkosti vyrovnávacej pamäte, čo umožňuje hodnoty až 2GB. Môže zrútiť zariadenia s menej ako 2GB RAM.</string>
 <string name="playback_cache_header">Vyrovnávacia pamäť disku</string>
 <string name="playback_cache_vod">Vyrovnávacia pamäť disku VOD</string>
-<string name="playback_cache_vod_sub">Perzistuj stiahnuté bajty na disk pre aktuálny stream. Rozširuje okamžité spätné vyhľadávanie za vyrovnávacou pamäťou v pamäti a prežije krátke výpadky siete. Platí iba pre progresívne streamy (bez HLS/DASH).</string>
+<string name="playback_cache_vod_sub">Ukladanie stiahnutých dát na disk pre aktuálny stream. Predlžuje okamžité pretáčanie dozadu nad rámec vyrovnávacej pamäte RAM a pomáha pri krátkodobých výpadkoch siete. Platí len pre progresívne streamy (nie pre HLS/DASH).</string>
 <string name="playback_cache_auto_size">Automatická veľkosť</string>
 <string name="playback_cache_auto_size_sub">Keď je zapnuté, vyrovnávacia pamäť sa zmení z voľného miesta na disku. Vypni na výber veľkosti ručne.</string>
 <string name="playback_cache_vod_size">Veľkosť vyrovnávacej pamäte VOD</string>
@@ -2801,15 +2801,15 @@
 <string name="playback_cache_info_restart">Nový limit vyrovnávacej pamäte sa uplatňuje po reštarte aplikácie pri zmene medzi režimami/veľkosťami.</string>
 <string name="playback_reset_to_default">Obnoviť na predvolené</string>
 <string name="playback_net_custom">Vlastná sieť</string>
-<string name="playback_net_custom_sub">Použij viacero paralelných pripojení na načítavanie progresívnych streamov. Keď je vypnuté, používa sa jedno pripojenie.</string>
-<string name="playback_net_http2">Povoľ HTTP/2</string>
-<string name="playback_net_http2_sub">Povoľ protokol HTTP/2 pre sieťové pripojenia, čo umožňuje multiplexovanie požiadaviek a rýchlejšie časy handshake.</string>
+<string name="playback_net_custom_sub">Použiť viacero paralelných pripojení na sťahovanie progresívnych streamov. Ak je funkcia vypnutá, použije sa jediné pripojenie..</string>
+<string name="playback_net_http2">Povoliť HTTP/2</string>
+<string name="playback_net_http2_sub">Povoliť protokol HTTP/2 pre sieťové pripojenia, čo umožňuje multiplexovanie požiadaviek a rýchlejšie časy handshake.</string>
 <string name="playback_net_parallel">Paralelné pripojenia</string>
-<string name="playback_net_parallel_sub">Použij viacero pripojení paralelne na načítavanie streamov. Aktivuj, keď zažívaš vyrovnávanie, hoci je tvoja rýchlosť sťahovania určite dostatočná.</string>
+<string name="playback_net_parallel_sub">Použiť viacero paralelných pripojení na sťahovanie streamov. Aktivujte, ak dochádza k načítavaniu, hoci je rýchlosť sťahovania dostatočná.</string>
 <string name="playback_net_connection_count">Počet pripojení</string>
-<string name="playback_net_connection_count_sub">Počet paralelných TCP pripojení. Vyššie hodnoty zvyšujú použitie pamäti a priepustnosť, ale s klesajúcimi výnosmi.</string>
-<string name="playback_net_chunk_size">Veľkosť časti</string>
-<string name="playback_net_chunk_size_sub">Veľkosť každej časti sťahovania na pripojenie. Väčšie časti znižujú režijné náklady, ale používajú viac pamäti.</string>
+<string name="playback_net_connection_count_sub">Počet paralelných TCP pripojení. Vyššie hodnoty zvyšujú využitie pamäte a priepustnosť, no s klesajúcim účinkom.</string>
+<string name="playback_net_chunk_size">Veľkosť blokov</string>
+<string name="playback_net_chunk_size_sub">Veľkosť bloku sťahovania na pripojenie. Väčšie bloky znižujú záťaž, no zvyšujú využitie pamäte.</string>
 <string name="diag_last_playback_title">Diagnostika posledného prehrávania</string>
 <string name="diag_no_data">Zatiaľ žiadne údaje o prehrávaní. Prehraj stream a vráť sa sem, aby si videl podrobnosti rozhodnutia DV pre toto prehrávanie.</string>
 <string name="diag_section_source_hardware">Zdroj a hardvér</string>
