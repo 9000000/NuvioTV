@@ -1425,15 +1425,20 @@ private fun ModernCarouselCard(
 }
 
 
+/**
+ * Keys that should collapse an expanded poster so navigation can re-arm expand.
+ *
+ * Select keys (Center / Enter) are intentionally excluded: holding them opens the
+ * action menu / long-press options. Resetting the expand timer on those keys made
+ * the Expanded Card collapse and re-expand (and restart trailers) while the menu
+ * was opening (#2574).
+ */
 private fun shouldResetBackdropTimer(key: Key): Boolean {
     return when (key) {
         Key.DirectionUp,
         Key.DirectionDown,
         Key.DirectionLeft,
         Key.DirectionRight,
-        Key.DirectionCenter,
-        Key.Enter,
-        Key.NumPadEnter,
         Key.Back -> true
         else -> false
     }
