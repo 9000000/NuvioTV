@@ -469,7 +469,9 @@ fun PlayerScreen(
             .focusRequester(containerFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
+                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
+                ) {
                     return@onPreviewKeyEvent when (keyEvent.nativeKeyEvent.action) {
                         KeyEvent.ACTION_DOWN -> true
                         KeyEvent.ACTION_UP -> {
