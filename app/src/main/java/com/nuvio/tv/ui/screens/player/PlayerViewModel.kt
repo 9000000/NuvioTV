@@ -30,6 +30,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -250,7 +251,9 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val cachedSubtitles = subtitleInputs?.let { inputs ->
                 try {
-                    subtitleFileCache.cacheSubtitles(inputs)
+                    withTimeoutOrNull(10_000L) {
+                        subtitleFileCache.cacheSubtitles(inputs)
+                    }
                 } catch (_: Exception) {
                     // Subtitle forwarding is best-effort; the external launch must still proceed.
                     null
