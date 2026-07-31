@@ -317,8 +317,13 @@ private fun ModernCatalogRowItem(
     val suppressCardExpansionForHeroTrailer =
         effectiveAutoplayEnabled &&
                 trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.HERO_MEDIA
+    // Expansion is armed from a parent-level focusKey timer that can outlive real
+    // card focus (e.g. user moves left into the sidebar). Never show the expanded
+    // backdrop on a card that is not actually focused (#2815).
     val effectiveBackdropExpanded by remember(isBackdropExpanded, suppressCardExpansionForHeroTrailer) {
-        derivedStateOf { isBackdropExpanded() && !suppressCardExpansionForHeroTrailer }
+        derivedStateOf {
+            isCardFocused && isBackdropExpanded() && !suppressCardExpansionForHeroTrailer
+        }
     }
 
     val isSidebarExpanded = LocalSidebarExpanded.current
