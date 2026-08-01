@@ -622,14 +622,12 @@ fun PlayerScreen(
                         KeyEvent.KEYCODE_DPAD_LEFT,
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
                             if (!uiState.showControls) {
-                                val repeatCount = keyEvent.nativeKeyEvent.repeatCount
-                                val stepMs = when {
-                                    repeatCount >= 8 -> 30_000L
-                                    repeatCount >= 3 -> 20_000L
-                                    else -> 10_000L
-                                }
-                                val isLeft = keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                                val deltaMs = if (isLeft) -stepMs else stepMs
+                                val isLeft =
+                                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                                val deltaMs = PlayerScrubRates.deltaMsForKeyRepeat(
+                                    repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                                    forward = !isLeft
+                                )
                                 viewModel.onEvent(PlayerEvent.OnPreviewSeekBy(deltaMs))
                                 true
                             } else {
@@ -682,11 +680,25 @@ fun PlayerScreen(
                             true
                         }
                         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                            viewModel.onEvent(PlayerEvent.OnSeekForward)
+                            viewModel.onEvent(
+                                PlayerEvent.OnSeekBy(
+                                    PlayerScrubRates.deltaMsForKeyRepeat(
+                                        repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                                        forward = true
+                                    )
+                                )
+                            )
                             true
                         }
                         KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                            viewModel.onEvent(PlayerEvent.OnSeekBackward)
+                            viewModel.onEvent(
+                                PlayerEvent.OnSeekBy(
+                                    PlayerScrubRates.deltaMsForKeyRepeat(
+                                        repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                                        forward = false
+                                    )
+                                )
+                            )
                             true
                         }
                         else -> false
@@ -2241,11 +2253,21 @@ private fun ProgressBar(
                             }
                         }
                         KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            onSeekPreview(-10_000L)
+                            onSeekPreview(
+                                PlayerScrubRates.deltaMsForKeyRepeat(
+                                    repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                                    forward = false
+                                )
+                            )
                             true
                         }
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            onSeekPreview(10_000L)
+                            onSeekPreview(
+                                PlayerScrubRates.deltaMsForKeyRepeat(
+                                    repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                                    forward = true
+                                )
+                            )
                             true
                         }
                         else -> false
