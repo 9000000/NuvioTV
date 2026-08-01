@@ -382,11 +382,11 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
         )
     val audioTrack = state.audioTracks.reportTrackLabel(state.selectedAudioTrackIndex)
     val subtitleTrack = state.subtitleTracks.reportTrackLabel(state.selectedSubtitleTrackIndex)
-    val reportReason = if (state.error == null && state.showLoadingOverlay && !hasRenderedFirstFrame) {
-        "loading_stall"
-    } else {
-        "playback_error"
-    }
+    val reportReason = PlayerStartupLoadingPolicy.loadingStallReportReason(
+        showLoadingOverlay = state.showLoadingOverlay,
+        hasRenderedFirstFrame = hasRenderedFirstFrame,
+        error = state.error,
+    )
     val loadingInput = buildPlaybackIssueLoadingInput(reportReason)
     val playbackAnalyticsInput = playbackAnalyticsDiagnostics.snapshot(
         player = _exoPlayer,
