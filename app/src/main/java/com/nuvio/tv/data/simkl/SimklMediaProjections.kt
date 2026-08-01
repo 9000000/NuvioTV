@@ -324,9 +324,9 @@ private fun daysInMonths(year: Int): IntArray = if (year.isLeapYear()) {
  */
 fun TrackingMediaReference.resolveAnimeEpisodeForSimkl(): TrackingMediaReference {
     if (kind != TrackingMediaKind.ANIME) return this
-    val videoId = catalog?.videoId ?: return this
-    val parsed = parseSimklAnimeVideoId(videoId) ?: return this
-    val videoEpisodeNumber = parsed.episodeNumber ?: return this
+    val videoId = catalog?.videoId ?: return stripAnimeIdsIfSeasoned()
+    val parsed = parseSimklAnimeVideoId(videoId) ?: return stripAnimeIdsIfSeasoned()
+    val videoEpisodeNumber = parsed.episodeNumber ?: return stripAnimeIdsIfSeasoned()
 
     // Override IDs: use ONLY the anime-specific ID from videoId.
     // Clear all other IDs to prevent Simkl from matching a wrong entry
@@ -349,6 +349,20 @@ fun TrackingMediaReference.resolveAnimeEpisodeForSimkl(): TrackingMediaReference
         ids = overriddenIds,
         episode = episode?.copy(season = null, number = videoEpisodeNumber)
             ?: TrackingEpisode(season = null, number = videoEpisodeNumber)
+    )
+}
+
+/**
+ * If this anime reference uses TVDB-style season coordinates, strip anime-specific IDs
+ * (MAL, Kitsu, AniDB, AniList, Simkl) to prevent Simkl from matching a wrong per-season entry.
+ * When a season is present the parent IMDB/TMDB is the correct identifier.
+ */
+private fun TrackingMediaReference.stripAnimeIdsIfSeasoned(): TrackingMediaReference {
+    val season = episode?.season ?: return this
+    if (season <= 0) return this
+    if (ids.mal == null && ids.kitsu == null && ids.anidb == null && ids.anilist == null && ids.simkl == null) return this
+    return copy(
+        ids = ids.copy(mal = null, kitsu = null, anidb = null, anilist = null, simkl = null)
     )
 }
 
