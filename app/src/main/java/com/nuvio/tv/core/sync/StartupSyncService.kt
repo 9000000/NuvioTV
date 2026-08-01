@@ -203,7 +203,7 @@ class StartupSyncService @Inject constructor(
             when (surface) {
                 "addons" -> pullRealtimeAddons(profileId)
                 "plugins" -> pullRealtimePlugins(profileId)
-                "library" -> pullRealtimeLibrary(profileId)
+                "library" -> pullNuvioLibrary(profileId)
                 "watch_progress" -> {
                     watchProgressSyncService.restoreLastPushTimestamp(profileId)
                     syncWatchProgressDelta(
@@ -261,7 +261,6 @@ class StartupSyncService @Inject constructor(
         }
     }
 
-
     private suspend fun pullPeriodicWatchState() {
         if (authManager.authState.value !is AuthState.FullAccount) return
 
@@ -293,7 +292,7 @@ class StartupSyncService @Inject constructor(
 
         val profileId = profileManager.activeProfileId.value
         Log.d(TAG, "Periodic library pull requested profile=$profileId")
-        pullRealtimeLibrary(profileId)
+        pullNuvioLibrary(profileId)
     }
 
     private fun pullKey(userId: String): String {
@@ -592,11 +591,11 @@ class StartupSyncService @Inject constructor(
         }
     }
 
-    private suspend fun pullRealtimeLibrary(profileId: Int) {
+    private suspend fun pullNuvioLibrary(profileId: Int) {
         val isTrackingLibrary = libraryRepository.sourceMode.first() != LibrarySourceMode.LOCAL
         if (isTrackingLibrary) {
             libraryRepository.hasCompletedInitialPull = true
-            Log.d(TAG, "Skipping realtime library pull for profile $profileId because a tracking library provider is active")
+            Log.d(TAG, "Skipping Nuvio library pull for profile $profileId because a tracking library provider is active")
             return
         }
 
@@ -611,7 +610,7 @@ class StartupSyncService @Inject constructor(
             )
         } catch (e: Exception) {
             libraryRepository.hasCompletedInitialPull = true
-            Log.e(TAG, "Realtime library pull failed profile=$profileId", e)
+            Log.e(TAG, "Periodic Nuvio library pull failed profile=$profileId", e)
         } finally {
             libraryRepository.isSyncingFromRemote = false
         }

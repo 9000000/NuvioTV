@@ -8,6 +8,7 @@ import com.nuvio.tv.R
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolver
+import com.nuvio.tv.core.util.hasNoReleaseInfo
 import com.nuvio.tv.core.util.isUnreleased
 import com.nuvio.tv.core.trakt.TraktPublicListSourceResolver
 import com.nuvio.tv.data.trailer.TrailerService
@@ -907,7 +908,10 @@ class FolderDetailViewModel @Inject constructor(
                         _uiState.update { s ->
                             val tabs = s.tabs.toMutableList()
                             val currentRow = tabs.getOrNull(tabIndex)?.catalogRow
-                            val filteredData = result.data.filteredForRelease(s.hideUnreleasedContent)
+                            val filteredData = result.data.filteredForRelease(
+                                hideUnreleased = s.hideUnreleasedContent,
+                                treatMissingDateAsUnreleased = true
+                            )
                             val row = if (append && currentRow != null) {
                                 val existingIds = currentRow.items.map { "${it.apiType}:${it.id}" }.toHashSet()
                                 val newItems = filteredData.items.filter { "${it.apiType}:${it.id}" !in existingIds }
@@ -965,7 +969,10 @@ class FolderDetailViewModel @Inject constructor(
                         _uiState.update { s ->
                             val tabs = s.tabs.toMutableList()
                             val currentRow = tabs.getOrNull(tabIndex)?.catalogRow
-                            val filteredData = result.data.filteredForRelease(s.hideUnreleasedContent)
+                            val filteredData = result.data.filteredForRelease(
+                                hideUnreleased = s.hideUnreleasedContent,
+                                treatMissingDateAsUnreleased = true
+                            )
                             val row = if (append && currentRow != null) {
                                 val existingIds = currentRow.items.map { "${it.apiType}:${it.id}" }.toHashSet()
                                 val newItems = filteredData.items.filter { "${it.apiType}:${it.id}" !in existingIds }
@@ -1536,10 +1543,22 @@ class FolderDetailViewModel @Inject constructor(
 
 }
 
-/** Drops unreleased items from a freshly-loaded row when the user toggle is on. */
-private fun CatalogRow.filteredForRelease(hideUnreleased: Boolean): CatalogRow {
+/**
+ * Drops unreleased items from a freshly-loaded row when the user toggle is on.
+ * [treatMissingDateAsUnreleased] additionally drops items that have no release
+ * information at all — used for TMDB- and Trakt-resolved rows, where a missing
+ * release date means the title is unannounced (#2793). Addon rows keep the
+ * lenient behavior because sparse addon metadata often omits dates for
+ * released content.
+ */
+private fun CatalogRow.filteredForRelease(
+    hideUnreleased: Boolean,
+    treatMissingDateAsUnreleased: Boolean = false
+): CatalogRow {
     if (!hideUnreleased) return this
     val today = java.time.LocalDate.now()
-    val filtered = items.filterNot { it.isUnreleased(today) }
+    val filtered = items.filterNot { item ->
+        item.isUnreleased(today) || (treatMissingDateAsUnreleased && item.hasNoReleaseInfo())
+    }
     return if (filtered.size == items.size) this else copy(items = filtered)
 }

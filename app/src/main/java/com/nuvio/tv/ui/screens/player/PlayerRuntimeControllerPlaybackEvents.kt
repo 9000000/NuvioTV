@@ -148,6 +148,29 @@ internal fun shouldResetPostPlayStateAfterPlaybackEnded(
     return true
 }
 
+/**
+ * Whether an ENDED / near-end event should count as a real episode finish.
+ *
+ * Debrid cache-sync placeholders and unplayable source responses (e.g. RAR-only
+ * torrents, "service unavailable" error clips) often report a short duration and
+ * reach STATE_ENDED. Treating those as natural completion marks the episode watched
+ * and chains auto-play next through an entire season. Mirror the external-player
+ * guard in [com.nuvio.tv.core.player.ExternalPlaybackTracker].
+ */
+internal fun shouldTreatAsNaturalPlaybackCompletion(
+    hasRenderedFirstFrame: Boolean,
+    hasFatalError: Boolean,
+    durationMs: Long
+): Boolean {
+    if (hasFatalError) return false
+    if (!hasRenderedFirstFrame) return false
+    if (isShortPlaceholderDuration(durationMs)) return false
+    return true
+}
+
+/** Streams shorter than ~2:01 are treated as error/placeholder clips, not real episodes. */
+internal fun isShortPlaceholderDuration(duration: Long): Boolean = duration in 1..120_999L
+
 internal fun PlayerRuntimeController.startProgressUpdates() {
     progressJob?.cancel()
     progressJob = scope.launch {
@@ -194,7 +217,12 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                         currentPosition = displayPosition,
                         duration = playerDuration
                     )
-                    val ended = playerDuration > 0L && pos >= (playerDuration - 500L)
+                    val nearEnd = playerDuration > 0L && pos >= (playerDuration - 500L)
+                    val naturalEnded = nearEnd && shouldTreatAsNaturalPlaybackCompletion(
+                        hasRenderedFirstFrame = firstFrameReady,
+                        hasFatalError = !_uiState.value.error.isNullOrBlank(),
+                        durationMs = playerDuration
+                    )
                     val wasEnded = _uiState.value.playbackEnded
                     _uiState.update { state ->
                         state.copy(
@@ -204,7 +232,7 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                             // Snap the loading-logo fill to 100% once playback is
                             // ready so the logo finishes filling on dismissal.
                             loadingProgress = if (firstFrameReady && state.loadingProgress != null) 1f else state.loadingProgress,
-                            playbackEnded = ended
+                            playbackEnded = naturalEnded
                         )
                     }
                     updateMpvAvailableTracks()
@@ -213,10 +241,10 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                         positionMs = pos,
                         durationMs = playerDuration
                     )
-                    if (ended && !wasEnded) {
-                        emitCompletionScrobbleStop(progressPercent = 99.5f)
-                        saveWatchProgress()
-                        resetPostPlayStateAfterPlaybackEnded()
+                    if (naturalEnded && !wasEnded) {
+                        // Short placeholders never set naturalEnded, so they cannot mark
+                        // watched or auto-advance (see #2819).
+                        handleNaturalPlaybackEnded()
                     }
                 }
                 delay(500)
@@ -356,11 +384,11 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
         )
     val audioTrack = state.audioTracks.reportTrackLabel(state.selectedAudioTrackIndex)
     val subtitleTrack = state.subtitleTracks.reportTrackLabel(state.selectedSubtitleTrackIndex)
-    val reportReason = if (state.error == null && state.showLoadingOverlay && !hasRenderedFirstFrame) {
-        "loading_stall"
-    } else {
-        "playback_error"
-    }
+    val reportReason = PlayerStartupLoadingPolicy.loadingStallReportReason(
+        showLoadingOverlay = state.showLoadingOverlay,
+        hasRenderedFirstFrame = hasRenderedFirstFrame,
+        error = state.error,
+    )
     val loadingInput = buildPlaybackIssueLoadingInput(reportReason)
     val playbackAnalyticsInput = playbackAnalyticsDiagnostics.snapshot(
         player = _exoPlayer,
@@ -582,11 +610,54 @@ internal fun PlayerRuntimeController.getEffectiveDuration(position: Long): Long 
     return effectiveDuration
 }
 
-private fun isShortPlaceholderDuration(duration: Long) = duration in 1..120999
-
 private fun PlayerRuntimeController.isShortPlaceholderStream(): Boolean {
     val position = currentPlaybackPositionMs() ?: return false
     return isShortPlaceholderDuration(getEffectiveDuration(position))
+}
+
+/**
+ * Handles a natural end-of-playback event for ExoPlayer / MPV.
+ *
+ * Short debrid placeholders and fatal-error states must not mark the episode
+ * watched or trigger auto-play next.
+ */
+internal fun PlayerRuntimeController.handleNaturalPlaybackEnded() {
+    val position = currentPlaybackPositionMs() ?: 0L
+    val duration = getEffectiveDuration(position)
+    val hasFatalError = !_uiState.value.error.isNullOrBlank()
+    if (!shouldTreatAsNaturalPlaybackCompletion(
+            hasRenderedFirstFrame = hasRenderedFirstFrame,
+            hasFatalError = hasFatalError,
+            durationMs = duration
+        )
+    ) {
+        Log.i(
+            PlayerRuntimeController.TAG,
+            "Ignoring non-natural ENDED: firstFrame=$hasRenderedFirstFrame " +
+                "error=$hasFatalError durationMs=$duration positionMs=$position"
+        )
+        // Prevent PlayerScreen from dispatching onPlaybackEnded / next-episode navigation.
+        _uiState.update { it.copy(playbackEnded = false) }
+        nextEpisodeAutoPlayJob?.cancel()
+        nextEpisodeAutoPlayJob = null
+        return
+    }
+
+    emitCompletionScrobbleStop(progressPercent = 99.5f)
+    saveWatchProgress()
+    resetPostPlayStateAfterPlaybackEnded()
+}
+
+/**
+ * Cancels any in-flight next-episode auto-play / still-watching prompt when a
+ * fatal player error is shown. Callers should also clear [PlayerUiState.playbackEnded]
+ * and [PlayerUiState.postPlayMode] in the same state update as the error message.
+ */
+internal fun PlayerRuntimeController.cancelNextEpisodeAutoPlayOnFatalError() {
+    nextEpisodeAutoPlayJob?.cancel()
+    nextEpisodeAutoPlayJob = null
+    stillWatchingPromptJob?.cancel()
+    stillWatchingPromptJob = null
 }
 
 internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, duration: Long, syncRemote: Boolean = true) {

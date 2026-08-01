@@ -252,12 +252,18 @@ internal fun PlayerRuntimeController.initializePlayer(
                 message = context.getString(R.string.player_loading_detecting_format)
             )
 
+            resolveCurrentStreamMimeType(
+                url = url,
+                headers = headers
+            )
+
             val afrJob = async {
                 runAfrPreflightIfEnabled(
                     url = url,
                     headers = headers,
                     frameRateMatchingMode = playerSettings.frameRateMatchingMode,
-                    resolutionMatchingEnabled = playerSettings.resolutionMatchingEnabled
+                    resolutionMatchingEnabled = playerSettings.resolutionMatchingEnabled,
+                    mimeType = currentStreamMimeType
                 )
             }
             if (effectiveInternalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
@@ -285,10 +291,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                 }
                 return@launch
             }
-            resolveCurrentStreamMimeType(
-                url = url,
-                headers = headers
-            )
             mpvInitializationInProgress = false
 
             // ── ExoPlayer Dolby Vision Logic (mode-driven via Dv7HandlingMode) ──
@@ -369,7 +371,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                     selfTest = DoviBridge.SelfTestResult(false, "not-run", 0, 0)
                 )
             }
-            isExperimentalDv7ToDv81ActiveForCurrentPlayback = dv7ToDv81SettingActive && dv7ToDv81Probe.supported
+            // A stream that previously failed with conversion armed is forced to the HEVC
+            // base layer via dv7ToHevcForcedStreamUrls; that override must also disarm the
+            // conversion/extractor path, otherwise the retry rebuilds the exact same broken
+            // pipeline (stock extractor + no vendored MKV path) and fails identically.
+            val dv7ConversionDisarmedForUrl = dv7ToHevcForcedStreamUrls.contains(url)
+            isExperimentalDv7ToDv81ActiveForCurrentPlayback =
+                dv7ToDv81SettingActive && dv7ToDv81Probe.supported && !dv7ConversionDisarmedForUrl
             // AUTO fallback: if AUTO chose DV81 but the probe failed for this stream,
             // downgrade to HDR10_BASE_LAYER so the user still gets a picture.
             if (playerSettings.dv7HandlingMode == Dv7HandlingMode.AUTO &&
@@ -961,15 +969,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                     message = context.getString(R.string.player_loading_starting)
                 )
                 val isTunneledPlayback = playerSettings.tunnelingEnabled
-                // Always start paused — playback begins in onRenderedFirstFrame()
-                // so audio and video start in perfect sync. Without this, the
-                // audio renderer races ahead by 1-2s while the video decoder
-                // is still decoding the first I-frame.
+                // Hold playWhenReady=false through prepare() so audio does not race ahead
+                // while the video decoder is still opening. The first STATE_READY primes the
+                // pipeline (ColdStartPrime); synchronized play() begins in onRenderedFirstFrame().
                 //
-                // Exception: tunneled playback bypasses the normal video
-                // rendering pipeline so onRenderedFirstFrame() never fires.
-                // In that case we fall back to starting on STATE_READY.
-                playWhenReady = !startPaused && !userPausedManually
+                // Exception: tunneled playback bypasses the normal video rendering pipeline
+                // so onRenderedFirstFrame() never fires — TunneledFirstReady starts on READY.
+                playWhenReady = false
                 prepare()
 
                 addListener(object : Player.Listener {
@@ -987,12 +993,22 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (playerDuration > lastKnownDuration) { lastKnownDuration = playerDuration }
                         val isBuffering = playbackState == Player.STATE_BUFFERING
                         updatePlaybackTimeline(duration = playerDuration.coerceAtLeast(0L))
+                        // Only mark playbackEnded for real finishes so PlayerScreen does not
+                        // dispatch next-episode navigation for short debrid/error placeholders.
+                        val naturalEnded = playbackState == Player.STATE_ENDED &&
+                            shouldTreatAsNaturalPlaybackCompletion(
+                                hasRenderedFirstFrame = hasRenderedFirstFrame,
+                                hasFatalError = !_uiState.value.error.isNullOrBlank(),
+                                durationMs = playerDuration.coerceAtLeast(0L).let { d ->
+                                    maxOf(d, lastKnownDuration)
+                                }
+                            )
                         _uiState.update {
                             it.copy(
                                 isBuffering = if (NuvioExoPlayerPerformanceHelper.shouldSuppressBufferingUi(
                                     suppressBufferingUiForSeek, seekBufferingUiDeferred, isBuffering
                                 )) false else isBuffering,
-                                playbackEnded = playbackState == Player.STATE_ENDED
+                                playbackEnded = naturalEnded
                             )
                         }
                         updateAudioControlAvailability()
@@ -1069,19 +1085,31 @@ internal fun PlayerRuntimeController.initializePlayer(
                             // for onRenderedFirstFrame() to ensure A/V sync.
                             // Exception: tunneled playback never fires
                             // onRenderedFirstFrame(), so we must start here.
-                            if (shouldEnforceAutoplayOnFirstReady) {
-                                shouldEnforceAutoplayOnFirstReady = false
-                                if (isTunneledPlayback) {
-                                    // Tunneled mode — onRenderedFirstFrame() won't
-                                    // fire; treat STATE_READY as the sync point.
-                                    hasRenderedFirstFrame = true
+                            val readyTransition = PlayerStartupPlaybackPolicy.onStateReady(
+                                PlayerStartupPlaybackPolicy.ReadyState(
+                                    shouldEnforceAutoplayOnFirstReady = shouldEnforceAutoplayOnFirstReady,
+                                    hasRenderedFirstFrame = hasRenderedFirstFrame,
+                                    userPausedManually = userPausedManually,
+                                    startPaused = startPaused,
+                                    isTunneledPlayback = isTunneledPlayback,
+                                )
+                            )
+                            shouldEnforceAutoplayOnFirstReady =
+                                readyTransition.nextState.shouldEnforceAutoplayOnFirstReady
+                            if (readyTransition.nextState.hasRenderedFirstFrame && isTunneledPlayback) {
+                                hasRenderedFirstFrame = true
+                            }
+                            when (val action = readyTransition.action) {
+                                is PlayerStartupPlaybackPolicy.ReadyAction.TunneledFirstReady -> {
                                     mediaSourceFactory.unlockStartupPrefetch()
                                     playbackAnalyticsDiagnostics.onSyntheticFirstFrame(this@apply)
                                     if (_uiState.value.postPlayDismissedForCurrentEpisode) {
                                         _uiState.update { it.copy(postPlayDismissedForCurrentEpisode = false) }
                                     }
-                                    if (!startPaused && !userPausedManually) {
+                                    if (action.setPlayWhenReady) {
                                         playWhenReady = true
+                                    }
+                                    if (action.callPlay) {
                                         play()
                                     }
                                     finishLoadingDiagnostics("first_frame_ready")
@@ -1095,9 +1123,28 @@ internal fun PlayerRuntimeController.initializePlayer(
                                         )
                                     }
                                 }
-                                // Non-tunneled: playback will start in onRenderedFirstFrame().
-                            } else if (!userPausedManually && hasRenderedFirstFrame) {
-                                play()
+                                is PlayerStartupPlaybackPolicy.ReadyAction.ColdStartPrime -> {
+                                    if (action.setPlayWhenReady) {
+                                        playWhenReady = true
+                                    }
+                                    if (action.callPlay) {
+                                        play()
+                                    }
+                                }
+                                is PlayerStartupPlaybackPolicy.ReadyAction.PreFirstFrameResume -> {
+                                    if (action.setPlayWhenReady) {
+                                        playWhenReady = true
+                                    }
+                                    if (action.callPlay) {
+                                        play()
+                                    }
+                                }
+                                is PlayerStartupPlaybackPolicy.ReadyAction.PostFirstFrameResume -> {
+                                    if (action.callPlay) {
+                                        play()
+                                    }
+                                }
+                                PlayerStartupPlaybackPolicy.ReadyAction.None -> Unit
                             }
                             tryApplyPendingResumeProgress(this@apply)
                             _uiState.value.pendingSeekPosition?.let { position ->
@@ -1125,7 +1172,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                         }
 
                         if (playbackState == Player.STATE_ENDED) {
-                            emitCompletionScrobbleStop(progressPercent = 99.5f)
                             // Re-persist diagnostics with the final rebuffer totals (the
                             // first-frame snapshot captured 0, since rebuffers accrue after).
                             Log.i(
@@ -1144,8 +1190,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                                     runCatching { playerSettingsDataStore.setLastPlaybackDiagnostics(endDiagnostics) }
                                 }
                             }
-                            saveWatchProgress()
-                            resetPostPlayStateAfterPlaybackEnded()
+                            // Marks watched + auto-play next only for real episode finishes;
+                            // short debrid/error placeholders are ignored (see #2819).
+                            handleNaturalPlaybackEnded()
                         }
 
                         refreshStableProgressResetGate()
@@ -1280,11 +1327,58 @@ internal fun PlayerRuntimeController.initializePlayer(
                             return
                         }
 
+                        // DV conversion armed for this stream but the player hit a
+                        // FAILED_RUNTIME_CHECK (8000): the converted bitstream trips a
+                        // renderer/extractor assertion before the codec ever reports a
+                        // decoding failure. That is a video-path failure, so take the same
+                        // fallback ladder as a DV decoder failure instead of burning the
+                        // audio fallbacks (safe-audio/audio-disabled) on it — they rebuild
+                        // the player with the same broken conversion and fail identically.
+                        if (error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK &&
+                            (isExperimentalDv7ToDv81ActiveForCurrentPlayback ||
+                                isManualDv81Mode2ActiveForCurrentPlayback) &&
+                            !isMapDv7ToHevcActiveForCurrentPlayback
+                        ) {
+                            if (isManualDv81Mode2ActiveForCurrentPlayback &&
+                                !dv7Mode1ForcedStreamUrls.contains(currentStreamUrl)
+                            ) {
+                                dv7Mode1ForcedStreamUrls.add(currentStreamUrl)
+                                Log.i(
+                                    PlayerRuntimeController.TAG,
+                                    "DV7_MODE2_RUNTIME_CHECK_FALLBACK: mode 2 hit FAILED_RUNTIME_CHECK; " +
+                                            "retrying stream at mode 1 host=${currentStreamUrl.safeHost()}"
+                                )
+                                retryCurrentStreamWithDv7Mode1Fallback(currentPosition)
+                                return
+                            }
+                            if (isExperimentalDv7ToDv81ActiveForCurrentPlayback &&
+                                !hasAttemptedDv7ToDv81ForCurrentPlayback
+                            ) {
+                                hasAttemptedDv7ToDv81ForCurrentPlayback = true
+                                val probe = DoviBridge.probeRealtimeConversionSupport(currentStreamUrl)
+                                dv7ToDv81LastProbeReasonForCurrentPlayback = probe.reason
+                                dv7ToDv81BridgeVersionForCurrentPlayback = probe.bridgeVersion
+                            }
+                            Log.i(
+                                PlayerRuntimeController.TAG,
+                                "DV_RUNTIME_CHECK_FALLBACK: FAILED_RUNTIME_CHECK with DV conversion active; " +
+                                        "forcing HDR10 base layer for host=${currentStreamUrl.safeHost()}"
+                            )
+                            dv7ToHevcForcedStreamUrls.add(currentStreamUrl)
+                            retryCurrentStreamWithDolbyVisionFallback(currentPosition)
+                            return
+                        }
+
                         if ((error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
                              error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK) &&
                             !autoSwitchInternalPlayerOnErrorEnabled) {
                             if (!isSafeAudioModeActiveForCurrentPlayback) {
                                 safeAudioForcedStreamUrls.add(currentStreamUrl)
+                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                return
+                            }
+                            if (!hasTriedAudioPcmFallback) {
+                                hasTriedAudioPcmFallback = true
                                 retryCurrentStreamWithSafeAudioFallback(currentPosition)
                                 return
                             }
@@ -1306,6 +1400,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 retryCurrentStreamWithSafeAudioFallback(currentPosition)
                                 return
                             }
+                            if (!hasTriedAudioPcmFallback) {
+                                hasTriedAudioPcmFallback = true
+                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                return
+                            }
                             if (!isAudioDisabledForCurrentPlayback) {
                                 audioDisabledForcedStreamUrls.add(currentStreamUrl)
                                 retryCurrentStreamWithAudioDisabled(currentPosition)
@@ -1316,6 +1415,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (error.isStuckPlayingNoProgress()) {
                             if (!isSafeAudioModeActiveForCurrentPlayback) {
                                 safeAudioForcedStreamUrls.add(currentStreamUrl)
+                                retryCurrentStreamWithSafeAudioFallback(currentPosition)
+                                return
+                            }
+                            if (!hasTriedAudioPcmFallback) {
+                                hasTriedAudioPcmFallback = true
                                 retryCurrentStreamWithSafeAudioFallback(currentPosition)
                                 return
                             }
@@ -1349,6 +1453,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                             retryCurrentStreamFromStartAfter416(currentPosition)
                             return
                         }
+
+                        handleParsingErrorFallback(error)
 
                         // ── Main Engine Failover ──
                         if (maybeAutoSwitchInternalPlayerOnStartupError(detailedError = detailedError, allowEngineFailover = allowEngineFailover)) {
@@ -1386,13 +1492,18 @@ internal fun PlayerRuntimeController.initializePlayer(
                             }
                         }
 
+                        // Fatal error: stop any next-episode auto-play that may have been
+                        // armed by a short placeholder ENDED or residual post-play state.
+                        cancelNextEpisodeAutoPlayOnFatalError()
                         _uiState.update {
                             it.copy(
                                 error = detailedError,
                                 showLoadingOverlay = false,
                                 showPauseOverlay = false,
                                 loadingIssueReportVisible = false,
-                                loadingIssueElapsedMs = 0L
+                                loadingIssueElapsedMs = 0L,
+                                playbackEnded = false,
+                                postPlayMode = null
                             )
                         }
                     }

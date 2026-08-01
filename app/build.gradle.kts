@@ -57,9 +57,6 @@ val doviExtractorHookReady = parseBooleanProperty(
 val doviEnableRealLink = parseBooleanProperty(
     resolveProperty(devProperties, localProperties, "DOVI_ENABLE_REAL_LINK")
 )
-val realtimeSyncEnabled = parseBooleanProperty(
-    resolveProperty(devProperties, localProperties, "NUVIO_REALTIME_SYNC_ENABLED", "true")
-)
 val selfHosted = parseBooleanProperty(
     providers.gradleProperty("SELF_HOSTED").orNull
         ?: providers.environmentVariable("SELF_HOSTED").orNull
@@ -130,7 +127,6 @@ android {
         buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
         buildConfigField("boolean", "DOVI_NATIVE_ENABLED", enableDoviNative.toString())
         buildConfigField("boolean", "DOVI_EXTRACTOR_HOOK_READY", doviExtractorHookReady.toString())
-        buildConfigField("boolean", "REALTIME_SYNC_ENABLED", realtimeSyncEnabled.toString())
         buildConfigField("boolean", "SELF_HOSTED", selfHosted.toString())
         if (enableDoviNative) {
             externalNativeBuild {
@@ -532,7 +528,6 @@ dependencies {
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
-    implementation(libs.supabase.realtime)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.sentry.android)
 
