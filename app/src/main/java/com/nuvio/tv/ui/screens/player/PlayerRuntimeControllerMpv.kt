@@ -207,9 +207,11 @@ internal fun PlayerRuntimeController.pauseForLifecycle() {
     // Mark as user-paused so autoplay logic doesn't resume playback.
     userPausedManually = true
     shouldEnforceAutoplayOnFirstReady = false
+    logScrobbleDiagnostic("lifecycle_pause", "userPaused=$userPausedManually")
 
     if (isUsingMpvEngine()) {
         mpvView?.setPaused(true)
+        emitPauseScrobbleForCurrentProgress()
         stopWatchProgressSaving()
         stopProgressUpdates()
         _uiState.update { it.copy(isPlaying = false) }
@@ -557,7 +559,7 @@ internal fun PlayerRuntimeController.pauseForStillWatchingPrompt() {
     if (isUsingMpvEngine()) {
         stopProgressUpdates()
         stopWatchProgressSaving()
-        emitStopScrobbleForCurrentProgress()
+        emitPauseScrobbleForCurrentProgress()
     }
 }
 
