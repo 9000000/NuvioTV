@@ -1674,7 +1674,7 @@ private fun MetaDetailsContent(
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
                                 coroutineScope.launch {
-                                    listState.scrollToItem(0)
+                                    listState.animateScrollToItem(0)
                                 }
                             }
                             initialHeroFocusRequested = true
