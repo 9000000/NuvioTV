@@ -29,6 +29,7 @@ internal const val MODERN_TRAILER_OVERSCAN_ZOOM = 1.35f
 internal const val MODERN_HERO_FOCUS_DEBOUNCE_MS = 450L
 internal val MODERN_ROW_HEADER_FOCUS_INSET = 40.dp
 internal const val MODERN_CONTINUE_WATCHING_ROW_KEY = "continue_watching"
+internal const val MODERN_UPCOMING_ROW_KEY = "upcoming_section"
 internal val MODERN_LANDSCAPE_LOGO_GRADIENT = Brush.verticalGradient(
     colorStops = arrayOf(
         0.0f to Color.Transparent,
@@ -184,6 +185,10 @@ class ModernCarouselRowBuildCache {
     var continueWatchingUpcomingLabel: String = ""
     var continueWatchingUseLandscapePosters: Boolean = false
     var continueWatchingRow: HeroCarouselRow? = null
+    var upcomingItems: List<ContinueWatchingItem> = emptyList()
+    var upcomingTitle: String = ""
+    var upcomingUseLandscapePosters: Boolean = false
+    var upcomingRow: HeroCarouselRow? = null
     internal val catalogRows = java.util.concurrent.ConcurrentHashMap<String, ModernCatalogRowBuildCacheEntry>()
     internal val collectionRows = java.util.concurrent.ConcurrentHashMap<String, ModernCollectionRowBuildCacheEntry>()
     // per-item cache: rowKey -> (itemId -> cached carousel item + source MetaPreview)
@@ -617,7 +622,12 @@ private var cachedDateFormatPattern: String? = null
 internal fun extractYearText(type: ContentType, releaseInfo: String?, released: String?, showFullDate: Boolean = true): String? {
     if (showFullDate && type == ContentType.MOVIE) {
         val full = released
-            ?.let { runCatching { java.time.OffsetDateTime.parse(it).toLocalDate() }.getOrNull() }
+            ?.let {
+                // Try OffsetDateTime first (addon format: "2024-03-15T00:00:00.000Z"),
+                // then LocalDate (TMDB collection format: "2024-03-15"). (#2516)
+                runCatching { java.time.OffsetDateTime.parse(it).toLocalDate() }.getOrNull()
+                    ?: runCatching { java.time.LocalDate.parse(it) }.getOrNull()
+            }
             ?.let {
                 val locale = java.util.Locale.getDefault()
                 val pattern = if (locale == cachedDateFormatLocale && cachedDateFormatPattern != null) {
@@ -628,7 +638,13 @@ internal fun extractYearText(type: ContentType, releaseInfo: String?, released: 
                         cachedDateFormatLocale = locale
                     }
                 }
-                java.time.format.DateTimeFormatter.ofPattern(pattern, locale).format(it)
+                // Use SimpleDateFormat (not DateTimeFormatter) to match the Details
+                // page formatting. DateTimeFormatter.ofPattern interprets MMMM as
+                // the standalone month form in some locales (e.g. Polish "czerwiec"
+                // instead of the genitive "czerwca" used in full dates), while
+                // SimpleDateFormat uses the inflected form expected in date context.
+                java.text.SimpleDateFormat(pattern, locale)
+                    .format(java.util.Date(it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()))
             }
         if (full != null) return full
     }

@@ -32,10 +32,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -51,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.withFrameNanos
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Tab
@@ -66,6 +70,9 @@ import com.nuvio.tv.R
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.LocalCardDepthStyle
+import com.nuvio.tv.ui.components.nuvioCardDepth
+import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.ui.screens.home.ClassicHomeContent
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.screens.home.GridHomeContent
@@ -76,6 +83,7 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.screens.home.ModernHomeContent
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -466,15 +474,49 @@ private fun TabbedGridContent(
                 }
                 if (catalogRow != null && catalogRow.isLoading) {
                     item(
-                        span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }
+                        key = "loading_more"
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = NuvioTheme.spacing.xl),
-                            contentAlignment = Alignment.Center
+                        val cardShape = RoundedCornerShape(posterCardStyle.cornerRadius)
+                        val cardDepthStyle = LocalCardDepthStyle.current
+                        Column(
+                            modifier = Modifier.width(posterCardStyle.width)
                         ) {
-                            LoadingIndicator()
+                            Card(
+                                onClick = {},
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(posterCardStyle.height)
+                                    .focusProperties { canFocus = false },
+                                shape = CardDefaults.shape(shape = cardShape),
+                                colors = CardDefaults.colors(
+                                    containerColor = NuvioTheme.colors.BackgroundCard,
+                                    focusedContainerColor = NuvioTheme.colors.BackgroundCard
+                                )
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(cardShape)
+                                        .nuvioCardDepth(
+                                            shape = cardShape,
+                                            surface = CardDepthSurface.POSTERS,
+                                            style = cardDepthStyle
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    LoadingIndicator()
+                                }
+                            }
+                            // Reserve space for title + release date to match ContentCard height
+                            Spacer(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = NuvioTheme.spacing.sm)
+                                    .height(
+                                        MaterialTheme.typography.titleMedium.lineHeight.value.dp +
+                                            MaterialTheme.typography.labelMedium.lineHeight.value.dp
+                                    )
+                            )
                         }
                     }
                 }
@@ -495,7 +537,14 @@ private fun RowsContent(
     onItemFocus: (MetaPreview) -> Unit = {},
     onItemLongPress: (MetaPreview, String) -> Unit = { _, _ -> }
 ) {
-    val sourceTabs = uiState.tabs.filter { !it.isAllTab }
+    val sourceTabs = uiState.tabs.filter { tab ->
+        if (tab.isAllTab) return@filter false
+        // Hide sources that returned zero results after loading completed
+        if (!tab.isLoading && tab.error == null &&
+            tab.catalogRow != null && tab.catalogRow.items.isEmpty()
+        ) return@filter false
+        true
+    }
     
     // Nested prefetch: pre-compose cards in nested LazyRows to prevent frame spikes
     val nestedPrefetchStrategy = remember { LazyListPrefetchStrategy(nestedPrefetchItemCount = 2) }
@@ -511,6 +560,7 @@ private fun RowsContent(
     val rowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
     val focusedItemByRow = remember { mutableStateMapOf<String, Int>() }
     val currentFocusedRowKey = remember { mutableStateOf(focusState.focusedRowKey) }
+    val folderScope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
         onDispose {
@@ -607,13 +657,25 @@ private fun RowsContent(
                     fun requesterForKey(k: String?): FocusRequester? = when {
                         k == null -> null
                         rowEntryFocusRequesters.containsKey(k) -> rowEntryFocusRequesters[k]
-                        else -> null
+                        else -> {
+                            val baseKey = k.substringBeforeLast('_')
+                            rowEntryFocusRequesters[baseKey]
+                        }
                     }
                     val requester = if (target == null) null
                     else requesterForKey(target.key as? String)
                         ?: visibleItems.firstNotNullOfOrNull { requesterForKey(it.key as? String) }
 
-                    runCatching { requester?.requestFocus() }
+                    requester?.let { req ->
+                        folderScope.launch {
+                            repeat(6) {
+                                val ok = runCatching { req.requestFocus(); true }
+                                    .getOrDefault(false)
+                                if (ok) return@launch
+                                withFrameNanos { }
+                            }
+                        }
+                    }
                     null
                 },
             ),

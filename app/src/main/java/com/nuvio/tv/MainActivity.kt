@@ -118,6 +118,7 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
+import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
@@ -125,6 +126,8 @@ import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSettingsSyncService
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
+import com.nuvio.tv.core.tracking.TrackingProgressRefreshCoordinator
+import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.AppOnboardingDataStore
 import com.nuvio.tv.data.local.AuthSessionNoticeDataStore
 import com.nuvio.tv.data.local.ExperienceModeDataStore
@@ -132,7 +135,6 @@ import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.data.local.ThemeDataStore
 import com.nuvio.tv.data.remote.supabase.AvatarRepository
-import com.nuvio.tv.data.repository.TraktProgressService
 import com.nuvio.tv.domain.model.AppFont
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.domain.model.AuthState
@@ -220,7 +222,7 @@ class MainActivity : ComponentActivity() {
     lateinit var addonRepository: AddonRepository
 
     @Inject
-    lateinit var traktProgressService: TraktProgressService
+    lateinit var trackingProgressRefreshCoordinator: TrackingProgressRefreshCoordinator
 
     @Inject
     lateinit var startupSyncService: StartupSyncService
@@ -239,6 +241,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authManager: AuthManager
+
+    @Inject
+    lateinit var deviceSessionRegistration: DeviceSessionRegistration
 
     @Inject
     lateinit var authSessionNoticeDataStore: AuthSessionNoticeDataStore
@@ -638,14 +643,11 @@ class MainActivity : ComponentActivity() {
                     // the internal onPlaybackEnded path uses. Collected from the root composable
                     // so it survives StreamScreen's self-pop and a process kill (metadata is
                     // recovered from disk and the event replayed).
-                    var lastHandledAutoNextMs by rememberSaveable { mutableStateOf(0L) }
                     LaunchedEffect(navController) {
                         externalPlaybackTracker.autoPlayNext.collect { next ->
-                            // Skip a value replayed after a config change; act only on newer events.
-                            if (next.requestedAtMs <= lastHandledAutoNextMs) {
+                            if (!externalPlaybackTracker.claimAutoPlayNextNavigation(next)) {
                                 return@collect
                             }
-                            lastHandledAutoNextMs = next.requestedAtMs
                             Log.d(
                                 "MainActivity",
                                 "autoPlayNext received: S${next.nextSeason}E${next.nextEpisode} " +
@@ -902,14 +904,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
-        startupSyncService.requestForegroundSync()
         lifecycleScope.launch {
-            if (isFirstResumeAfterCreate) {
+            deviceSessionRegistration.requestForegroundRegistration()
+            startupSyncService.requestForegroundSync()
+        }
+        lifecycleScope.launch {
+            val refreshIntent = if (isFirstResumeAfterCreate) {
                 isFirstResumeAfterCreate = false
-                traktProgressService.invalidateAndRefresh()
+                TrackingRefreshIntent.INVALIDATED
             } else {
-                traktProgressService.refreshNow()
+                TrackingRefreshIntent.AUTOMATIC
             }
+            trackingProgressRefreshCoordinator.refreshConnected(refreshIntent)
         }
     }
 
@@ -1880,7 +1886,12 @@ private fun navigateToDrawerRoute(
     if (currentRoute == targetRoute) {
         if (targetRoute == Screen.Home.route) {
             // Scroll Home to top by clearing saved focus/scroll state on the ViewModel.
-            val homeEntry = navController.getBackStackEntry(Screen.Home.route)
+            val homeEntry = try {
+                navController.getBackStackEntry(Screen.Home.route)
+            } catch (_: IllegalArgumentException) {
+                // "home" not yet on the back stack (e.g. nav graph not fully initialized).
+                return
+            }
             val homeViewModel = androidx.lifecycle.ViewModelProvider(homeEntry)[com.nuvio.tv.ui.screens.home.HomeViewModel::class.java]
             homeViewModel.requestScrollToTop()
         }

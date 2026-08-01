@@ -22,6 +22,8 @@ import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.LibraryEntryInput
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.ListMembershipChanges
+import com.nuvio.tv.core.tracking.TrackingMembershipRemovalConfirmation
+import com.nuvio.tv.core.tracking.toggleTrackingMembershipSelection
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaTrailer
 import com.nuvio.tv.domain.model.NextToWatch
@@ -36,6 +38,7 @@ import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.trailer.TrailerService
 import com.nuvio.tv.core.util.isUnreleased
+import com.nuvio.tv.core.util.selectEpisodeReleaseValue
 import java.time.LocalDate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -122,6 +125,7 @@ class MetaDetailsViewModel @Inject constructor(
     private var nextToWatchJob: Job? = null
     private var commentsJob: Job? = null
     private var commentsLoadMoreJob: Job? = null
+    private var pendingDefaultLibraryToggle: LibraryEntryInput? = null
 
     private var trailerDelayMs = 7000L
     private var trailerAutoplayEnabled = false
@@ -139,6 +143,8 @@ class MetaDetailsViewModel @Inject constructor(
      *  updated to [Meta.id] once meta loads (typically an IMDB ID like "tt0396375").
      *  This ensures progress is read from the same key it was written under. */
     private val _effectiveContentId = MutableStateFlow(itemId)
+    private val _optimisticMarks = mutableSetOf<Pair<Int, Int>>()
+    private val _optimisticUnmarks = mutableSetOf<Pair<Int, Int>>()
 
     init {
         posterOptions.bind(viewModelScope)
@@ -324,6 +330,8 @@ class MetaDetailsViewModel @Inject constructor(
             is MetaDetailsEvent.OnPickerMembershipToggled -> togglePickerMembership(event.listKey)
             MetaDetailsEvent.OnPickerSave -> savePickerMembership()
             MetaDetailsEvent.OnPickerDismiss -> dismissListPicker()
+            MetaDetailsEvent.OnRemovalConfirmed -> confirmPickerRemoval()
+            MetaDetailsEvent.OnRemovalCancelled -> cancelPickerRemoval()
             MetaDetailsEvent.OnClearMessage -> clearMessage()
             MetaDetailsEvent.OnLifecyclePause -> handleLifecyclePause()
         }
@@ -345,7 +353,7 @@ class MetaDetailsViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            libraryRepository.listTabs
+            libraryRepository.membershipListTabs
                 .distinctUntilChanged()
                 .collectLatest { tabs ->
                 _uiState.update { state ->
@@ -441,8 +449,7 @@ class MetaDetailsViewModel @Inject constructor(
                         state.copy(episodeProgressMap = progressMap)
                     }
                 }
-                // Revalidate local watched items against Trakt truth
-                revalidateLocalWatchedEpisodesAgainstTrakt(progressMap)
+                revalidateLocalWatchedEpisodesAgainstActiveProvider(progressMap)
                 // Recalculate next to watch when progress changes
                 reevaluateSeriesWatchedBadge()
                 calculateNextToWatch()
@@ -450,24 +457,17 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Removes local watched-episode entries that Trakt doesn't confirm,
-     * preventing stale state when a Trakt sync silently fails.
-     */
-    private fun revalidateLocalWatchedEpisodesAgainstTrakt(
-        traktProgressMap: Map<Pair<Int, Int>, WatchProgress>
+    private fun revalidateLocalWatchedEpisodesAgainstActiveProvider(
+        providerProgressMap: Map<Pair<Int, Int>, WatchProgress>
     ) {
         if (itemType.equals("other", ignoreCase = true)) return
         if (itemType.equals("movie", ignoreCase = true)) return
-        if (traktProgressMap.isEmpty()) return
-        val hasCompletedEntries = traktProgressMap.values.any { it.isCompleted() }
+        if (providerProgressMap.isEmpty()) return
+        val hasCompletedEntries = providerProgressMap.values.any { it.isCompleted() }
         if (!hasCompletedEntries) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            val isTraktActive = try {
-                watchProgressRepository.isTraktProgressActive()
-            } catch (_: Exception) { false }
-            if (!isTraktActive) return@launch
+            if (!watchProgressRepository.activeProviderOwnsCompletedHistoryProjection()) return@launch
 
             val contentId = _effectiveContentId.value
             val localWatched = watchedItemsPreferences
@@ -476,8 +476,8 @@ class MetaDetailsViewModel @Inject constructor(
             if (localWatched.isEmpty()) return@launch
 
             val staleEpisodes = localWatched.filter { (season, episode) ->
-                val traktEntry = traktProgressMap[season to episode]
-                traktEntry == null || !traktEntry.isCompleted()
+                val providerEntry = providerProgressMap[season to episode]
+                providerEntry == null || !providerEntry.isCompleted()
             }
 
             if (staleEpisodes.isNotEmpty()) {
@@ -494,7 +494,30 @@ class MetaDetailsViewModel @Inject constructor(
         if (itemType.lowercase() == "movie") return
         viewModelScope.launch {
             _effectiveContentId.flatMapLatest { cid ->
-                watchedItemsPreferences.getWatchedEpisodesForContent(cid)
+                combine(
+                    watchedItemsPreferences.getWatchedEpisodesForContent(cid),
+                    watchProgressRepository.getAllEpisodeProgress(cid),
+                    _uiState.map { it.meta?.videos }.distinctUntilChanged(),
+                ) { localWatched, progressMap, videos ->
+                    val fromProgress = progressMap.filterValues { it.isCompleted() }.keys
+                    val merged = (localWatched + fromProgress).toMutableSet()
+                    // Remove optimistic unmarks — episodes the user just batch-unmarked
+                    // that may still linger in localWatched/fromProgress briefly.
+                    merged -= _optimisticUnmarks
+                    if (videos.isNullOrEmpty()) return@combine merged
+                    for (video in videos) {
+                        val s = video.season ?: continue
+                        val e = video.episode ?: continue
+                        val key = s to e
+                        val watchedByVideoId = watchProgressRepository.isWatchedByVideoId(video.id, e)
+                        if (watchedByVideoId && key !in merged && key !in _optimisticUnmarks) {
+                            merged += key
+                        } else if (!watchedByVideoId && key in merged && key !in fromProgress && key !in _optimisticMarks) {
+                            merged -= key
+                        }
+                    }
+                    merged as Set<Pair<Int, Int>>
+                }
             }
                 .distinctUntilChanged()
                 .collectLatest { watchedSet ->
@@ -630,7 +653,8 @@ class MetaDetailsViewModel @Inject constructor(
                             } else if (tryApplyTmdbFallbackMeta()) {
                                 Unit
                             } else {
-                                _uiState.update { it.copy(isLoading = false, error = result.message) }
+                                val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
+                                _uiState.update { it.copy(isLoading = false, error = errorMsg) }
                             }
                         }
                         NetworkResult.Loading -> {
@@ -657,7 +681,8 @@ class MetaDetailsViewModel @Inject constructor(
                             is NetworkResult.Success -> applyMetaWithEnrichment(result.data)
                             is NetworkResult.Error -> {
                                 if (!tryApplyTmdbFallbackMeta()) {
-                                    _uiState.update { it.copy(isLoading = false, error = result.message) }
+                                    val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
+                                    _uiState.update { it.copy(isLoading = false, error = errorMsg) }
                                 }
                             }
                             NetworkResult.Loading -> {
@@ -739,6 +764,11 @@ class MetaDetailsViewModel @Inject constructor(
         }
             ?.takeIf { it.isNotBlank() }
             ?: raw
+    }
+
+    private fun buildMetaLoadErrorMessage(originalMessage: String?, lookupId: String): String {
+        val base = originalMessage ?: "Failed to load metadata"
+        return "$base\n\nID: $lookupId"
     }
 
     private fun applyMeta(meta: Meta) {
@@ -1270,7 +1300,7 @@ class MetaDetailsViewModel @Inject constructor(
             ?: return meta
 
         val isSeries = meta.apiType in listOf("series", "tv")
-        val needsEpisodes = settings.useEpisodes && isSeries
+        val needsEpisodes = (settings.useEpisodes || settings.useReleaseDates) && isSeries
 
         // Fetch main enrichment and episode enrichment in parallel.
         val (enrichment, episodeMap) = coroutineScope {
@@ -1382,11 +1412,15 @@ class MetaDetailsViewModel @Inject constructor(
                     val key = if (video.season != null && video.episode != null) video.season to video.episode else null
                     val ep = key?.let { episodeMap[it] }
                     video.copy(
-                        title = ep?.title ?: video.title,
-                        overview = ep?.overview ?: video.overview,
-                        released = if (settings.useReleaseDates) ep?.airDate ?: video.released else video.released,
-                        thumbnail = ep?.thumbnail ?: video.thumbnail,
-                        runtime = ep?.runtimeMinutes
+                        title = if (settings.useEpisodes) ep?.title ?: video.title else video.title,
+                        overview = if (settings.useEpisodes) ep?.overview ?: video.overview else video.overview,
+                        released = selectEpisodeReleaseValue(
+                            addonReleased = video.released,
+                            tmdbAirDate = ep?.airDate,
+                            useTmdbReleaseDates = settings.useReleaseDates
+                        ),
+                        thumbnail = if (settings.useEpisodes) ep?.thumbnail ?: video.thumbnail else video.thumbnail,
+                        runtime = if (settings.useEpisodes) ep?.runtimeMinutes ?: video.runtime else video.runtime
                     )
                 }
             )
@@ -1881,13 +1915,33 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun toggleLibrary() {
+        if (
+            _uiState.value.defaultLibraryTogglePending ||
+            _uiState.value.removalConfirmations.isNotEmpty()
+        ) {
+            return
+        }
         val meta = _uiState.value.meta ?: return
         viewModelScope.launch {
             val input = meta.toLibraryEntryInput()
             val wasInWatchlist = _uiState.value.isInWatchlist
             val wasInLibrary = _uiState.value.isInLibrary
+            _uiState.update { it.copy(defaultLibraryTogglePending = true) }
             runCatching {
                 libraryRepository.toggleDefault(input)
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    pendingDefaultLibraryToggle = input
+                    _uiState.update {
+                        it.copy(
+                            defaultLibraryTogglePending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                    return@onSuccess
+                }
+                pendingDefaultLibraryToggle = null
+                _uiState.update { it.copy(defaultLibraryTogglePending = false) }
                 val message = if (wasInLibrary || wasInWatchlist) {
                     localizedContext.getString(R.string.detail_removed_from_library)
                 } else {
@@ -1895,6 +1949,8 @@ class MetaDetailsViewModel @Inject constructor(
                 }
                 showMessage(message)
             }.onFailure { error ->
+                pendingDefaultLibraryToggle = null
+                _uiState.update { it.copy(defaultLibraryTogglePending = false) }
                 showMessage(
                     message = error.message ?: context.getString(com.nuvio.tv.R.string.detail_error_update_library_failed),
                     isError = true
@@ -1931,12 +1987,15 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun togglePickerMembership(listKey: String) {
-        val current = _uiState.value.pickerMembership[listKey] == true
-        _uiState.update {
-            it.copy(
-                pickerMembership = it.pickerMembership.toMutableMap().apply {
-                    this[listKey] = !current
-                },
+        _uiState.update { current ->
+            val updatedMembership = toggleTrackingMembershipSelection(
+                tabs = current.libraryListTabs,
+                membership = current.pickerMembership,
+                listKey = listKey,
+                contentType = current.meta?.apiType
+            ) ?: return@update current
+            current.copy(
+                pickerMembership = updatedMembership,
                 pickerError = null
             )
         }
@@ -1955,15 +2014,18 @@ class MetaDetailsViewModel @Inject constructor(
                         desiredMembership = _uiState.value.pickerMembership
                     )
                 )
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        pickerPending = false,
-                        showListPicker = false,
-                        pickerError = null
-                    )
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    pendingDefaultLibraryToggle = null
+                    _uiState.update {
+                        it.copy(
+                            pickerPending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                } else {
+                    completePickerSave()
                 }
-                showMessage(localizedContext.getString(R.string.detail_lists_updated))
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
@@ -1977,13 +2039,131 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun dismissListPicker() {
+        pendingDefaultLibraryToggle = null
         _uiState.update {
             it.copy(
                 showListPicker = false,
                 pickerPending = false,
-                pickerError = null
+                pickerError = null,
+                defaultLibraryTogglePending = false,
+                removalConfirmations = emptyList()
             )
         }
+    }
+
+    private fun confirmPickerRemoval() {
+        if (_uiState.value.pickerPending || _uiState.value.defaultLibraryTogglePending) return
+        val meta = _uiState.value.meta ?: return
+        val confirmations = _uiState.value.removalConfirmations
+        if (confirmations.isEmpty()) return
+        val defaultToggle = pendingDefaultLibraryToggle
+        if (defaultToggle != null) {
+            confirmDefaultLibraryRemoval(defaultToggle, confirmations)
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(pickerPending = true) }
+            runCatching {
+                libraryRepository.applyMembershipChanges(
+                    item = meta.toLibraryEntryInput(),
+                    changes = ListMembershipChanges(_uiState.value.pickerMembership),
+                    confirmedRemovalProviders = confirmations.mapTo(linkedSetOf(), TrackingMembershipRemovalConfirmation::providerId)
+                )
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    _uiState.update {
+                        it.copy(
+                            pickerPending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                } else {
+                    completePickerSave()
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        pickerPending = false,
+                        removalConfirmations = emptyList(),
+                        pickerError = error.message
+                            ?: context.getString(com.nuvio.tv.R.string.detail_error_update_lists_failed)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun confirmDefaultLibraryRemoval(
+        input: LibraryEntryInput,
+        confirmations: List<TrackingMembershipRemovalConfirmation>
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(defaultLibraryTogglePending = true) }
+            runCatching {
+                libraryRepository.toggleDefault(
+                    item = input,
+                    confirmedRemovalProviders = confirmations.mapTo(
+                        linkedSetOf(),
+                        TrackingMembershipRemovalConfirmation::providerId
+                    )
+                )
+            }.onSuccess { result ->
+                if (result.requiresRemovalConfirmation) {
+                    _uiState.update {
+                        it.copy(
+                            defaultLibraryTogglePending = false,
+                            removalConfirmations = result.requiredRemovalConfirmations
+                        )
+                    }
+                } else {
+                    pendingDefaultLibraryToggle = null
+                    _uiState.update {
+                        it.copy(
+                            defaultLibraryTogglePending = false,
+                            removalConfirmations = emptyList()
+                        )
+                    }
+                    showMessage(localizedContext.getString(R.string.detail_removed_from_library))
+                }
+            }.onFailure { error ->
+                pendingDefaultLibraryToggle = null
+                _uiState.update {
+                    it.copy(
+                        defaultLibraryTogglePending = false,
+                        removalConfirmations = emptyList()
+                    )
+                }
+                showMessage(
+                    message = error.message
+                        ?: context.getString(com.nuvio.tv.R.string.detail_error_update_library_failed),
+                    isError = true
+                )
+            }
+        }
+    }
+
+    private fun cancelPickerRemoval() {
+        pendingDefaultLibraryToggle = null
+        _uiState.update {
+            it.copy(
+                defaultLibraryTogglePending = false,
+                removalConfirmations = emptyList()
+            )
+        }
+    }
+
+    private fun completePickerSave() {
+        pendingDefaultLibraryToggle = null
+        _uiState.update {
+            it.copy(
+                pickerPending = false,
+                showListPicker = false,
+                pickerError = null,
+                defaultLibraryTogglePending = false,
+                removalConfirmations = emptyList()
+            )
+        }
+        showMessage(localizedContext.getString(R.string.detail_lists_updated))
     }
 
     private fun toggleMovieWatched() {
@@ -2027,9 +2207,13 @@ class MetaDetailsViewModel @Inject constructor(
                 || _uiState.value.watchedEpisodes.contains(season to episode)
             runCatching {
                 if (isWatched) {
+                    _optimisticMarks -= season to episode
+                    _optimisticUnmarks += season to episode
                     watchProgressRepository.removeFromHistory(_effectiveContentId.value, videoId = video.id, season = season, episode = episode)
                     showMessage(localizedContext.getString(R.string.detail_episode_marked_unwatched))
                 } else {
+                    _optimisticUnmarks -= season to episode
+                    _optimisticMarks += season to episode
                     watchProgressRepository.markAsCompleted(buildCompletedEpisodeProgress(meta, video))
                     showMessage(localizedContext.getString(R.string.detail_episode_marked_watched))
                 }
@@ -2086,6 +2270,10 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
+            val optimisticKeys = unwatched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticUnmarks -= optimisticKeys
+            _optimisticMarks += optimisticKeys
+
             val pendingKeys = unwatched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys + pendingKeys)
@@ -2101,6 +2289,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_episodes_watched, unwatched.size))
         }
     }
@@ -2125,17 +2314,21 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
+            val optimisticKeys = watched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticMarks -= optimisticKeys
+            _optimisticUnmarks += optimisticKeys
+
             val pendingKeys = watched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys + pendingKeys)
             }
 
             runCatching {
-                val episodePairs = watched.map { it.season!! to it.episode!! }
+                val episodeTriples = watched.map { Triple(it.season!!, it.episode!!, it.id) }
                 watchProgressRepository.removeFromHistoryBatch(
                     contentId = _effectiveContentId.value,
                     videoId = resolveFallbackVideoId(),
-                    episodes = episodePairs
+                    episodes = episodeTriples
                 )
             }.onFailure { error ->
                 Log.w(TAG, "Failed to batch unmark season $season: ${error.message}")
@@ -2144,6 +2337,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_episodes_unwatched, watched.size))
         }
     }
@@ -2175,6 +2369,10 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
+            val optimisticKeys = unwatched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticUnmarks -= optimisticKeys
+            _optimisticMarks += optimisticKeys
+
             val pendingKeys = unwatched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys + pendingKeys)
@@ -2190,6 +2388,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_previous_watched, unwatched.size))
         }
     }
@@ -2215,6 +2414,10 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
+            val optimisticKeys = unwatched.map { it.season!! to it.episode!! }.toSet()
+            _optimisticUnmarks -= optimisticKeys
+            _optimisticMarks += optimisticKeys
+
             val pendingKeys = unwatched.map { episodePendingKey(it) }.toSet()
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys + pendingKeys)
@@ -2230,6 +2433,7 @@ class MetaDetailsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(episodeWatchedPendingKeys = it.episodeWatchedPendingKeys - pendingKeys)
             }
+            reevaluateSeriesWatchedBadge()
             showMessage(localizedContext.getString(R.string.detail_marked_episodes_watched, unwatched.size))
         }
     }

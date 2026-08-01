@@ -18,7 +18,6 @@ import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.data.local.MDBListSettingsDataStore
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
-import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
 import com.nuvio.tv.data.trailer.TrailerService
 import com.nuvio.tv.domain.model.Addon
@@ -27,6 +26,7 @@ import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.Collection
 import com.nuvio.tv.domain.model.ContinueWatchingSortMode
 import com.nuvio.tv.domain.model.LibraryEntryInput
+import com.nuvio.tv.domain.model.ListMembershipChanges
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.data.repository.MDBListRepository
@@ -77,7 +77,6 @@ class HomeViewModel @Inject constructor(
     internal val tmdbMetadataService: TmdbMetadataService,
     internal val mdbListRepository: MDBListRepository,
     internal val trailerService: TrailerService,
-    internal val watchedItemsPreferences: WatchedItemsPreferences,
     internal val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     internal val cwEnrichmentCache: ContinueWatchingEnrichmentCache,
     internal val profileManager: com.nuvio.tv.core.profile.ProfileManager,
@@ -206,6 +205,9 @@ class HomeViewModel @Inject constructor(
     /** Snapshot of watchedShowEpisodes keys from the last badge evaluation cycle. */
     @Volatile
     internal var cwLastBadgeEpisodeKeys: Set<String> = emptySet()
+    /** Cached show ID siblings from the last badge evaluation cycle (for anime ID expansion). */
+    @Volatile
+    internal var cwLastShowIdSiblings: Map<String, Set<String>> = emptyMap()
     internal val cwTmdbIdCache = Collections.synchronizedMap(mutableMapOf<String, String?>())
     internal val cwNextUpResolutionCache = Collections.synchronizedMap(mutableMapOf<String, NextUpResolution?>())
     internal val cwNextUpNegativeCacheTimestamps = ConcurrentHashMap<String, Long>()
@@ -231,6 +233,7 @@ class HomeViewModel @Inject constructor(
     internal var seriesWatchedObserverJob: Job? = null
     internal var libraryTabsObserverJob: Job? = null
     internal var activePosterListPickerInput: LibraryEntryInput? = null
+    internal var pendingPosterListPickerChanges: ListMembershipChanges? = null
     @Volatile
     internal var externalMetaPrefetchEnabled: Boolean = false
     @Volatile
@@ -301,7 +304,7 @@ class HomeViewModel @Inject constructor(
 
             viewModelScope.launch {
                 combine(
-                    _uiState.map { it.continueWatchingItems }.distinctUntilChanged(),
+                    _uiState.map { it.continueWatchingItems + it.upcomingItems }.distinctUntilChanged(),
                     TvRecommendationManager.isPlaybackActive
                 ) { items, isPlaying ->
                     Pair(items, isPlaying)
@@ -334,8 +337,9 @@ class HomeViewModel @Inject constructor(
                     cwEnrichedNextUpOverlay.clear()
                     cwEnrichedInProgressOverlay.clear()
                     cwLastBadgeEpisodeKeys = emptySet()
+                    cwLastShowIdSiblings = emptyMap()
                     _uiState.update {
-                        it.copy(layoutPreferencesReady = false)
+                        it.copy(layoutPreferencesReady = false, continueWatchingItems = emptyList())
                     }
                     clearFocusState()
                     _gridFocusState.value = HomeScreenFocusState()
@@ -343,7 +347,8 @@ class HomeViewModel @Inject constructor(
                     _initialCwResolved.value = false
                     loadContinueWatching()
                     // Clear watched badges so they don't leak between profiles.
-                    watchedSeriesStateHolder.update(emptySet())
+                    watchedSeriesStateHolder.clearInMemory()
+                    watchedSeriesStateHolder.loadFromDisk(profileId = newId)
                     _movieWatchedStatus.value = emptyMap()
                     _pendingWatchedBatch.value = emptyMap()
                     _uiState.update { it.copy(movieWatchedStatus = emptyMap()) }
@@ -385,8 +390,9 @@ class HomeViewModel @Inject constructor(
         cwEnrichedNextUpOverlay.clear()
         cwEnrichedInProgressOverlay.clear()
         cwLastBadgeEpisodeKeys = emptySet()
+        cwLastShowIdSiblings = emptyMap()
         watchedSeriesStateHolder.clearValidationState()
-        _uiState.update { it.copy(continueWatchingItems = emptyList()) }
+        _uiState.update { it.copy(continueWatchingItems = emptyList(), upcomingItems = emptyList()) }
         // Bump trigger so the pipeline's collectLatest restarts with fresh state.
         cwPipelineRefreshTrigger.value++
     }
@@ -636,13 +642,15 @@ class HomeViewModel @Inject constructor(
                     )
                 )
             }
+            val sortMode = layoutPreferenceDataStore.continueWatchingSortMode.first()
             val items = mergeContinueWatchingItems(
                 inProgressItems = inProgressItems,
                 nextUpItems = nextUpItems,
-                mode = layoutPreferenceDataStore.continueWatchingSortMode.first()
+                mode = sortMode
             )
             if (items.isNotEmpty()) {
-                _uiState.update { it.copy(continueWatchingItems = items) }
+                val (mainItems, upcomingOnly) = splitUpcomingItems(items, sortMode)
+                _uiState.update { it.copy(continueWatchingItems = mainItems, upcomingItems = upcomingOnly) }
                 _initialCwResolved.value = true
             }
         }
