@@ -337,7 +337,12 @@ fun HeroContentSection(
                                     if (descriptionTruncated) {
                                         Modifier
                                             .offset(x = -highlightInset)
-                                            .onFocusChanged { descriptionFocused = it.isFocused }
+                                            .onFocusChanged {
+                                                descriptionFocused = it.isFocused
+                                                if (it.isFocused) {
+                                                    onHeroActionFocused()
+                                                }
+                                            }
                                             .background(
                                                 color = if (descriptionFocused) {
                                                     Color.White.copy(alpha = 0.10f)
@@ -345,6 +350,15 @@ fun HeroContentSection(
                                                     Color.Transparent
                                                 },
                                                 shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .then(
+                                                if (playButtonFocusRequester != null) {
+                                                    Modifier.focusProperties {
+                                                        up = playButtonFocusRequester
+                                                    }
+                                                } else {
+                                                    Modifier
+                                                }
                                             )
                                             .clickable(
                                                 interactionSource = descriptionInteraction,
