@@ -2176,6 +2176,10 @@ private fun FfmpegAudioRenderer.applyDownmixSettings(
     }
 }
 
+// The Unicode replacement character ("�") that shows up when a subtitle byte sequence fails to
+// decode with the detected/assumed charset.
+private const val REPLACEMENT_CHARACTER = '\uFFFD'
+
 private class CueNormalizingTextOutput(
     private val delegate: TextOutput,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
@@ -2194,7 +2198,8 @@ private class CueNormalizingTextOutput(
     }
 
     private fun processCue(cue: Cue): Cue {
-        var processed = fixRtlCueText(cue)
+        var processed = stripReplacementCharacter(cue)
+        processed = fixRtlCueText(processed)
         if (shouldNormalizeCuePositionProvider()) {
             processed = normalizeCuePosition(processed)
         }
@@ -2236,6 +2241,22 @@ private class CueNormalizingTextOutput(
             .setLine(Cue.DIMEN_UNSET, Cue.TYPE_UNSET)
             .setLineAnchor(Cue.TYPE_UNSET)
             .build()
+    }
+
+    // Malformed/mis-encoded subtitle files sometimes decode a character as U+FFFD (the "�"
+    // replacement character). Strip it from cues shown to the viewer during playback. This does
+    // NOT affect PlayerSubtitleCueParser / the Sync Line preview list in SubtitleTimingDialog,
+    // which read the raw subtitle text independently for the manual-sync picker.
+    private fun stripReplacementCharacter(cue: Cue): Cue {
+        val text = cue.text ?: return cue
+        if (!text.contains(REPLACEMENT_CHARACTER)) return cue
+        val builder = android.text.SpannableStringBuilder(text)
+        for (i in builder.length - 1 downTo 0) {
+            if (builder[i] == REPLACEMENT_CHARACTER) {
+                builder.delete(i, i + 1)
+            }
+        }
+        return cue.buildUpon().setText(builder).build()
     }
 
     private fun fixRtlCueText(cue: Cue): Cue {
