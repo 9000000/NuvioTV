@@ -905,7 +905,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
         lifecycleScope.launch {
-            authManager.validateCurrentSessionIfAuthenticated()
             deviceSessionRegistration.requestForegroundRegistration()
             startupSyncService.requestForegroundSync()
         }
