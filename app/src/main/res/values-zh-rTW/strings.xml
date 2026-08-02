@@ -548,11 +548,11 @@
     <string name="supporters_contributors_donate_copy">Nuvio 將保持免費和開源。如果您想支持專案，可以幫助支付其背後的時間和基礎設施費用。</string>
     <string name="supporters_contributors_donation_progress_title">本月的伺服器與維護</string>
     <string name="supporters_contributors_donation_progress_complete">已覆蓋。額外的支持現在用於開發。</string>
-    <string name="supporters_contributors_donation_progress_remaining">達到 100%% 後，額外的支持將用於開發。</string>
+    <string name="supporters_contributors_donation_progress_remaining">達到 100% 後，額外的支持將用於開發。</string>
     <string name="supporters_contributors_loading_donation_progress">正在載入資金進度...</string>
     <string name="supporters_contributors_donate_button">贊助 Nuvio</string>
     <string name="supporters_contributors_qr_title">掃描以贊助</string>
-    <string name="supporters_contributors_qr_subtitle">在手機上開啟連結，透過 Ko-fi 支持 Nuvio。</string>
+    <string name="supporters_contributors_qr_subtitle">在手機上開啟連結以支持 Nuvio。</string>
     <string name="supporters_contributors_qr_hint">將相機對準 QR 碼或使用下方的按鈕。</string>
     <string name="supporters_contributors_back_button">返回詳情</string>
     <string name="supporters_tab">贊助者</string>

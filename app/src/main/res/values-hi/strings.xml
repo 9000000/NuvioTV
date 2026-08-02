@@ -222,7 +222,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio हमेशा मुफ्त और ओपन सोर्स रहेगा। यदि आप प्रोजेक्ट का समर्थन करना चाहते हैं, तो आप इसके विकास और इंफ्रास्ट्रक्चर में मदद कर सकते हैं।</string>
     <string name="supporters_contributors_donate_button">Nuvio को डोनेट करें</string>
     <string name="supporters_contributors_qr_title">डोनेट करने के लिए स्कैन करें</string>
-    <string name="supporters_contributors_qr_subtitle">अपने फोन पर लिंक खोलें और Ko-fi के माध्यम से Nuvio को सपोर्ट करें।</string>
+    <string name="supporters_contributors_qr_subtitle">Nuvio को सपोर्ट करने के लिए अपने फोन पर लिंक खोलें।</string>
     <string name="supporters_contributors_qr_hint">QR कोड स्कैन करने के लिए कैमरा इस्तेमाल करें या नीचे दिए बटन का उपयोग करें।</string>
     <string name="supporters_contributors_back_button">डिटेल्स पर वापस जाएँ</string>
     <string name="supporters_tab">समर्थक</string>

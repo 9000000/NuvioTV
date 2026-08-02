@@ -225,7 +225,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio förblir gratis och öppen källkod. Om du vill stödja projektet kan du hjälpa till att täcka tiden och infrastrukturen bakom det.</string>
     <string name="supporters_contributors_donate_button">Donera till Nuvio</string>
     <string name="supporters_contributors_qr_title">Skanna för att donera</string>
-    <string name="supporters_contributors_qr_subtitle">Öppna länken på din telefon och stöd Nuvio via Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Öppna länken på din telefon för att stödja Nuvio.</string>
     <string name="supporters_contributors_qr_hint">Rikta kameran mot QR-koden eller använd knappen nedan.</string>
     <string name="supporters_contributors_back_button">Tillbaka till detaljer</string>
     <string name="supporters_tab">Supportrar</string>

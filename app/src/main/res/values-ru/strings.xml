@@ -327,7 +327,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio всегда будет бесплатным и открытым. Если вы хотите поддержать проект, вы можете помочь покрыть затраты на время и инфраструктуру.</string>
     <string name="supporters_contributors_donate_button">Пожертвовать Nuvio</string>
     <string name="supporters_contributors_qr_title">Отсканируйте для пожертвования</string>
-    <string name="supporters_contributors_qr_subtitle">Откройте ссылку на телефоне и поддержите Nuvio через Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Откройте ссылку на телефоне, чтобы поддержать Nuvio.</string>
     <string name="supporters_contributors_qr_hint">Наведите камеру на QR-код или используйте кнопку ниже.</string>
     <string name="supporters_contributors_back_button">Назад к деталям</string>
     <string name="supporters_tab">Спонсоры</string>
