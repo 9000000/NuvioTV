@@ -21,6 +21,9 @@ internal class PlaybackSpeedAwareAudioSink(
     forcePcmForBluetooth: Boolean = false
 ) : ForwardingAudioSink(sink) {
 
+    // Set when the sink is built with forcePcm (error recovery). Don't clear on speed reset.
+    private val startedWithForcedPcm: Boolean = initialForcePcm
+
     @Volatile
     private var playbackSpeed: Float = 1f
 
@@ -68,7 +71,13 @@ internal class PlaybackSpeedAwareAudioSink(
 
     override fun setPlaybackParameters(playbackParameters: PlaybackParameters) {
         playbackSpeed = normalizeSpeed(playbackParameters.speed)
-        val shouldNotify = markPcmFallbackIfNeeded(currentInputFormat, playbackSpeed)
+        var shouldNotify = markPcmFallbackIfNeeded(currentInputFormat, playbackSpeed)
+        // Going above 1x latches forcePcm for the session. Clear it when back at 1.0x
+        // so passthrough can recover (unless recovery built us with forcePcm).
+        if (playbackSpeed == 1f && forcePcmForCurrentSession && !startedWithForcedPcm) {
+            forcePcmForCurrentSession = false
+            shouldNotify = true
+        }
         super.setPlaybackParameters(playbackParameters)
         if (shouldNotify) {
             listener?.onAudioCapabilitiesChanged()
