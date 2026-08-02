@@ -518,7 +518,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio akan tetap gratis dan open source. Jika Anda ingin mendukung proyek ini, Anda bisa membantu menutup waktu dan infrastruktur di baliknya.</string>
     <string name="supporters_contributors_donate_button">Donasi ke Nuvio</string>
     <string name="supporters_contributors_qr_title">Pindai untuk donasi</string>
-    <string name="supporters_contributors_qr_subtitle">Buka tautannya di ponsel Anda dan dukung Nuvio melalui Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Buka tautannya di ponsel Anda untuk mendukung Nuvio.</string>
     <string name="supporters_contributors_qr_hint">Arahkan kamera ke kode QR atau gunakan tombol di bawah.</string>
     <string name="supporters_contributors_back_button">Kembali ke detail</string>
     <string name="supporters_tab">Donatur</string>

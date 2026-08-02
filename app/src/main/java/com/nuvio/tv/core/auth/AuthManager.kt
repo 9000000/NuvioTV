@@ -22,6 +22,7 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.ServerResponseException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -83,6 +84,7 @@ class AuthManager @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
     private val refreshMutex = Mutex()
+    private val sessionValidator = AuthSessionValidator(auth)
     private val startupAuthLock = Any()
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
@@ -121,15 +123,18 @@ class AuthManager @Inject constructor(
                                 cachedEffectiveUserSourceUserId = null
                             }
                             if (user.email.isNullOrBlank()) {
-                                handleUnexpectedSignedOut()
+                                clearInvalidRemoteSession()
                                 finishStartupAuthDiagnostics("signed_out", "authenticated_session_missing_email")
+                            } else if (!validateAuthenticatedSession(force = false)) {
+                                finishStartupAuthDiagnostics("signed_out", "authenticated_session_invalid")
                             } else {
                                 _authState.value = AuthState.FullAccount(userId = user.id, email = user.email!!)
                                 authSessionNoticeDataStore.markNuvioAuthenticated()
-                                finishStartupAuthDiagnostics("success", "authenticated_session_restored")
+                                finishStartupAuthDiagnostics("success", "authenticated_session_validated")
                             }
                         } else {
-                            finishStartupAuthDiagnostics("failed", "authenticated_status_without_user")
+                            clearInvalidRemoteSession()
+                            finishStartupAuthDiagnostics("signed_out", "authenticated_status_without_user")
                         }
                     }
                     is SessionStatus.NotAuthenticated -> {
@@ -156,7 +161,7 @@ class AuthManager @Inject constructor(
                                         finishStartupAuthDiagnostics("success", "startup_refresh_token_completed")
                                     }
                                     SessionRefreshResult.INVALID_SESSION -> {
-                                        handleUnexpectedSignedOut()
+                                        clearInvalidRemoteSession(outcome.error)
                                         finishStartupAuthDiagnostics("signed_out", "startup_refresh_token_invalid", AUTH_ENDPOINT_REFRESH, outcome.error?.authHttpStatus(), outcome.error)
                                     }
                                     SessionRefreshResult.TRANSIENT_FAILURE -> {
@@ -351,6 +356,7 @@ class AuthManager @Inject constructor(
     }
 
     suspend fun signOut(explicit: Boolean = true) {
+        sessionValidator.reset()
         if (explicit) {
             authSessionNoticeDataStore.markNuvioExplicitLogout()
         } else {
@@ -373,6 +379,7 @@ class AuthManager @Inject constructor(
     }
 
     private suspend fun handleUnexpectedSignedOut() {
+        sessionValidator.reset()
         cachedEffectiveUserId = null
         cachedEffectiveUserSourceUserId = null
         _authState.value = AuthState.SignedOut
@@ -382,16 +389,67 @@ class AuthManager @Inject constructor(
     }
 
     suspend fun refreshSessionIfJwtExpired(error: Throwable): Boolean {
-        if (!error.isJwtExpiredError()) return false
+        if (!error.isJwtExpiredAuthError()) return false
         val refreshToken = auth.currentSessionOrNull()?.refreshToken?.takeIf { it.isNotBlank() }
             ?: run {
                 Log.w(TAG, "JWT expired but no refresh token available; cannot refresh session")
+                clearInvalidRemoteSession(error)
                 return false
             }
-        return refreshCurrentSessionSerialized(
+        val outcome = refreshCurrentSessionSerialized(
             observedRefreshToken = refreshToken,
             reason = "JWT expired"
-        ).result == SessionRefreshResult.REFRESHED
+        )
+        if (outcome.result == SessionRefreshResult.INVALID_SESSION) {
+            clearInvalidRemoteSession(outcome.error)
+        }
+        return outcome.result == SessionRefreshResult.REFRESHED
+    }
+
+    private suspend fun validateAuthenticatedSession(force: Boolean): Boolean =
+        sessionValidator.validate(force).let { outcome ->
+            when (outcome.result) {
+                AuthSessionValidationResult.VALID -> true
+                AuthSessionValidationResult.EXPIRED_ACCESS_TOKEN -> {
+                    val error = outcome.error
+                    if (error == null) {
+                        clearInvalidRemoteSession()
+                        false
+                    } else {
+                        val refreshed = refreshSessionIfJwtExpired(error)
+                        if (refreshed) {
+                            sessionValidator.markCurrentSessionValidated()
+                            true
+                        } else {
+                            _authState.value !is AuthState.SignedOut
+                        }
+                    }
+                }
+                AuthSessionValidationResult.INVALID_SESSION -> {
+                    outcome.error?.let { error ->
+                        Log.w(TAG, "Supabase session is no longer active; clearing local authentication", error)
+                    }
+                    clearInvalidRemoteSession(outcome.error)
+                    false
+                }
+                AuthSessionValidationResult.TRANSIENT_FAILURE -> {
+                    Log.w(TAG, "Unable to validate Supabase session; keeping cached authentication", outcome.error)
+                    true
+                }
+            }
+        }
+
+    private suspend fun clearInvalidRemoteSession(error: Throwable? = null) {
+        sessionValidator.reset()
+        try {
+            auth.clearSession()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (clearError: Throwable) {
+            if (error != null) clearError.addSuppressed(error)
+            Log.w(TAG, "Failed to clear invalid Supabase session", clearError)
+        }
+        handleUnexpectedSignedOut()
     }
 
     private suspend fun refreshCurrentSessionSerialized(
@@ -748,15 +806,6 @@ private fun AuthState.nameForLog(): String =
         AuthState.Loading -> "Loading"
         AuthState.SignedOut -> "SignedOut"
     }
-
-private fun Throwable.isJwtExpiredError(): Boolean {
-    var current: Throwable? = this
-    while (current != null) {
-        if (current.message?.contains("jwt expired", ignoreCase = true) == true) return true
-        current = current.cause
-    }
-    return false
-}
 
 private fun Throwable.toSessionRefreshResult(): SessionRefreshResult {
     findCause<AuthHttpException>()?.let { error ->

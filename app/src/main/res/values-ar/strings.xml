@@ -517,7 +517,7 @@
     <string name="supporters_contributors_donate_copy">سيبقى Nuvio مجانياً ومفتوح المصدر. إذا كنت ترغب في دعم المشروع، يمكنك المساعدة في تغطية تكاليف الوقت والبنية التحتية.</string>
     <string name="supporters_contributors_donate_button">التبرع لـ Nuvio</string>
     <string name="supporters_contributors_qr_title">امسح للتبرع</string>
-    <string name="supporters_contributors_qr_subtitle">افتح الرابط على هاتفك وادعم Nuvio عبر Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">افتح الرابط على هاتفك لدعم Nuvio.</string>
     <string name="supporters_contributors_qr_hint">وجه كاميرتك نحو رمز QR أو استخدم الزر أدناه.</string>
     <string name="supporters_contributors_back_button">العودة للتفاصيل</string>
     <string name="supporters_tab">الداعمون</string>

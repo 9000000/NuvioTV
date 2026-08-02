@@ -118,13 +118,15 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
-import com.nuvio.tv.core.build.AppFeaturePolicy
+import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSettingsSyncService
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
+import com.nuvio.tv.core.tracking.TrackingProgressRefreshCoordinator
+import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.AppOnboardingDataStore
 import com.nuvio.tv.data.local.AuthSessionNoticeDataStore
 import com.nuvio.tv.data.local.ExperienceModeDataStore
@@ -132,7 +134,6 @@ import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.data.local.ThemeDataStore
 import com.nuvio.tv.data.remote.supabase.AvatarRepository
-import com.nuvio.tv.data.repository.TraktProgressService
 import com.nuvio.tv.domain.model.AppFont
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.domain.model.AuthState
@@ -160,7 +161,7 @@ import com.nuvio.tv.ui.util.LocalFastHorizontalNavigationEnabled
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.rememberDrawerItemFocusRequesters
 import com.nuvio.tv.updater.UpdateViewModel
-import com.nuvio.tv.updater.ui.UpdatePromptDialog
+import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
@@ -220,7 +221,7 @@ class MainActivity : ComponentActivity() {
     lateinit var addonRepository: AddonRepository
 
     @Inject
-    lateinit var traktProgressService: TraktProgressService
+    lateinit var trackingProgressRefreshCoordinator: TrackingProgressRefreshCoordinator
 
     @Inject
     lateinit var startupSyncService: StartupSyncService
@@ -239,6 +240,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authManager: AuthManager
+
+    @Inject
+    lateinit var deviceSessionRegistration: DeviceSessionRegistration
 
     @Inject
     lateinit var authSessionNoticeDataStore: AuthSessionNoticeDataStore
@@ -806,80 +810,78 @@ class MainActivity : ComponentActivity() {
                     }?.route
                     val selectedDrawerItem = drawerItems.firstOrNull { it.route == selectedDrawerRoute } ?: drawerItems.first()
 
-                    if (modernSidebarEnabled) {
-                        ModernSidebarScaffold(
-                            navController = navController,
-                            startDestination = startDestination,
-                            currentRoute = currentRoute,
-                            rootRoutes = rootRoutes,
-                            drawerItems = drawerItems,
-                            selectedDrawerRoute = selectedDrawerRoute,
-                            selectedDrawerItem = selectedDrawerItem,
-                            sidebarCollapsed = sidebarCollapsed,
-                            modernSidebarBlurEnabled = modernSidebarBlurEnabled,
-                            hideBuiltInHeaders = hideBuiltInHeadersForFloatingPill,
-                            activeProfileName = activeProfile?.name ?: "",
-                            activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
-                            activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                            showProfileSelector = profiles.size > 1,
-                            onSwitchProfile = { hasSelectedProfileThisSession = false },
-                            onNavigate = { optimisticRoute = it },
-                            onExitApp = {
-                                finishAffinity()
-                                finishAndRemoveTask()
-                            }
-                        )
-                    } else {
-                        LegacySidebarScaffold(
-                            navController = navController,
-                            startDestination = startDestination,
-                            currentRoute = currentRoute,
-                            rootRoutes = rootRoutes,
-                            drawerItems = drawerItems,
-                            selectedDrawerRoute = selectedDrawerRoute,
-                            sidebarCollapsed = sidebarCollapsed,
-                            hideBuiltInHeaders = false,
-                            activeProfileName = activeProfile?.name ?: "",
-                            activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
-                            activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                            showProfileSelector = profiles.size > 1,
-                            onSwitchProfile = { hasSelectedProfileThisSession = false },
-                            onNavigate = { optimisticRoute = it },
-                            onExitApp = {
-                                finishAffinity()
-                                finishAndRemoveTask()
-                            }
-                        )
-                    }
+                    val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
+                    val updateState by updateViewModel.uiState.collectAsState()
 
-                    if (AppFeaturePolicy.inAppUpdatesEnabled && !BuildConfig.IS_DEBUG_BUILD) {
-                        val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
-                        val updateState by updateViewModel.uiState.collectAsState()
-                        UpdatePromptDialog(
-                            state = updateState,
-                            onDismiss = { updateViewModel.dismissDialog() },
-                            onDownload = { updateViewModel.downloadUpdate() },
-                            onInstall = { updateViewModel.installUpdateOrRequestPermission() },
-                            onIgnore = { updateViewModel.ignoreThisVersion() },
-                            onOpenUnknownSources = { updateViewModel.openUnknownSourcesSettings() }
-                        )
-                    }
+                    UpdateBannerHost(
+                        state = updateState,
+                        onDismissBanner = updateViewModel::dismissBanner,
+                        onDownload = updateViewModel::downloadUpdate,
+                        onInstall = updateViewModel::installUpdateOrRequestPermission,
+                        onDismissUnknownSources = updateViewModel::dismissUnknownSourcesDialog,
+                        onOpenUnknownSources = updateViewModel::openUnknownSourcesSettings,
+                        onFeedbackShown = updateViewModel::consumeFeedbackMessage
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (modernSidebarEnabled) {
+                                ModernSidebarScaffold(
+                                    navController = navController,
+                                    startDestination = startDestination,
+                                    currentRoute = currentRoute,
+                                    rootRoutes = rootRoutes,
+                                    drawerItems = drawerItems,
+                                    selectedDrawerRoute = selectedDrawerRoute,
+                                    selectedDrawerItem = selectedDrawerItem,
+                                    sidebarCollapsed = sidebarCollapsed,
+                                    modernSidebarBlurEnabled = modernSidebarBlurEnabled,
+                                    hideBuiltInHeaders = hideBuiltInHeadersForFloatingPill,
+                                    activeProfileName = activeProfile?.name ?: "",
+                                    activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
+                                    activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
+                                    showProfileSelector = profiles.size > 1,
+                                    onSwitchProfile = { hasSelectedProfileThisSession = false },
+                                    onNavigate = { optimisticRoute = it },
+                                    onExitApp = {
+                                        finishAffinity()
+                                        finishAndRemoveTask()
+                                    }
+                                )
+                            } else {
+                                LegacySidebarScaffold(
+                                    navController = navController,
+                                    startDestination = startDestination,
+                                    currentRoute = currentRoute,
+                                    rootRoutes = rootRoutes,
+                                    drawerItems = drawerItems,
+                                    selectedDrawerRoute = selectedDrawerRoute,
+                                    sidebarCollapsed = sidebarCollapsed,
+                                    hideBuiltInHeaders = false,
+                                    activeProfileName = activeProfile?.name ?: "",
+                                    activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
+                                    activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
+                                    showProfileSelector = profiles.size > 1,
+                                    onSwitchProfile = { hasSelectedProfileThisSession = false },
+                                    onNavigate = { optimisticRoute = it },
+                                    onExitApp = {
+                                        finishAffinity()
+                                        finishAndRemoveTask()
+                                    }
+                                )
+                            }
 
-                    // Loader shown while an external episode auto-advances. Drawn last (on top
-                    // of the NavHost) to hide the app cold-starting while the next source resolves.
-                    val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
-                    autoNextOverlay?.let { ov ->
-                        // Back is intercepted at the Activity level (dispatchKeyEvent) so it reliably
-                        // beats the destination screen's BackHandler.
-                        com.nuvio.tv.ui.screens.player.LoadingOverlay(
-                            visible = true,
-                            backdropUrl = ov.backdrop,
-                            logoUrl = ov.logo,
-                            title = ov.title,
-                            message = ov.message ?: stringResource(R.string.external_auto_next_loading),
-                            progress = ov.progress,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                            val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
+                            autoNextOverlay?.let { ov ->
+                                com.nuvio.tv.ui.screens.player.LoadingOverlay(
+                                    visible = true,
+                                    backdropUrl = ov.backdrop,
+                                    logoUrl = ov.logo,
+                                    title = ov.title,
+                                    message = ov.message ?: stringResource(R.string.external_auto_next_loading),
+                                    progress = ov.progress,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -899,14 +901,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
-        startupSyncService.requestForegroundSync()
         lifecycleScope.launch {
-            if (isFirstResumeAfterCreate) {
+            deviceSessionRegistration.requestForegroundRegistration()
+            startupSyncService.requestForegroundSync()
+        }
+        lifecycleScope.launch {
+            val refreshIntent = if (isFirstResumeAfterCreate) {
                 isFirstResumeAfterCreate = false
-                traktProgressService.invalidateAndRefresh()
+                TrackingRefreshIntent.INVALIDATED
             } else {
-                traktProgressService.refreshNow()
+                TrackingRefreshIntent.AUTOMATIC
             }
+            trackingProgressRefreshCoordinator.refreshConnected(refreshIntent)
         }
     }
 

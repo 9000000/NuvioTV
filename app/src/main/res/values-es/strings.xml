@@ -926,7 +926,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio seguirá siendo gratis y de código abierto. Si deseas respaldar el proyecto, puedes ayudar a cubrir el tiempo e infraestructura detrás.</string>
     <string name="supporters_contributors_donate_button">Donar a Nuvio</string>
     <string name="supporters_contributors_qr_title">Escanear para donar</string>
-    <string name="supporters_contributors_qr_subtitle">Abre el enlace en tu teléfono y respalda Nuvio a través de Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Abre el enlace en tu teléfono para apoyar a Nuvio.</string>
     <string name="supporters_contributors_qr_hint">Apunta tu cámara al código QR o usa el botón de abajo.</string>
     <string name="supporters_contributors_back_button">Volver a detalles</string>
     <string name="supporters_tab">Apoyadores</string>
