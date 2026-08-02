@@ -161,6 +161,7 @@ fun PlayerScreen(
     var subtitleTimingConsumeNextConfirmKeyUp by remember { mutableStateOf(false) }
     var reportCodeVisible by remember { mutableStateOf(false) }
     var exitDispatched by remember { mutableStateOf(false) }
+    var externalHandoffInProgress by remember { mutableStateOf(false) }
 
     val exitPlayer: () -> Unit = exitPlayer@{
         if (exitDispatched) return@exitPlayer
@@ -234,7 +235,8 @@ fun PlayerScreen(
         }
     }
 
-    val handleBackPress = {
+    val handleBackPress = handleBackPress@{
+        if (externalHandoffInProgress) return@handleBackPress
         if (shouldConfirmNextEpisodeOnEnd) {
             returnToDetailsFromEndPrompt()
         } else if (uiState.error != null) {
@@ -999,17 +1001,25 @@ fun PlayerScreen(
                     }
                 },
                 onOpenInExternalPlayer = {
-                    val url = viewModel.getCurrentStreamUrl()
-                    val title = uiState.title
-                    val headers = viewModel.getCurrentHeaders()
-                    val timeline = viewModel.playbackTimeline.value
-                    viewModel.stopAndRelease()
-                    // Launch via tracker - it handles progress saving independently
-                    viewModel.launchInExternalPlayer(context, timeline.currentPosition)
-                    // Exit PlayerScreen - tracker will save progress when external player returns
-                    val completed = timeline.duration > 0L &&
-                        (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD
-                    onBackPress(uiState.currentVideoId, uiState.currentSeason, uiState.currentEpisode, uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL, completed)
+                    if (!externalHandoffInProgress) {
+                        externalHandoffInProgress = true
+                        val timeline = viewModel.playbackTimeline.value
+                        val completed = timeline.duration > 0L &&
+                            (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD
+                        viewModel.launchInExternalPlayer(context, timeline.currentPosition) { launched ->
+                            externalHandoffInProgress = false
+                            if (launched && !exitDispatched) {
+                                exitDispatched = true
+                                currentOnBackPress(
+                                    uiState.currentVideoId,
+                                    uiState.currentSeason,
+                                    uiState.currentEpisode,
+                                    uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL,
+                                    completed
+                                )
+                            }
+                        }
+                    }
                 },
                 onShowStreamInfo = {
                     restoreStreamInfoFocus = true
