@@ -8,6 +8,7 @@ import com.nuvio.tv.core.network.safeApiCall
 import com.nuvio.tv.core.debrid.DebridStreamPresentation
 import com.nuvio.tv.core.debrid.LocalDebridAvailabilityService
 import com.nuvio.tv.core.plugin.PluginManager
+import com.nuvio.tv.core.plugin.resolvePluginSeasonEpisode
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.mapper.toDomain
 import com.nuvio.tv.data.remote.api.AddonApi
@@ -155,13 +156,20 @@ class StreamRepositoryImpl @Inject constructor(
                 if (pluginRequest != null) {
                     launch {
                         try {
-                            // Stream plugins individually
+                            // Anime absolute IDs (kitsu:/mal:/anilist:…:N) must pass the
+                            // absolute episode to plugins; SxE would match the wrong entry
+                            // on flat absolute episode lists (e.g. S2E10 → absolute ep 10).
+                            val (pluginSeason, pluginEpisode) = resolvePluginSeasonEpisode(
+                                videoId = videoId,
+                                season = season,
+                                episode = episode
+                            )
                             streamLocalPlugins(
                                 pluginId = pluginRequest.id,
                                 mediaType = pluginRequest.mediaType,
                                 pluginSource = pluginRequest.source,
-                                season = season,
-                                episode = episode,
+                                season = pluginSeason,
+                                episode = pluginEpisode,
                                 resultChannel = resultChannel
                             ) {
                                 if (completedJobs.incrementAndGet() >= totalJobs) {
