@@ -201,8 +201,11 @@ internal fun PlayerRuntimeController.initializePlayer(
             val playerSettings = playerSettingsDataStore.playerSettings.first()
             currentPlayerSettingsForReport = playerSettings
             rememberAudioDelayPerDeviceEnabled = playerSettings.rememberAudioDelayPerDevice
+            // Always watch output-device changes so Bluetooth connect/disconnect can switch
+            // between PCM-only and passthrough sink policies (Media3 1.8.0 BT semantics).
+            registerAudioDelayRouteCallback()
+            currentAudioOutputRoute = AudioOutputRouteDetector.detect(context)
             if (rememberAudioDelayPerDeviceEnabled) {
-                registerAudioDelayRouteCallback()
                 applyStoredAudioDelayForCurrentRouteIfEnabled()
             }
             cachedDecoderPriority = playerSettings.decoderPriority
@@ -764,11 +767,40 @@ internal fun PlayerRuntimeController.initializePlayer(
             )
             val vc1SoftwareFallbackActive = vc1SoftwarePreferredStreamUrls.contains(url)
             isVc1SoftwareFallbackActiveForCurrentPlayback = vc1SoftwareFallbackActive
-            val isForcePassthroughActive = playerSettings.forceOpticalPassthrough && playerSettings.decoderPriority != 0
-            val effectiveDecoderPriority = if (vc1SoftwareFallbackActive || hasTriedAudioPcmFallback || isForcePassthroughActive) {
+            // Bluetooth media sink (A2DP / LE Audio): Media3 only advertises PCM. Do not attempt
+            // optical/HDMI passthrough — decode to PCM and let the BT stack encode SBC/AAC/aptX/LDAC.
+            val isBluetoothAudioOutput = currentAudioOutputRoute?.isBluetooth == true ||
+                AudioOutputRouteDetector.isBluetoothMediaOutput(context)
+            // Force-optical must never win over Bluetooth: AC3/DTS AudioTrack to A2DP fails hard.
+            val isForcePassthroughActive = !isBluetoothAudioOutput &&
+                playerSettings.forceOpticalPassthrough &&
+                playerSettings.decoderPriority != 0
+            // Prefer FFmpeg/extension audio decoder on BT so multi-channel TrueHD/DTS always
+            // decode to stereo PCM even when the platform MediaCodec path is flaky.
+            val effectiveDecoderPriority = if (
+                vc1SoftwareFallbackActive ||
+                hasTriedAudioPcmFallback ||
+                isForcePassthroughActive ||
+                isBluetoothAudioOutput
+            ) {
                 DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
             } else {
                 playerSettings.decoderPriority
+            }
+            // A2DP is stereo; force a clean 2.0 downmix so surround content is audible and balanced.
+            val bluetoothStereoDownmix = isBluetoothAudioOutput
+            val effectiveDownmixEnabled = playerSettings.downmixEnabled || bluetoothStereoDownmix
+            val effectiveAudioOutputChannels = if (bluetoothStereoDownmix) {
+                com.nuvio.tv.data.local.AudioOutputChannels.CHANNELS_2_0
+            } else {
+                playerSettings.audioOutputChannels
+            }
+            if (isBluetoothAudioOutput) {
+                Log.i(
+                    PlayerRuntimeController.TAG,
+                    "Bluetooth media output active (route=${currentAudioOutputRoute?.key}): " +
+                        "PCM-only sink, stereo downmix, no optical passthrough"
+                )
             }
 
             // ── Renderers Factory (Combining Libass offsets + Audio Gain + Video Fallback) ──
@@ -788,18 +820,20 @@ internal fun PlayerRuntimeController.initializePlayer(
                     if (pv != null) pv.videoBoundsFraction(videoAspectRatio) else null
                 },
                 gainAudioProcessor = gainAudioProcessor,
-                downmixEnabled = playerSettings.downmixEnabled,
-                audioOutputChannels = playerSettings.audioOutputChannels,
+                downmixEnabled = effectiveDownmixEnabled,
+                audioOutputChannels = effectiveAudioOutputChannels,
                 downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                 forceOpticalPassthrough = isForcePassthroughActive,
+                bluetoothForcePcm = isBluetoothAudioOutput,
                 playbackSpeedProvider = { _uiState.value.playbackSpeed },
-                initialForcePcm = hasTriedAudioPcmFallback,
+                initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
+                preferSoftwareAudioOnly = isBluetoothAudioOutput && !vc1SoftwareFallbackActive,
                 onPlaybackSpeedAwareAudioSinkCreated = { playbackSpeedAwareAudioSink = it },
                 onFfmpegAudioRendererChanged = { renderer ->
                     ffmpegAudioRenderer = renderer
                     renderer?.applyDownmixSettings(
-                        downmixEnabled = playerSettings.downmixEnabled,
-                        audioOutputChannels = playerSettings.audioOutputChannels,
+                        downmixEnabled = effectiveDownmixEnabled,
+                        audioOutputChannels = effectiveAudioOutputChannels,
                         downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                         forceOpticalPassthrough = isForcePassthroughActive
                     )
@@ -2055,26 +2089,73 @@ private class SubtitleOffsetRenderersFactory(
     private val audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     private val downmixNormalizationEnabled: Boolean,
     private val forceOpticalPassthrough: Boolean,
+    private val bluetoothForcePcm: Boolean = false,
     private val playbackSpeedProvider: () -> Float,
     private val initialForcePcm: Boolean = false,
+    /**
+     * When true, [EXTENSION_RENDERER_MODE_PREFER] applies to audio only — video stays on the
+     * platform MediaCodec path so Bluetooth PCM policy does not force software video decode.
+     */
+    private val preferSoftwareAudioOnly: Boolean = false,
     private val onPlaybackSpeedAwareAudioSinkCreated: (PlaybackSpeedAwareAudioSink) -> Unit,
     private val onFfmpegAudioRendererChanged: (FfmpegAudioRenderer?) -> Unit
 ) : DefaultRenderersFactory(context) {
+
+    override fun buildVideoRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        eventHandler: Handler,
+        eventListener: VideoRendererEventListener,
+        allowedVideoJoiningTimeMs: Long,
+        out: ArrayList<Renderer>
+    ) {
+        val videoExtensionMode = when {
+            !preferSoftwareAudioOnly -> extensionRendererMode
+            extensionRendererMode == EXTENSION_RENDERER_MODE_PREFER -> EXTENSION_RENDERER_MODE_ON
+            else -> extensionRendererMode
+        }
+        super.buildVideoRenderers(
+            context,
+            videoExtensionMode,
+            mediaCodecSelector,
+            enableDecoderFallback,
+            eventHandler,
+            eventListener,
+            allowedVideoJoiningTimeMs,
+            out
+        )
+    }
 
     override fun buildAudioSink(
         context: Context,
         enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink {
-        val builder = DefaultAudioSink.Builder(context)
+        // Bluetooth: pin Media3-equivalent DEFAULT (PCM-only) so TV HDMI profiles / force-optical
+        // cannot advertise AC3/DTS passthrough while audio is routed to A2DP.
+        // Non-BT optical: pin expanded capabilities. Otherwise keep live Builder(context).
+        val builder = when {
+            bluetoothForcePcm -> {
+                DefaultAudioSink.Builder()
+                    .setAudioCapabilities(AudioOutputRouteDetector.bluetoothPcmOnlyCapabilities())
+            }
+            forceOpticalPassthrough -> {
+                DefaultAudioSink.Builder(context)
+                    .setAudioCapabilities(buildStableAudioCapabilities(context, true))
+            }
+            else -> DefaultAudioSink.Builder(context)
+        }
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .setAudioProcessors(arrayOf(gainAudioProcessor))
-        if (forceOpticalPassthrough) {
-            builder.setAudioCapabilities(buildStableAudioCapabilities(context, true))
-        }
         val baseAudioSink = builder.build()
-        val playbackSpeedAwareAudioSink = PlaybackSpeedAwareAudioSink(baseAudioSink, initialForcePcm)
+        val playbackSpeedAwareAudioSink = PlaybackSpeedAwareAudioSink(
+            sink = baseAudioSink,
+            initialForcePcm = initialForcePcm,
+            forcePcmForBluetooth = bluetoothForcePcm
+        )
         playbackSpeedAwareAudioSink.setInitialPlaybackSpeed(playbackSpeedProvider())
         onPlaybackSpeedAwareAudioSinkCreated(playbackSpeedAwareAudioSink)
         return playbackSpeedAwareAudioSink
