@@ -4,6 +4,7 @@ package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import android.util.Log
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateDpAsState
@@ -1094,6 +1095,9 @@ private fun ModernCarouselCard(
         payload == null -> baseImageUrl
         !payload.focusGifEnabled -> baseImageUrl
         else -> baseImageUrl
+    }
+    if (imageUrl.isNullOrBlank() || imageUrl.startsWith("placeholder://")) {
+        Log.d("CardDebug", "BLANK card key=${item.key} imageUrl=$imageUrl baseImageUrl=$baseImageUrl effectiveBackdrop=$effectiveBackdropUrl frozenBackdrop=${frozenBackdropUrl.value} dataFrozenBackdrop=$dataFrozenBackdrop item.imageUrl=${item.imageUrl} poster=${item.heroPreview.poster} backdrop=${item.heroPreview.backdrop} frozenInData=${item.heroPreview.frozenBackdropUrl}")
     }
     // GIF overlay: shown on top of the base image only when focused and loaded
     val focusGifUrl = when {
