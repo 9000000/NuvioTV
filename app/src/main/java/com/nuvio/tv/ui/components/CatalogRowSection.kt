@@ -64,6 +64,7 @@ import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.stableItemKey
+import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
 import com.nuvio.tv.ui.util.formatAddonTypeLabel
 import com.nuvio.tv.ui.util.localizedContentType
 import androidx.compose.ui.platform.LocalContext
@@ -262,7 +263,7 @@ fun CatalogRowSection(
         }
 
         val usesPlaceholderShimmer = catalogRow.isLoading &&
-            catalogRow.items.firstOrNull()?.poster?.startsWith("placeholder://") == true
+            catalogRow.items.firstOrNull()?.poster == PLACEHOLDER_IMAGE_URL
         val placeholderShimmerOffsetState = if (usesPlaceholderShimmer) {
             rememberPlaceholderShimmerOffsetState(label = "classicPlaceholderShimmer")
         } else {
