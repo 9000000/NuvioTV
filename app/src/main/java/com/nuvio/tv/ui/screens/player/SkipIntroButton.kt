@@ -61,6 +61,7 @@ fun SkipIntroButton(
     dismissed: Boolean,
     controlsVisible: Boolean,
     suppressFocus: Boolean = false,
+    canFocus: Boolean = true,
     onSkip: () -> Unit,
     onDismiss: () -> Unit,
     onHideControls: (() -> Unit)? = null,
@@ -131,9 +132,10 @@ fun SkipIntroButton(
     LaunchedEffect(isVisible) { onVisibilityChanged(isVisible) }
 
     // Request focus when becoming visible or when controls hide
-    // but not when the next episode card has priority
-    LaunchedEffect(isVisible, controlsVisible, suppressFocus) {
-        if (isVisible && !controlsVisible && !suppressFocus) {
+    // but not when the next episode card has priority, and not when focus is
+    // reserved for an overlay (e.g. subtitle selection — #2874).
+    LaunchedEffect(isVisible, controlsVisible, suppressFocus, canFocus) {
+        if (isVisible && !controlsVisible && !suppressFocus && canFocus) {
             try { activeFocusRequester.requestFocus() } catch (_: Exception) {}
         }
     }
@@ -148,17 +150,13 @@ fun SkipIntroButton(
             onClick = onSkip,
             modifier = Modifier
                 .focusRequester(activeFocusRequester)
-                .then(
-                    if (downFocusRequester != null || upFocusRequester != null) {
-                        Modifier.focusProperties {
-                            downFocusRequester?.let { down = it }
-                            upFocusRequester?.let { up = it }
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
+                .focusProperties {
+                    this.canFocus = canFocus
+                    downFocusRequester?.let { down = it }
+                    upFocusRequester?.let { up = it }
+                }
                 .onPreviewKeyEvent { keyEvent ->
+                    if (!canFocus) return@onPreviewKeyEvent false
                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                         when (keyEvent.nativeKeyEvent.keyCode) {
                             android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
