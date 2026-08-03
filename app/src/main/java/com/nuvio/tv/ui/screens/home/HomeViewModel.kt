@@ -447,10 +447,37 @@ class HomeViewModel @Inject constructor(
                     _uiState.update { it.copy(useEpisodeThumbnailsInCw = enabled) }
                 }
         }
+        viewModelScope.launch {
+            layoutPreferenceDataStore.continueWatchingCardStyle
+                .distinctUntilChanged()
+                .collect { style ->
+                    _uiState.update { it.copy(continueWatchingCardStyle = style) }
+                }
+        }
+        viewModelScope.launch {
+            layoutPreferenceDataStore.continueWatchingCardInfo
+                .distinctUntilChanged()
+                .collect { info ->
+                    _uiState.update { it.copy(continueWatchingCardInfo = info) }
+                }
+        }
         // When "next up from furthest episode" changes, clear CW caches and retrigger pipeline
         viewModelScope.launch {
             var initial = true
             layoutPreferenceDataStore.nextUpFromFurthestEpisode
+                .distinctUntilChanged()
+                .collect {
+                    if (initial) {
+                        initial = false
+                        return@collect
+                    }
+                    clearAllCwInMemoryCaches()
+                }
+        }
+        // Episode artwork is chosen while enriching, so cached items must be rebuilt when the setting changes.
+        viewModelScope.launch {
+            var initial = true
+            layoutPreferenceDataStore.useEpisodeThumbnailsInCw
                 .distinctUntilChanged()
                 .collect {
                     if (initial) {

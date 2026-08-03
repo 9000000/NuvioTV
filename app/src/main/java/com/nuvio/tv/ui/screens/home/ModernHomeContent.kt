@@ -71,6 +71,7 @@ import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.LoadingIndicator
@@ -558,9 +559,20 @@ fun ModernHomeContent(
     val portraitCatalogCardHeight = portraitBaseHeight * 0.84f * portraitModernPosterScale
     val landscapeCatalogCardWidth = portraitBaseWidth * 1.24f * landscapeModernPosterScale
     val landscapeCatalogCardHeight = landscapeCatalogCardWidth / 1.77f
+    // Poster style reuses the portrait catalog dimensions so the row lines up with the catalogs below it.
+    val continueWatchingPosterStyle =
+        uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.POSTER
     val continueWatchingScale = 1.34f
-    val continueWatchingCardWidth = portraitBaseWidth * 1.24f * continueWatchingScale
-    val continueWatchingCardHeight = continueWatchingCardWidth / 1.77f
+    val continueWatchingCardWidth = if (continueWatchingPosterStyle) {
+        portraitCatalogCardWidth
+    } else {
+        portraitBaseWidth * 1.24f * continueWatchingScale
+    }
+    val continueWatchingCardHeight = if (continueWatchingPosterStyle) {
+        portraitCatalogCardHeight
+    } else {
+        continueWatchingCardWidth / 1.77f
+    }
 
     val localConfiguration = LocalConfiguration.current
     val screenWidth = localConfiguration.screenWidthDp.dp
@@ -1075,6 +1087,9 @@ fun ModernHomeContent(
                 continueWatchingCardHeight = continueWatchingCardHeight,
                 blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                 useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
+                isPosterStyle = continueWatchingPosterStyle,
+                continueWatchingCardInfo = uiState.continueWatchingCardInfo,
+                continueWatchingCornerRadius = uiState.posterCardCornerRadiusDp.dp,
                 pendingRowFocusKey = pendingRowFocusKey,
                 pendingRowFocusIndex = pendingRowFocusIndex,
                 pendingRowFocusNonce = pendingRowFocusNonce,

@@ -106,6 +106,7 @@ import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
+import com.nuvio.tv.domain.model.ContinueWatchingCardInfo
 import com.nuvio.tv.ui.components.ContinueWatchingCard
 import com.nuvio.tv.ui.components.continueWatchingImageCacheKey
 import com.nuvio.tv.ui.components.continueWatchingImageModel
@@ -158,6 +159,9 @@ private fun ModernContinueWatchingRowItem(
     imageHeight: Dp,
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
+    isPosterStyle: Boolean,
+    continueWatchingCardInfo: ContinueWatchingCardInfo,
+    continueWatchingCornerRadius: Dp,
     onFocused: () -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onShowOptions: (ContinueWatchingItem) -> Unit,
@@ -196,6 +200,10 @@ private fun ModernContinueWatchingRowItem(
         imageHeight = imageHeight,
         blurUnwatchedEpisodes = blurUnwatchedEpisodes,
         useEpisodeThumbnails = useEpisodeThumbnails,
+        isPosterStyle = isPosterStyle,
+        cardInfo = continueWatchingCardInfo,
+        cornerRadius = continueWatchingCornerRadius,
+        isFocused = isCardFocused,
         modifier = modifier
             .focusRequester(requester)
             .onFocusChanged {
@@ -448,6 +456,9 @@ internal fun ModernRowSection(
     continueWatchingCardHeight: Dp,
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
+    isPosterStyle: Boolean,
+    continueWatchingCardInfo: ContinueWatchingCardInfo,
+    continueWatchingCornerRadius: Dp,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onContinueWatchingOptions: (ContinueWatchingItem) -> Unit,
     isCatalogItemWatched: (MetaPreview) -> Boolean,
@@ -650,10 +661,11 @@ internal fun ModernRowSection(
                     }
                     is ModernPayload.ContinueWatching -> {
                         // Use the same model and cache key the card computes so the prefetch warms the entry the card actually reads.
-                        val model = continueWatchingImageModel(payload.item, useEpisodeThumbnails)
-                            ?: return null
+                        val model = continueWatchingImageModel(
+                            payload.item, useEpisodeThumbnails, isPosterStyle
+                        ) ?: return null
                         val blur = continueWatchingShouldBlur(
-                            payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails
+                            payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails, isPosterStyle
                         )
                         model to continueWatchingImageCacheKey(model, cwWidthPx, cwHeightPx, blur)
                     }
@@ -665,7 +677,9 @@ internal fun ModernRowSection(
                 if (imageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) return
                 val payload = item.payload
                 val blur = payload is ModernPayload.ContinueWatching &&
-                    continueWatchingShouldBlur(payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails)
+                    continueWatchingShouldBlur(
+                        payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails, isPosterStyle
+                    )
                 imageLoader.enqueue(
                     ImageRequest.Builder(context)
                         .data(url)
@@ -901,6 +915,9 @@ internal fun ModernRowSection(
                                 imageHeight = continueWatchingCardHeight,
                                 blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                                 useEpisodeThumbnails = useEpisodeThumbnails,
+                                isPosterStyle = isPosterStyle,
+                                continueWatchingCardInfo = continueWatchingCardInfo,
+                                continueWatchingCornerRadius = continueWatchingCornerRadius,
                                 onFocused = onFocused,
                                 onContinueWatchingClick = onContinueWatchingClick,
                                 onShowOptions = onContinueWatchingOptions

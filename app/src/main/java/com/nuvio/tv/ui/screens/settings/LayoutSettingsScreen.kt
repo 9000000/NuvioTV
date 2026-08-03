@@ -69,6 +69,8 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.core.streams.STREAM_BADGE_IMPORT_LIMIT
 import com.nuvio.tv.core.streams.StreamBadgePlacement
+import com.nuvio.tv.domain.model.ContinueWatchingCardInfo
+import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.ContinueWatchingSortMode
 import com.nuvio.tv.domain.model.CardDepthStyle
 import com.nuvio.tv.domain.model.CardDepthSurface
@@ -129,6 +131,8 @@ fun LayoutSettingsContent(
     var posterCardStyleExpanded by rememberSaveable { mutableStateOf(false) }
     var showCardDepthFineTuneDialog by rememberSaveable { mutableStateOf(false) }
     var showCwSortModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showCwCardStyleDialog by rememberSaveable { mutableStateOf(false) }
+    var showCwCardInfoDialog by rememberSaveable { mutableStateOf(false) }
     var showStreamBadgePositionDialog by rememberSaveable { mutableStateOf(false) }
 
     val defaultHomeLayoutHeaderFocus = remember { FocusRequester() }
@@ -668,6 +672,30 @@ fun LayoutSettingsContent(
                     )
 
                     SettingsActionRow(
+                        title = stringResource(R.string.layout_cw_card_style),
+                        subtitle = stringResource(R.string.layout_cw_card_style_sub),
+                        value = when (uiState.continueWatchingCardStyle) {
+                            ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
+                            ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
+                        },
+                        onClick = { showCwCardStyleDialog = true },
+                        onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
+                    )
+
+                    SettingsActionRow(
+                        title = stringResource(R.string.layout_cw_card_info),
+                        subtitle = stringResource(R.string.layout_cw_card_info_sub),
+                        value = when (uiState.continueWatchingCardInfo) {
+                            ContinueWatchingCardInfo.OVERLAY -> stringResource(R.string.layout_cw_card_info_overlay)
+                            ContinueWatchingCardInfo.BELOW -> stringResource(R.string.layout_cw_card_info_below)
+                            ContinueWatchingCardInfo.HIDE_TEXT -> stringResource(R.string.layout_cw_card_info_hide_text)
+                            ContinueWatchingCardInfo.HIDE_ALL -> stringResource(R.string.layout_cw_card_info_hide_all)
+                        },
+                        onClick = { showCwCardInfoDialog = true },
+                        onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
+                    )
+
+                    SettingsActionRow(
                         title = stringResource(R.string.layout_cw_sort_mode),
                         subtitle = stringResource(R.string.layout_cw_sort_mode_sub),
                         value = when (uiState.continueWatchingSortMode) {
@@ -854,6 +882,28 @@ fun LayoutSettingsContent(
         }
         }
 
+        if (showCwCardInfoDialog) {
+            ContinueWatchingCardInfoDialog(
+                currentInfo = uiState.continueWatchingCardInfo,
+                onInfoSelected = { info ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetContinueWatchingCardInfo(info))
+                    showCwCardInfoDialog = false
+                },
+                onDismiss = { showCwCardInfoDialog = false }
+            )
+        }
+
+        if (showCwCardStyleDialog) {
+            ContinueWatchingCardStyleDialog(
+                currentStyle = uiState.continueWatchingCardStyle,
+                onStyleSelected = { style ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetContinueWatchingCardStyle(style))
+                    showCwCardStyleDialog = false
+                },
+                onDismiss = { showCwCardStyleDialog = false }
+            )
+        }
+
         if (showCwSortModeDialog) {
             ContinueWatchingSortModeDialog(
                 currentMode = uiState.continueWatchingSortMode,
@@ -963,6 +1013,76 @@ private fun StreamBadgePositionDialog(
         onDismiss = onDismiss,
         width = 420.dp,
         maxHeight = 260.dp
+    )
+}
+
+@Composable
+private fun ContinueWatchingCardInfoDialog(
+    currentInfo: ContinueWatchingCardInfo,
+    onInfoSelected: (ContinueWatchingCardInfo) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        SettingsPickerOption(
+            ContinueWatchingCardInfo.OVERLAY,
+            stringResource(R.string.layout_cw_card_info_overlay),
+            stringResource(R.string.layout_cw_card_info_overlay_desc)
+        ),
+        SettingsPickerOption(
+            ContinueWatchingCardInfo.BELOW,
+            stringResource(R.string.layout_cw_card_info_below),
+            stringResource(R.string.layout_cw_card_info_below_desc)
+        ),
+        SettingsPickerOption(
+            ContinueWatchingCardInfo.HIDE_TEXT,
+            stringResource(R.string.layout_cw_card_info_hide_text),
+            stringResource(R.string.layout_cw_card_info_hide_text_desc)
+        ),
+        SettingsPickerOption(
+            ContinueWatchingCardInfo.HIDE_ALL,
+            stringResource(R.string.layout_cw_card_info_hide_all),
+            stringResource(R.string.layout_cw_card_info_hide_all_desc)
+        )
+    )
+
+    SettingsSingleChoiceDialog(
+        title = stringResource(R.string.layout_cw_card_info),
+        options = options,
+        selectedValue = currentInfo,
+        onOptionSelected = onInfoSelected,
+        onDismiss = onDismiss,
+        width = 420.dp,
+        maxHeight = 360.dp
+    )
+}
+
+@Composable
+private fun ContinueWatchingCardStyleDialog(
+    currentStyle: ContinueWatchingCardStyle,
+    onStyleSelected: (ContinueWatchingCardStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        SettingsPickerOption(
+            ContinueWatchingCardStyle.CARD,
+            stringResource(R.string.layout_cw_card_style_card),
+            stringResource(R.string.layout_cw_card_style_card_desc)
+        ),
+        SettingsPickerOption(
+            ContinueWatchingCardStyle.POSTER,
+            stringResource(R.string.layout_cw_card_style_poster),
+            stringResource(R.string.layout_cw_card_style_poster_desc)
+        )
+    )
+
+    SettingsSingleChoiceDialog(
+        title = stringResource(R.string.layout_cw_card_style),
+        options = options,
+        selectedValue = currentStyle,
+        onOptionSelected = onStyleSelected,
+        onDismiss = onDismiss,
+        width = 420.dp,
+        maxHeight = 280.dp
     )
 }
 
