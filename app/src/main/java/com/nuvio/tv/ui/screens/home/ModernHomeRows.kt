@@ -101,11 +101,15 @@ import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.request.CachePolicy
 import coil3.request.crossfade
+import coil3.request.transformations
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.ContinueWatchingCard
+import com.nuvio.tv.ui.components.continueWatchingImageCacheKey
+import com.nuvio.tv.ui.components.continueWatchingImageModel
+import com.nuvio.tv.ui.components.continueWatchingShouldBlur
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.MonochromePosterPlaceholder
 import com.nuvio.tv.ui.components.TrailerPlayer
@@ -608,16 +612,18 @@ internal fun ModernRowSection(
             landscapeCatalogCardWidth,
             landscapeCatalogCardHeight,
             continueWatchingCardWidth,
-            continueWatchingCardHeight
+            continueWatchingCardHeight,
+            useEpisodeThumbnails,
+            blurUnwatchedEpisodes
         ) {
             if (!isActiveRow() || isVerticalRowsScrollingState.value) return@LaunchedEffect
             delay(150) // Wait before spamming image requests to survive rapid vertical D-pad scrolls!
             val cwWidthPx = with(density) { continueWatchingCardWidth.roundToPx() }
             val cwHeightPx = with(density) { continueWatchingCardHeight.roundToPx() }
             fun imageUrlAndKey(item: ModernCarouselItem): Pair<String, String>? {
-                val url = item.imageUrl ?: return null
-                return when (item.payload) {
+                return when (val payload = item.payload) {
                     is ModernPayload.Catalog -> {
+                        val url = item.imageUrl ?: return null
                         val metrics = item.catalogCardMetrics(
                             useLandscapePosters = useLandscapePosters,
                             portraitCardWidth = portraitCatalogCardWidth,
@@ -630,6 +636,7 @@ internal fun ModernRowSection(
                         url to "${url}_${widthPx}x${heightPx}"
                     }
                     is ModernPayload.CollectionFolder -> {
+                        val url = item.imageUrl ?: return null
                         val metrics = item.catalogCardMetrics(
                             useLandscapePosters = useLandscapePosters,
                             portraitCardWidth = portraitCatalogCardWidth,
@@ -641,18 +648,32 @@ internal fun ModernRowSection(
                         val heightPx = with(density) { metrics.height.roundToPx() }
                         url to "${url}_${widthPx}x${heightPx}"
                     }
-                    is ModernPayload.ContinueWatching -> url to "${url}_${cwWidthPx}x${cwHeightPx}"
+                    is ModernPayload.ContinueWatching -> {
+                        // Use the same model and cache key the card computes so the prefetch warms the entry the card actually reads.
+                        val model = continueWatchingImageModel(payload.item, useEpisodeThumbnails)
+                            ?: return null
+                        val blur = continueWatchingShouldBlur(
+                            payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails
+                        )
+                        model to continueWatchingImageCacheKey(model, cwWidthPx, cwHeightPx, blur)
+                    }
                 }
             }
             fun enqueueIfNeeded(item: ModernCarouselItem, widthPx: Int, heightPx: Int) {
                 if (widthPx <= 0 || heightPx <= 0) return
                 val (url, cacheKey) = imageUrlAndKey(item) ?: return
                 if (imageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) return
+                val payload = item.payload
+                val blur = payload is ModernPayload.ContinueWatching &&
+                    continueWatchingShouldBlur(payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails)
                 imageLoader.enqueue(
                     ImageRequest.Builder(context)
                         .data(url)
                         .memoryCacheKey(cacheKey)
                         .size(width = widthPx, height = heightPx)
+                        .apply {
+                            if (blur) transformations(com.nuvio.tv.ui.util.BlurTransformation())
+                        }
                         .build()
                 )
             }
