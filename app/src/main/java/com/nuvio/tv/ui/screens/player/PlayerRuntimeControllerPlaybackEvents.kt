@@ -691,12 +691,14 @@ internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, d
             videoId = progress.videoId
         )
         val normalizedProgress = progress.copy(contentId = effectiveContentId)
-        if (normalizedProgress.isCompleted() && !hasMarkedCurrentEpisodeCompleted) {
-            hasMarkedCurrentEpisodeCompleted = true
-            watchProgressRepository.markAsCompleted(
-                normalizedProgress,
-                broadcastTrackingHistory = false
-            )
+        if (normalizedProgress.isCompleted()) {
+            if (!hasMarkedCurrentEpisodeCompleted) {
+                hasMarkedCurrentEpisodeCompleted = true
+                watchProgressRepository.markAsCompleted(
+                    normalizedProgress,
+                    broadcastTrackingHistory = false
+                )
+            }
         } else {
             watchProgressRepository.saveProgress(normalizedProgress, syncRemote = syncRemote)
         }
