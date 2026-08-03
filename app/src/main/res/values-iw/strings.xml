@@ -575,7 +575,7 @@
     <string name="supporters_contributors_loading_donation_progress">טוען התקדמות מימון\u2026</string>
     <string name="supporters_contributors_donate_button">תרום ל-Nuvio</string>
     <string name="supporters_contributors_qr_title">סרוק לתרומה</string>
-    <string name="supporters_contributors_qr_subtitle">פתח את הקישור בטלפון שלך ותמוך ב-Nuvio דרך Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">פתח את הקישור בטלפון שלך כדי לתמוך ב-Nuvio.</string>
     <string name="supporters_contributors_qr_hint">כוון את המצלמה לקוד ה-QR או השתמש בכפתור למטה.</string>
     <string name="supporters_contributors_back_button">חזור לפרטים</string>
     <string name="supporters_tab">תומכים</string>

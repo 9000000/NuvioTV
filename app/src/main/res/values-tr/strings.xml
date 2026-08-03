@@ -534,11 +534,11 @@
     <string name="supporters_contributors_donate_copy">Nuvio tamamen ücretsiz ve açık kaynak kalmaya devam edecektir. Ancak projeye destek olmak isterseniz, geliştirme süremi ve altyapı giderlerini karşılamama yardımcı olabilirsiniz.</string>
     <string name="supporters_contributors_donation_progress_title">Bu ayki sunucu ve bakım masrafları</string>
     <string name="supporters_contributors_donation_progress_complete">Karşılandı. Ek destekler artık geliştirmelere aktarılıyor.</string>
-    <string name="supporters_contributors_donation_progress_remaining">%%100\'e ulaştıktan sonra, gelen ek destekler geliştirmelere aktarılır.</string>
+    <string name="supporters_contributors_donation_progress_remaining">%100\'e ulaştıktan sonra, gelen ek destekler geliştirmelere aktarılır.</string>
     <string name="supporters_contributors_loading_donation_progress">Destek ilerlemesi yükleniyor...</string>
     <string name="supporters_contributors_donate_button">Nuvio\'ya Destek Ol</string>
     <string name="supporters_contributors_qr_title">Bağış yapmak için kodu taratın</string>
-    <string name="supporters_contributors_qr_subtitle">Ko-fi üzerinden Nuvio\'ya destek olmak için bağlantıyı akıllı telefonunuzdan açabilirsiniz.</string>
+    <string name="supporters_contributors_qr_subtitle">Nuvio\'ya destek olmak için bağlantıyı telefonunuzda açın.</string>
     <string name="supporters_contributors_qr_hint">Kameranızı ekrandaki QR koda doğru tutun veya aşağıdaki butona tıklayın.</string>
     <string name="supporters_contributors_back_button">Ayrıntılara Dön</string>
     <string name="supporters_tab">Destekleyenler</string>

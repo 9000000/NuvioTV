@@ -418,6 +418,15 @@ fun ContentCard(
                 }
 
                 if (shouldPlayTrailerPreview) {
+                    // Black plate under FIT-mode video so non-16:9 trailers letterbox
+                    // to black instead of revealing the expanded backdrop (#2852).
+                    // The backdrop cover above still hides load-in; it fades out after
+                    // the first frame, leaving black + trailer only.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                    )
                     TrailerPlayer(
                         trailerUrl = trailerPreviewUrl,
                         trailerAudioUrl = trailerPreviewAudioUrl,

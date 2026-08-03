@@ -502,7 +502,7 @@
   <string name="supporters_contributors_donate_copy">Το Nuvio θα παραμείνει δωρεάν και ανοιχτού κώδικα. Αν θέλετε να υποστηρίξετε το έργο, μπορείτε να βοηθήσετε στην κάλυψη του χρόνου και της υποδομής πίσω από αυτό.</string>
   <string name="supporters_contributors_donate_button">Δωρεά στο Nuvio</string>
   <string name="supporters_contributors_qr_title">Σάρωση για δωρεά</string>
-  <string name="supporters_contributors_qr_subtitle">Ανοίξτε τον σύνδεσμο στο κινητό σας και υποστηρίξτε το Nuvio μέσω Ko-fi.</string>
+  <string name="supporters_contributors_qr_subtitle">Ανοίξτε τον σύνδεσμο στο κινητό σας για να υποστηρίξετε το Nuvio.</string>
   <string name="supporters_contributors_qr_hint">Στρέψτε την κάμερα στο QR code ή χρησιμοποιήστε το κουμπί παρακάτω.</string>
   <string name="supporters_contributors_back_button">Επιστροφή σε λεπτομέρειες</string>
   <string name="supporters_tab">Υποστηρικτές</string>
@@ -2662,7 +2662,7 @@
   <string name="diag_label_rebuffers">Επαναφορτίσεις buffer</string>
   <string name="player_report_issue">Αναφορά προβλήματος</string>
   <string name="unit_size_gb">%1$s GB</string>
-  <string name="supporters_contributors_donation_progress_remaining">Μετά το 100%%, η επιπλέον υποστήριξη διατίθεται στην ανάπτυξη.</string>
+  <string name="supporters_contributors_donation_progress_remaining">Μετά το 100%, η επιπλέον υποστήριξη διατίθεται στην ανάπτυξη.</string>
   <string name="stream_test_btn_measuring_parallel1">Μέτρηση παράλληλης (1MB)...</string>
   <string name="stream_test_btn_running">Εκτελείται...</string>
   <string name="diag_value_none">Καμία</string>

@@ -517,7 +517,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio bleibt kostenlos und Open Source. Wenn Sie das Projekt unterstützen möchten, können Sie dazu beitragen, die damit verbundenen Zeit- und Infrastrukturkosten zu decken.</string>
     <string name="supporters_contributors_donate_button">Spenden Sie an Nuvio</string>
     <string name="supporters_contributors_qr_title">Zum Spenden scannen</string>
-    <string name="supporters_contributors_qr_subtitle">Öffnen Sie den Link auf Ihrem Smartphone und unterstützen Sie Nuvio über Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Öffnen Sie den Link auf Ihrem Smartphone, um Nuvio zu unterstützen.</string>
     <string name="supporters_contributors_qr_hint">Richten Sie Ihre Kamera auf den QR-Code oder verwenden Sie die Schaltfläche unten.</string>
     <string name="supporters_contributors_back_button">Zurück zu den Details</string>
     <string name="supporters_tab">Unterstützer</string>

@@ -1061,7 +1061,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio pozostanie darmowe i open source. Jeśli chcesz wesprzeć projekt, możesz pomóc pokryć czas i infrastrukturę za nim stojącą.</string>
     <string name="supporters_contributors_donate_button">Wesprzyj Nuvio</string>
     <string name="supporters_contributors_qr_title">Zeskanuj, aby wesprzeć</string>
-    <string name="supporters_contributors_qr_subtitle">Otwórz link na telefonie i wesprzyj Nuvio przez Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Otwórz link na telefonie, aby wesprzeć Nuvio.</string>
     <string name="supporters_contributors_qr_hint">Skieruj aparat na kod QR lub użyj przycisku poniżej.</string>
     <string name="supporters_contributors_back_button">Wróć do szczegółów</string>
     <string name="supporters_tab">Wspierający</string>
@@ -2906,6 +2906,6 @@
     <!-- Supporters / donation progress -->
     <string name="supporters_contributors_donation_progress_title">Serwer i utrzymanie w tym miesiącu</string>
     <string name="supporters_contributors_donation_progress_complete">Pokryto. Dodatkowe wsparcie idzie teraz na rozwój.</string>
-    <string name="supporters_contributors_donation_progress_remaining">Po 100%%, dodatkowe wsparcie idzie na rozwój.</string>
+    <string name="supporters_contributors_donation_progress_remaining">Po 100%, dodatkowe wsparcie idzie na rozwój.</string>
     <string name="supporters_contributors_loading_donation_progress">Ładowanie postępu finansowania...</string>
 </resources>

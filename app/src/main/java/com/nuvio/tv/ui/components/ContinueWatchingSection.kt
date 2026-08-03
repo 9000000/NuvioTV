@@ -295,6 +295,53 @@ fun ContinueWatchingSection(
     }
 }
 
+// Selects the primary Continue Watching image URL, shared by the card and the home-row prefetch so both request the same model.
+internal fun continueWatchingImageModel(
+    item: ContinueWatchingItem,
+    useEpisodeThumbnails: Boolean
+): String? {
+    val progress = (item as? ContinueWatchingItem.InProgress)?.progress
+    val nextUp = (item as? ContinueWatchingItem.NextUp)?.info
+    fun firstNonBroken(vararg candidates: String?): String? =
+        candidates.firstOrNull { !it.isNullOrBlank() && it !in brokenImageUrls }?.trim()
+    return when {
+        nextUp != null && !nextUp.hasAired ->
+            firstNonBroken(nextUp.backdrop, nextUp.poster, nextUp.thumbnail)
+        nextUp != null && useEpisodeThumbnails ->
+            firstNonBroken(nextUp.thumbnail, nextUp.backdrop, nextUp.poster)
+        nextUp != null ->
+            firstNonBroken(nextUp.backdrop, nextUp.poster, nextUp.thumbnail)
+        useEpisodeThumbnails -> firstNonBroken(
+            (item as? ContinueWatchingItem.InProgress)?.episodeThumbnail,
+            progress?.backdrop,
+            progress?.poster
+        )
+        else -> firstNonBroken(
+            progress?.backdrop,
+            progress?.poster,
+            (item as? ContinueWatchingItem.InProgress)?.episodeThumbnail
+        )
+    }
+}
+
+// Whether the unwatched-episode spoiler blur applies to this item.
+internal fun continueWatchingShouldBlur(
+    item: ContinueWatchingItem,
+    blurUnwatchedEpisodes: Boolean,
+    useEpisodeThumbnails: Boolean
+): Boolean {
+    val nextUp = (item as? ContinueWatchingItem.NextUp)?.info
+    return blurUnwatchedEpisodes && useEpisodeThumbnails && nextUp != null
+}
+
+// Builds the Coil memory-cache key that the card and prefetch must share, including the blur suffix, so the prefetch is not wasted.
+internal fun continueWatchingImageCacheKey(
+    model: String?,
+    widthPx: Int,
+    heightPx: Int,
+    shouldBlur: Boolean
+): String = "${model}_${widthPx}x${heightPx}_blur${shouldBlur}"
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun ContinueWatchingCard(
@@ -355,37 +402,8 @@ fun ContinueWatchingCard(
         remainingText ?: nextUpBadgeText ?: strNextUp
     }
     val progressFraction = remember(progress) { progress?.progressPercentage ?: 0f }
-    val imageModel = remember(nextUp, progress, item, useEpisodeThumbnails) {
-        fun firstNonBroken(vararg candidates: String?): String? {
-            return candidates.firstOrNull { !it.isNullOrBlank() && it !in brokenImageUrls }?.trim()
-        }
-        when {
-            nextUp != null && !nextUp.hasAired -> firstNonBroken(
-                nextUp.backdrop,
-                nextUp.poster,
-                nextUp.thumbnail
-            )
-            nextUp != null && useEpisodeThumbnails -> firstNonBroken(
-                nextUp.thumbnail,
-                nextUp.backdrop,
-                nextUp.poster
-            )
-            nextUp != null -> firstNonBroken(
-                nextUp.backdrop,
-                nextUp.poster,
-                nextUp.thumbnail
-            )
-            useEpisodeThumbnails -> firstNonBroken(
-                (item as? ContinueWatchingItem.InProgress)?.episodeThumbnail,
-                progress?.backdrop,
-                progress?.poster
-            )
-            else -> firstNonBroken(
-                progress?.backdrop,
-                progress?.poster,
-                (item as? ContinueWatchingItem.InProgress)?.episodeThumbnail
-            )
-        }
+    val imageModel = remember(item, useEpisodeThumbnails) {
+        continueWatchingImageModel(item, useEpisodeThumbnails)
     }
     val fallbackImageModel = remember(nextUp, progress, item) {
         when {
@@ -421,12 +439,16 @@ fun ContinueWatchingCard(
     val requestHeightPx = remember(imageHeight, density) {
         with(density) { imageHeight.roundToPx() }.coerceAtLeast(1)
     }
-    val shouldBlur = blurUnwatchedEpisodes && useEpisodeThumbnails && nextUp != null
+    val shouldBlur = continueWatchingShouldBlur(item, blurUnwatchedEpisodes, useEpisodeThumbnails)
     val imageRequest = remember(effectiveImageModel, requestWidthPx, requestHeightPx, shouldBlur) {
         ImageRequest.Builder(context)
             .data(effectiveImageModel)
             .crossfade(true)
-            .memoryCacheKey("${effectiveImageModel}_${requestWidthPx}x${requestHeightPx}_blur${shouldBlur}")
+            .memoryCacheKey(
+                continueWatchingImageCacheKey(
+                    effectiveImageModel, requestWidthPx, requestHeightPx, shouldBlur
+                )
+            )
             .size(width = requestWidthPx, height = requestHeightPx)
             .apply {
                 if (shouldBlur) transformations(com.nuvio.tv.ui.util.BlurTransformation())
