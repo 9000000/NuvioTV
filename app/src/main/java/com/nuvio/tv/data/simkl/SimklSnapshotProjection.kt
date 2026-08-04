@@ -175,7 +175,7 @@ internal fun SimklSyncSnapshot.toSimklNextUpSeeds(
 private fun SimklSyncSnapshot.simklWatchedMovieIds(progress: List<WatchProgress>): Set<String> {
     val watched = linkedSetOf<String>()
     entries.forEach { entry ->
-        if (entry.mediaType != SimklMediaType.MOVIES) return@forEach
+        if (!entry.isMovieEntry()) return@forEach
         if (entry.lastWatchedAt == null && entry.status != SimklListStatus.COMPLETED) return@forEach
         val media = entry.media ?: return@forEach
         media.canonicalContentId()?.let(watched::add)
