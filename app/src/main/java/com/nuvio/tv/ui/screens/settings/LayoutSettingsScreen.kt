@@ -665,19 +665,25 @@ fun LayoutSettingsContent(
                         )
                     }
 
-                    CompactToggleRow(
-                        title = stringResource(R.string.layout_use_episode_thumbnails_cw),
-                        subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
-                        checked = uiState.useEpisodeThumbnailsInCw,
-                        onToggle = {
-                            viewModel.onEvent(
-                                LayoutSettingsEvent.SetUseEpisodeThumbnailsInCw(!uiState.useEpisodeThumbnailsInCw)
-                            )
-                        },
-                        onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
-                    )
+                    // Poster cards always show poster art, so the episode thumbnail options do not apply to them.
+                    val episodeThumbnailsApply =
+                        uiState.continueWatchingCardStyle != ContinueWatchingCardStyle.POSTER
 
-                    if (uiState.useEpisodeThumbnailsInCw) {
+                    if (episodeThumbnailsApply) {
+                        CompactToggleRow(
+                            title = stringResource(R.string.layout_use_episode_thumbnails_cw),
+                            subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
+                            checked = uiState.useEpisodeThumbnailsInCw,
+                            onToggle = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetUseEpisodeThumbnailsInCw(!uiState.useEpisodeThumbnailsInCw)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
+                        )
+                    }
+
+                    if (episodeThumbnailsApply && uiState.useEpisodeThumbnailsInCw) {
                         CompactToggleRow(
                             title = stringResource(R.string.layout_blur_cw_next_up),
                             subtitle = stringResource(R.string.layout_blur_cw_next_up_sub),

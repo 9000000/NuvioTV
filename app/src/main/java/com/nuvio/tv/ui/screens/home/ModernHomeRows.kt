@@ -114,6 +114,7 @@ import com.nuvio.tv.ui.components.continueWatchingArtworkWidth
 import com.nuvio.tv.ui.components.continueWatchingImageCacheKey
 import com.nuvio.tv.ui.components.continueWatchingImageModel
 import com.nuvio.tv.ui.components.continueWatchingShouldBlur
+import com.nuvio.tv.ui.components.continueWatchingUsesEpisodeThumbnails
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.MonochromePosterPlaceholder
 import com.nuvio.tv.ui.components.TrailerPlayer
@@ -666,10 +667,12 @@ internal fun ModernRowSection(
                     is ModernPayload.ContinueWatching -> {
                         // Use the same model and cache key the card computes so the prefetch warms the entry the card actually reads.
                         val model = continueWatchingImageModel(
-                            payload.item, useEpisodeThumbnails, continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
+                            payload.item, continueWatchingUsesEpisodeThumbnails(continueWatchingCardStyle, useEpisodeThumbnails),
+                            continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
                         ) ?: return null
                         val blur = continueWatchingShouldBlur(
-                            payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails, continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
+                            payload.item, blurUnwatchedEpisodes, continueWatchingUsesEpisodeThumbnails(continueWatchingCardStyle, useEpisodeThumbnails),
+                            continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
                         )
                         model to continueWatchingImageCacheKey(model, cwWidthPx, cwHeightPx, blur)
                     }
@@ -682,7 +685,8 @@ internal fun ModernRowSection(
                 val payload = item.payload
                 val blur = payload is ModernPayload.ContinueWatching &&
                     continueWatchingShouldBlur(
-                        payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails, continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
+                        payload.item, blurUnwatchedEpisodes, continueWatchingUsesEpisodeThumbnails(continueWatchingCardStyle, useEpisodeThumbnails),
+                            continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
                     )
                 imageLoader.enqueue(
                     ImageRequest.Builder(context)
