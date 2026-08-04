@@ -1795,7 +1795,7 @@ internal fun PlayerRuntimeController.initializePlayer(
     }
 }
 
-internal fun PlayerRuntimeController.resolveAutoInternalPlayerEngine(): InternalPlayerEngine {
+internal suspend fun PlayerRuntimeController.resolveAutoInternalPlayerEngine(): InternalPlayerEngine {
     val streamMetadataText = buildString {
         currentFilename?.let { appendLine(it) }
         streamName?.let { appendLine(it) }
@@ -1807,14 +1807,21 @@ internal fun PlayerRuntimeController.resolveAutoInternalPlayerEngine(): Internal
     return if (isHdrOrDv) {
         InternalPlayerEngine.EXOPLAYER
     } else {
-        val hasAnimeGenre = metaGenres.any { it.equals("anime", ignoreCase = true) }
-        val isAnimationFromJapan = (metaGenres.any { it.equals("animation", ignoreCase = true) } &&
-                metaCountry?.contains("Japan", ignoreCase = true) == true)
         val hasAnimeId = currentVideoId?.startsWith("kitsu:") == true ||
                 currentVideoId?.startsWith("mal:") == true ||
                 currentVideoId?.startsWith("anilist:") == true
 
-        val isAnime = hasAnimeGenre || hasAnimeId || isAnimationFromJapan
+        if (hasAnimeId) return InternalPlayerEngine.MVP_PLAYER
+
+        metaFetchJob?.let { job ->
+            withTimeoutOrNull(3000L) { job.join() }
+        }
+
+        val hasAnimeGenre = metaGenres.any { it.equals("anime", ignoreCase = true) }
+        val isAnimationFromJapan = (metaGenres.any { it.equals("animation", ignoreCase = true) } &&
+                metaCountry?.contains("Japan", ignoreCase = true) == true)
+
+        val isAnime = hasAnimeGenre || isAnimationFromJapan
 
         if (isAnime) InternalPlayerEngine.MVP_PLAYER else InternalPlayerEngine.EXOPLAYER
     }
