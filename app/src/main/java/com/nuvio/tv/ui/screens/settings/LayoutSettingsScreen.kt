@@ -676,12 +676,15 @@ fun LayoutSettingsContent(
                         subtitle = stringResource(R.string.layout_cw_card_style_sub),
                         value = when (uiState.continueWatchingCardStyle) {
                             ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
+                            ContinueWatchingCardStyle.WIDE -> stringResource(R.string.layout_cw_card_style_wide)
                             ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
                         },
                         onClick = { showCwCardStyleDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
 
+                    // The Wide card has its own fixed information layout, so the info options do not apply to it.
+                    if (uiState.continueWatchingCardStyle != ContinueWatchingCardStyle.WIDE) {
                     SettingsActionRow(
                         title = stringResource(R.string.layout_cw_card_info),
                         subtitle = stringResource(R.string.layout_cw_card_info_sub),
@@ -694,6 +697,7 @@ fun LayoutSettingsContent(
                         onClick = { showCwCardInfoDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
+                    }
 
                     SettingsActionRow(
                         title = stringResource(R.string.layout_cw_sort_mode),
@@ -1067,6 +1071,11 @@ private fun ContinueWatchingCardStyleDialog(
             ContinueWatchingCardStyle.CARD,
             stringResource(R.string.layout_cw_card_style_card),
             stringResource(R.string.layout_cw_card_style_card_desc)
+        ),
+        SettingsPickerOption(
+            ContinueWatchingCardStyle.WIDE,
+            stringResource(R.string.layout_cw_card_style_wide),
+            stringResource(R.string.layout_cw_card_style_wide_desc)
         ),
         SettingsPickerOption(
             ContinueWatchingCardStyle.POSTER,

@@ -918,6 +918,8 @@
     <string name="layout_cw_card_style_sub">Shape of the Continue Watching cards</string>
     <string name="layout_cw_card_style_card">Card</string>
     <string name="layout_cw_card_style_card_desc">Landscape card using episode thumbnails or backdrops</string>
+    <string name="layout_cw_card_style_wide">Wide</string>
+    <string name="layout_cw_card_style_wide_desc">Info dense horizontal card with artwork beside the details</string>
     <string name="layout_cw_card_style_poster">Poster</string>
     <string name="layout_cw_card_style_poster_desc">Portrait card using poster artwork, matching the catalog rows</string>
     <string name="layout_cw_card_info">Card Info</string>

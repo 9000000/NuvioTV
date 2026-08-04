@@ -89,6 +89,9 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
 
+// Height of the wide card as a fraction of its width, sized to fit the title, episode name and progress bar.
+private const val WIDE_CARD_HEIGHT_RATIO = 0.26f
+
 @Composable
 fun ModernHomeContent(
     uiState: HomeUiState,
@@ -560,18 +563,18 @@ fun ModernHomeContent(
     val landscapeCatalogCardWidth = portraitBaseWidth * 1.24f * landscapeModernPosterScale
     val landscapeCatalogCardHeight = landscapeCatalogCardWidth / 1.77f
     // Poster style reuses the portrait catalog dimensions so the row lines up with the catalogs below it.
-    val continueWatchingPosterStyle =
-        uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.POSTER
+    val continueWatchingStyle = uiState.continueWatchingCardStyle
     val continueWatchingScale = 1.34f
-    val continueWatchingCardWidth = if (continueWatchingPosterStyle) {
-        portraitCatalogCardWidth
-    } else {
-        portraitBaseWidth * 1.24f * continueWatchingScale
+    val continueWatchingCardWidth = when (continueWatchingStyle) {
+        ContinueWatchingCardStyle.POSTER -> portraitCatalogCardWidth
+        // Wide still scales with the poster width setting so it matches the rest of the row.
+        ContinueWatchingCardStyle.WIDE -> portraitBaseWidth * 2.6f
+        ContinueWatchingCardStyle.CARD -> portraitBaseWidth * 1.24f * continueWatchingScale
     }
-    val continueWatchingCardHeight = if (continueWatchingPosterStyle) {
-        portraitCatalogCardHeight
-    } else {
-        continueWatchingCardWidth / 1.77f
+    val continueWatchingCardHeight = when (continueWatchingStyle) {
+        ContinueWatchingCardStyle.POSTER -> portraitCatalogCardHeight
+        ContinueWatchingCardStyle.WIDE -> continueWatchingCardWidth * WIDE_CARD_HEIGHT_RATIO
+        ContinueWatchingCardStyle.CARD -> continueWatchingCardWidth / 1.77f
     }
 
     val localConfiguration = LocalConfiguration.current
@@ -1087,7 +1090,7 @@ fun ModernHomeContent(
                 continueWatchingCardHeight = continueWatchingCardHeight,
                 blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                 useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
-                isPosterStyle = continueWatchingPosterStyle,
+                continueWatchingCardStyle = continueWatchingStyle,
                 continueWatchingCardInfo = uiState.continueWatchingCardInfo,
                 continueWatchingCornerRadius = uiState.posterCardCornerRadiusDp.dp,
                 pendingRowFocusKey = pendingRowFocusKey,
