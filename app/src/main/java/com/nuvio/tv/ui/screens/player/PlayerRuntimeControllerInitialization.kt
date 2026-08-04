@@ -1493,7 +1493,7 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                         val responseCode = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
                         if (responseCode == 416 && !hasRetriedCurrentStreamAfter416) {
-                            retryCurrentStreamFromStartAfter416(currentPosition)
+                            retryCurrentStreamFromStartAfter416()
                             return
                         }
 
