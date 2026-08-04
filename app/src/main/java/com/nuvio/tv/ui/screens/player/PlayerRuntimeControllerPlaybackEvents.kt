@@ -31,6 +31,7 @@ internal const val CENTER_MIX_LEVEL_MAX_DB = 30
 internal const val AUDIO_DELAY_MIN_MS = -3000
 internal const val AUDIO_DELAY_MAX_MS = 3000
 internal const val AUDIO_DELAY_STEP_MS = 25
+internal const val WATCH_PROGRESS_SAVE_INTERVAL_MS = 90_000L
 
 internal fun PlayerRuntimeController.applyAudioDelay(
     delayMs: Int,
@@ -348,7 +349,7 @@ internal fun PlayerRuntimeController.startWatchProgressSaving() {
     watchProgressSaveJob?.cancel()
     watchProgressSaveJob = scope.launch {
         while (isActive) {
-            delay(10000)
+            delay(WATCH_PROGRESS_SAVE_INTERVAL_MS)
             saveWatchProgressIfNeeded()
         }
     }
