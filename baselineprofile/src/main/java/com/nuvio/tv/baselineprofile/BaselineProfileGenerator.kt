@@ -26,6 +26,12 @@ class BaselineProfileGenerator {
             packageName = targetPackage,
             includeInStartupProfile = true
         ) {
+            // Force English locale so onboarding labels are predictable regardless of device language.
+            val originalLocale = device.executeShellCommand("getprop persist.sys.locale").trim()
+            device.executeShellCommand("setprop persist.sys.locale en-US")
+            device.executeShellCommand("settings put system system_locales en-US")
+
+            try {
             pressHome()
             startActivityAndWait()
             device.wait(Until.hasObject(By.pkg(targetPackage)), 5_000)
@@ -74,6 +80,13 @@ class BaselineProfileGenerator {
             device.pressBack()
             device.waitForIdle()
             Thread.sleep(800)
+            } finally {
+                // Restore original locale.
+                if (originalLocale.isNotBlank()) {
+                    device.executeShellCommand("setprop persist.sys.locale $originalLocale")
+                    device.executeShellCommand("settings put system system_locales $originalLocale")
+                }
+            }
         }
     }
 }
