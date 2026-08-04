@@ -79,10 +79,13 @@ import com.nuvio.tv.domain.model.DEFAULT_CARD_DEPTH_SHEEN_STRENGTH
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.HomeLayout
+import com.nuvio.tv.ui.components.CardCwStylePreview
 import com.nuvio.tv.ui.components.ClassicLayoutPreview
 import com.nuvio.tv.ui.components.GridLayoutPreview
 import com.nuvio.tv.ui.components.ModernLayoutPreview
 import com.nuvio.tv.ui.components.NuvioDialog
+import com.nuvio.tv.ui.components.PosterCwStylePreview
+import com.nuvio.tv.ui.components.WideCwStylePreview
 import com.nuvio.tv.ui.components.cardDepthVisual
 import com.nuvio.tv.ui.screens.addon.QrCodeOverlay
 
@@ -130,7 +133,6 @@ fun LayoutSettingsContent(
     var posterCardStyleExpanded by rememberSaveable { mutableStateOf(false) }
     var showCardDepthFineTuneDialog by rememberSaveable { mutableStateOf(false) }
     var showCwSortModeDialog by rememberSaveable { mutableStateOf(false) }
-    var showCwCardStyleDialog by rememberSaveable { mutableStateOf(false) }
     var showStreamBadgePositionDialog by rememberSaveable { mutableStateOf(false) }
 
     val defaultHomeLayoutHeaderFocus = remember { FocusRequester() }
@@ -619,6 +621,50 @@ fun LayoutSettingsContent(
                     focusRequester = continueWatchingHeaderFocus,
                     onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                 ) {
+                    Text(
+                        text = stringResource(R.string.layout_cw_card_style),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = NuvioTheme.colors.TextSecondary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                    ) {
+                        CwStyleCard(
+                            style = ContinueWatchingCardStyle.CARD,
+                            isSelected = uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.CARD,
+                            onClick = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetContinueWatchingCardStyle(ContinueWatchingCardStyle.CARD)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CwStyleCard(
+                            style = ContinueWatchingCardStyle.WIDE,
+                            isSelected = uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.WIDE,
+                            onClick = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetContinueWatchingCardStyle(ContinueWatchingCardStyle.WIDE)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CwStyleCard(
+                            style = ContinueWatchingCardStyle.POSTER,
+                            isSelected = uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.POSTER,
+                            onClick = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetContinueWatchingCardStyle(ContinueWatchingCardStyle.POSTER)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                     CompactToggleRow(
                         title = stringResource(R.string.layout_use_episode_thumbnails_cw),
                         subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
@@ -666,18 +712,6 @@ fun LayoutSettingsContent(
                                 LayoutSettingsEvent.SetShowUnairedNextUp(!uiState.showUnairedNextUp)
                             )
                         },
-                        onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
-                    )
-
-                    SettingsActionRow(
-                        title = stringResource(R.string.layout_cw_card_style),
-                        subtitle = stringResource(R.string.layout_cw_card_style_sub),
-                        value = when (uiState.continueWatchingCardStyle) {
-                            ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
-                            ContinueWatchingCardStyle.WIDE -> stringResource(R.string.layout_cw_card_style_wide)
-                            ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
-                        },
-                        onClick = { showCwCardStyleDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
 
@@ -868,17 +902,6 @@ fun LayoutSettingsContent(
         }
         }
 
-        if (showCwCardStyleDialog) {
-            ContinueWatchingCardStyleDialog(
-                currentStyle = uiState.continueWatchingCardStyle,
-                onStyleSelected = { style ->
-                    viewModel.onEvent(LayoutSettingsEvent.SetContinueWatchingCardStyle(style))
-                    showCwCardStyleDialog = false
-                },
-                onDismiss = { showCwCardStyleDialog = false }
-            )
-        }
-
         if (showCwSortModeDialog) {
             ContinueWatchingSortModeDialog(
                 currentMode = uiState.continueWatchingSortMode,
@@ -988,41 +1011,6 @@ private fun StreamBadgePositionDialog(
         onDismiss = onDismiss,
         width = 420.dp,
         maxHeight = 260.dp
-    )
-}
-
-@Composable
-private fun ContinueWatchingCardStyleDialog(
-    currentStyle: ContinueWatchingCardStyle,
-    onStyleSelected: (ContinueWatchingCardStyle) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val options = listOf(
-        SettingsPickerOption(
-            ContinueWatchingCardStyle.CARD,
-            stringResource(R.string.layout_cw_card_style_card),
-            stringResource(R.string.layout_cw_card_style_card_desc)
-        ),
-        SettingsPickerOption(
-            ContinueWatchingCardStyle.WIDE,
-            stringResource(R.string.layout_cw_card_style_wide),
-            stringResource(R.string.layout_cw_card_style_wide_desc)
-        ),
-        SettingsPickerOption(
-            ContinueWatchingCardStyle.POSTER,
-            stringResource(R.string.layout_cw_card_style_poster),
-            stringResource(R.string.layout_cw_card_style_poster_desc)
-        )
-    )
-
-    SettingsSingleChoiceDialog(
-        title = stringResource(R.string.layout_cw_card_style),
-        options = options,
-        selectedValue = currentStyle,
-        onOptionSelected = onStyleSelected,
-        onDismiss = onDismiss,
-        width = 420.dp,
-        maxHeight = 280.dp
     )
 }
 
@@ -1239,6 +1227,90 @@ private fun DiscoverLocationDialog(
         width = 460.dp,
         maxHeight = 320.dp
     )
+}
+
+@Composable
+private fun CwStyleCard(
+    style: ContinueWatchingCardStyle,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Card(
+        onClick = onClick,
+        modifier = modifier.onFocusChanged { state ->
+            val nowFocused = state.isFocused
+            if (isFocused != nowFocused) {
+                isFocused = nowFocused
+                if (nowFocused) onFocused()
+            }
+        },
+        colors = CardDefaults.colors(
+            containerColor = NuvioTheme.colors.Background,
+            focusedContainerColor = NuvioTheme.colors.Background
+        ),
+        border = CardDefaults.border(
+            border = if (isSelected) Border(
+                border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.FocusRing),
+                shape = RoundedCornerShape(SettingsSecondaryCardRadius)
+            ) else Border.None,
+            focusedBorder = Border(
+                border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                shape = RoundedCornerShape(SettingsSecondaryCardRadius)
+            )
+        ),
+        shape = CardDefaults.shape(RoundedCornerShape(SettingsSecondaryCardRadius)),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(112.dp)
+            ) {
+                when (style) {
+                    ContinueWatchingCardStyle.CARD -> CardCwStylePreview(modifier = Modifier.fillMaxSize())
+                    ContinueWatchingCardStyle.WIDE -> WideCwStylePreview(modifier = Modifier.fillMaxSize())
+                    ContinueWatchingCardStyle.POSTER -> PosterCwStylePreview(modifier = Modifier.fillMaxSize())
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(R.string.cd_selected),
+                        tint = NuvioTheme.colors.FocusRing,
+                        modifier = Modifier
+                            .size(NuvioTheme.spacing.lg)
+                            .padding(end = 6.dp)
+                    )
+                }
+                Text(
+                    text = when (style) {
+                        ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
+                        ContinueWatchingCardStyle.WIDE -> stringResource(R.string.layout_cw_card_style_wide)
+                        ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary
+                )
+            }
+        }
+    }
 }
 
 @Composable
