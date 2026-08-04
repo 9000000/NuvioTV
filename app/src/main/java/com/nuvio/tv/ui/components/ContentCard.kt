@@ -72,6 +72,7 @@ import coil3.request.CachePolicy
 import coil3.request.crossfade
 import com.nuvio.tv.ui.util.recompositionHighlighter
 import com.nuvio.tv.ui.screens.home.LocalFastScrollActive
+import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
 import com.nuvio.tv.ui.theme.ThemeColors
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import kotlinx.coroutines.delay
@@ -135,7 +136,7 @@ fun ContentCard(
     val needsFocusState = true
     val lastFocusedRef = remember { booleanArrayOf(false) }
 
-    val isPlaceholderItem = item.poster?.startsWith("placeholder://") == true
+    val isPlaceholderItem = item.poster == PLACEHOLDER_IMAGE_URL
 
     if (focusedPosterBackdropExpandEnabled && !isPlaceholderItem) {
         LaunchedEffect(
@@ -364,7 +365,7 @@ fun ContentCard(
                         style = cardDepthStyle
                     )
             ) {
-                val isPlaceholderItem = imageUrl?.startsWith("placeholder://") == true
+                val isPlaceholderItem = imageUrl == PLACEHOLDER_IMAGE_URL
                 if (isPlaceholderItem) {
                     val effectivePlaceholderShimmerOffsetState =
                         placeholderShimmerOffsetState ?: rememberPlaceholderShimmerOffsetState(

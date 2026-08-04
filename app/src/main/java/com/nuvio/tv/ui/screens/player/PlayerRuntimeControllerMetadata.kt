@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 internal fun PlayerRuntimeController.fetchMetaDetails(id: String?, type: String?) {
     if (id.isNullOrBlank() || type.isNullOrBlank()) return
 
-    scope.launch {
+    metaFetchJob = scope.launch {
         when (
             val result = metaRepository.getMetaFromAllAddons(type = type, id = id)
                 .first { it !is NetworkResult.Loading }
