@@ -1025,7 +1025,12 @@ private fun LegacySidebarScaffold(
     }
 
     val sidebarTokens = NuvioComponents.tokens.sidebar
-    val closedDrawerWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.legacyCollapsedWidth
+    val collapsedContentStartPadding = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.legacyCollapsedWidth
+    val closedDrawerWidth = if (sidebarCollapsed) {
+        NuvioTheme.spacing.none
+    } else {
+        sidebarTokens.legacyCollapsedWidth + NuvioTheme.spacing.xl
+    }
     val openDrawerWidth = sidebarTokens.legacyExpandedWidth
     val openDrawerItemWidth = sidebarTokens.itemWidth
 
@@ -1218,7 +1223,7 @@ private fun LegacySidebarScaffold(
         }
     ) {
         val contentStartPadding by animateDpAsState(
-            targetValue = if (showSidebar) closedDrawerWidth else NuvioTheme.spacing.none,
+            targetValue = if (showSidebar) collapsedContentStartPadding else NuvioTheme.spacing.none,
             animationSpec = tween(NuvioMotion.tokens.durations.medium),
             label = "contentStartPadding"
         )
