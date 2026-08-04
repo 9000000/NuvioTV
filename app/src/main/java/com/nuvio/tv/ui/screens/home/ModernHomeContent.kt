@@ -568,7 +568,7 @@ fun ModernHomeContent(
     val continueWatchingCardWidth = when (continueWatchingStyle) {
         ContinueWatchingCardStyle.POSTER -> portraitCatalogCardWidth
         // Wide still scales with the poster width setting so it matches the rest of the row.
-        ContinueWatchingCardStyle.WIDE -> portraitBaseWidth * 2.6f
+        ContinueWatchingCardStyle.WIDE -> portraitBaseWidth * 2.1f
         ContinueWatchingCardStyle.CARD -> portraitBaseWidth * 1.24f * continueWatchingScale
     }
     val continueWatchingCardHeight = when (continueWatchingStyle) {

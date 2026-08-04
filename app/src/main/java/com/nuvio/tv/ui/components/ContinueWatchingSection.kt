@@ -106,6 +106,9 @@ private const val POSTER_TITLE_SCALE = 0.85f
 // Line height multiplier for the poster title, kept near 1 so the row below the artwork stays compact.
 private const val POSTER_TITLE_LINE_HEIGHT = 1.1f
 
+// Fixed height of the poster title row, sized for the two lines the mobile card allows.
+private val POSTER_TITLE_BLOCK_HEIGHT = 28.dp
+
 // Width to height ratio of poster art, used to size the wide card's artwork strip.
 private const val WIDE_POSTER_ASPECT = 2f / 3f
 
@@ -811,8 +814,8 @@ fun ContinueWatchingCard(
             }
 
             if (textBelowArtwork) {
-                // The title sits beside the episode code like the mobile poster card, and both are
-                // capped to one line so every card in the row stays the same height.
+                // The title wraps to two lines beside the episode code like the mobile poster card, and the
+                // row height is fixed so a one line title does not make its card shorter than the rest.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -820,16 +823,18 @@ fun ContinueWatchingCard(
                             top = NuvioTheme.spacing.xxs,
                             start = NuvioTheme.spacing.xs,
                             end = NuvioTheme.spacing.xs
-                        ),
+                        )
+                        .height(POSTER_TITLE_BLOCK_HEIGHT),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
-                        FocusMarqueeText(
+                        Text(
                             text = titleText,
-                            focused = titleMarqueeActive,
                             style = titleStyle,
-                            color = NuvioTheme.colors.TextPrimary
+                            color = NuvioTheme.colors.TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     if (episodeStr != null) {
