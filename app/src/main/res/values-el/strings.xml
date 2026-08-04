@@ -1130,8 +1130,8 @@
   <string name="tracking_simkl_features_title">Δυνατότητες Simkl</string>
   <string name="tracking_simkl_features_subtitle">Ρυθμίσεις ειδικά για το Simkl</string>
   <string name="tracking_simkl_anime_id_title">Προτίμηση αναγνωριστικού anime</string>
-  <string name="tracking_simkl_anime_id_subtitle">Ελέγχει πώς αναγνωρίζονται οι σειρές anime. Η επιλογή MAL ή Kitsu δίνει σε κάθε σεζόν δική της καταχώρηση αντί να ομαδοποιείται κάτω από ένα ID IMDB.</string>
-  <string name="tracking_simkl_anime_id_imdb">Προτίμηση IMDB</string>
+  <string name="tracking_simkl_anime_id_subtitle">Ελέγχει πώς αναγνωρίζονται οι σειρές anime. Η επιλογή MAL ή Kitsu δίνει σε κάθε σεζόν δική της καταχώρηση αντί να ομαδοποιείται κάτω από ένα ID IMDb.</string>
+  <string name="tracking_simkl_anime_id_imdb">Προτίμηση IMDb</string>
   <string name="tracking_simkl_anime_id_mal">Προτίμηση MyAnimeList</string>
   <string name="tracking_simkl_anime_id_kitsu">Προτίμηση Kitsu</string>
   <string name="tracking_status_connected">Συνδεδεμένο</string>
