@@ -106,7 +106,6 @@ import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
-import com.nuvio.tv.domain.model.ContinueWatchingCardInfo
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
 import com.nuvio.tv.domain.model.isPlaceholder
@@ -164,7 +163,6 @@ private fun ModernContinueWatchingRowItem(
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
     continueWatchingCardStyle: ContinueWatchingCardStyle,
-    continueWatchingCardInfo: ContinueWatchingCardInfo,
     continueWatchingCornerRadius: Dp,
     onFocused: () -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
@@ -205,7 +203,6 @@ private fun ModernContinueWatchingRowItem(
         blurUnwatchedEpisodes = blurUnwatchedEpisodes,
         useEpisodeThumbnails = useEpisodeThumbnails,
         cardStyle = continueWatchingCardStyle,
-        cardInfo = continueWatchingCardInfo,
         cornerRadius = continueWatchingCornerRadius,
         isFocused = isCardFocused,
         modifier = modifier
@@ -461,7 +458,6 @@ internal fun ModernRowSection(
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
     continueWatchingCardStyle: ContinueWatchingCardStyle,
-    continueWatchingCardInfo: ContinueWatchingCardInfo,
     continueWatchingCornerRadius: Dp,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onContinueWatchingOptions: (ContinueWatchingItem) -> Unit,
@@ -924,7 +920,6 @@ internal fun ModernRowSection(
                                 blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                                 useEpisodeThumbnails = useEpisodeThumbnails,
                                 continueWatchingCardStyle = continueWatchingCardStyle,
-                                continueWatchingCardInfo = continueWatchingCardInfo,
                                 continueWatchingCornerRadius = continueWatchingCornerRadius,
                                 onFocused = onFocused,
                                 onContinueWatchingClick = onContinueWatchingClick,

@@ -49,7 +49,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import coil3.imageLoader
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
-import com.nuvio.tv.domain.model.ContinueWatchingCardInfo
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.MetaPreview
@@ -125,7 +124,6 @@ internal fun ModernHomeRowsList(
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
     continueWatchingCardStyle: ContinueWatchingCardStyle,
-    continueWatchingCardInfo: ContinueWatchingCardInfo,
     continueWatchingCornerRadius: Dp,
     pendingRowFocusKey: State<String?>,
     pendingRowFocusIndex: State<Int?>,
@@ -455,7 +453,6 @@ internal fun ModernHomeRowsList(
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                     useEpisodeThumbnails = useEpisodeThumbnails,
                     continueWatchingCardStyle = continueWatchingCardStyle,
-                    continueWatchingCardInfo = continueWatchingCardInfo,
                     continueWatchingCornerRadius = continueWatchingCornerRadius,
                     onContinueWatchingClick = onContinueWatchingClick,
                     onContinueWatchingOptions = stableOnContinueWatchingOptions,

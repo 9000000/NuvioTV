@@ -89,8 +89,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
 
-// Height of the wide card as a fraction of its width, sized to fit the title, episode name and progress bar.
-private const val WIDE_CARD_HEIGHT_RATIO = 0.26f
+// Height of the wide card as a fraction of its width, matching the 2.5:1 shape of the mobile card.
+private const val WIDE_CARD_HEIGHT_RATIO = 0.4f
 
 @Composable
 fun ModernHomeContent(
@@ -562,7 +562,7 @@ fun ModernHomeContent(
     val portraitCatalogCardHeight = portraitBaseHeight * 0.84f * portraitModernPosterScale
     val landscapeCatalogCardWidth = portraitBaseWidth * 1.24f * landscapeModernPosterScale
     val landscapeCatalogCardHeight = landscapeCatalogCardWidth / 1.77f
-    // Poster style reuses the portrait catalog dimensions so the row lines up with the catalogs below it.
+    // Poster style reuses the portrait catalog dimensions so its artwork matches the catalogs below it.
     val continueWatchingStyle = uiState.continueWatchingCardStyle
     val continueWatchingScale = 1.34f
     val continueWatchingCardWidth = when (continueWatchingStyle) {
@@ -1091,7 +1091,6 @@ fun ModernHomeContent(
                 blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                 useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                 continueWatchingCardStyle = continueWatchingStyle,
-                continueWatchingCardInfo = uiState.continueWatchingCardInfo,
                 continueWatchingCornerRadius = uiState.posterCardCornerRadiusDp.dp,
                 pendingRowFocusKey = pendingRowFocusKey,
                 pendingRowFocusIndex = pendingRowFocusIndex,

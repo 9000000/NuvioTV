@@ -454,13 +454,6 @@ class HomeViewModel @Inject constructor(
                     _uiState.update { it.copy(continueWatchingCardStyle = style) }
                 }
         }
-        viewModelScope.launch {
-            layoutPreferenceDataStore.continueWatchingCardInfo
-                .distinctUntilChanged()
-                .collect { info ->
-                    _uiState.update { it.copy(continueWatchingCardInfo = info) }
-                }
-        }
         // When "next up from furthest episode" changes, clear CW caches and retrigger pipeline
         viewModelScope.launch {
             var initial = true
