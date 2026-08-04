@@ -53,6 +53,7 @@ import com.nuvio.tv.domain.model.ContinueWatchingCardInfo
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.MetaPreview
+import com.nuvio.tv.domain.model.isPlaceholder
 import com.nuvio.tv.ui.util.StableList
 import com.nuvio.tv.ui.util.StableMap
 import com.nuvio.tv.ui.util.StableRef
@@ -231,7 +232,7 @@ internal fun ModernHomeRowsList(
             val rows = latestCarouselRowsForLazy.value
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAheadForLazy)) {
                 val row = rows.list.getOrNull(idx) ?: continue
-                if (row.isLoading && row.items.list.firstOrNull()?.imageUrl == "placeholder://empty") {
+                if (row.isLoading && row.items.list.firstOrNull()?.imageUrl.isPlaceholder()) {
                     val legacyKey = "${row.addonId}_${row.apiType}_${row.catalogId}"
                     latestOnRequestLazyCatalogLoad.value(legacyKey)
                 }
@@ -254,7 +255,7 @@ internal fun ModernHomeRowsList(
                 val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@collect
                 for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + 1)) {
                     val row = rows.list.getOrNull(idx) ?: continue
-                    if (row.isLoading && row.items.list.firstOrNull()?.imageUrl == "placeholder://empty") {
+                    if (row.isLoading && row.items.list.firstOrNull()?.imageUrl.isPlaceholder()) {
                         val legacyKey = "${row.addonId}_${row.apiType}_${row.catalogId}"
                         latestOnRequestLazyCatalogLoad.value(legacyKey)
                     }

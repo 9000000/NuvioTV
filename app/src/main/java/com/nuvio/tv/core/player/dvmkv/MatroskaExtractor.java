@@ -3175,6 +3175,13 @@ public class MatroskaExtractor implements Extractor {
         DolbyVisionConfig dolbyVisionConfig =
             DolbyVisionConfig.parse(new ParsableByteArray(this.dolbyVisionConfigBytes));
         if (dolbyVisionConfig != null) {
+          if (DolbyVisionCompatibility.isStaleContainerDolbyVisionConfig(
+              hasColorInfo, colorTransfer)) {
+            Log.i(
+                TAG,
+                "Ignoring stale Matroska Dolby Vision config: track color metadata indicates SDR");
+            dolbyVisionConfigBytes = null;
+          } else {
           codecs = dolbyVisionConfig.codecs;
           mimeType = MimeTypes.VIDEO_DOLBY_VISION;
           if (dolbyVisionSampleTransformer != null) {
@@ -3197,6 +3204,7 @@ public class MatroskaExtractor implements Extractor {
                 codecs = hevcCodecsString;
               }
             }
+          }
           }
         }
       } else if (dolbyVisionSampleTransformer != null && codecs != null) {

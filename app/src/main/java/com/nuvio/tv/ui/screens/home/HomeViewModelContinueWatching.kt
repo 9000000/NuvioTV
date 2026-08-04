@@ -417,7 +417,9 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                     backdrop = cached.backdrop ?: progress.backdrop,
                                     poster = cached.poster ?: progress.poster,
                                     logo = cached.logo ?: progress.logo,
-                                    name = cached.name.takeIf { it.isNotBlank() } ?: progress.name
+                                    name = cached.name.takeIf { it.isNotBlank() } ?: progress.name,
+                                    episodeTitle = cached.episodeTitle ?: progress.episodeTitle,
+                                    videoId = cached.videoId.takeIf { it.isNotBlank() } ?: progress.videoId
                                 )
                             } else {
                                 progress

@@ -30,6 +30,17 @@ internal fun isSkipIntroButtonVisible(
     return shouldShow && (!autoHidden || controlsVisible)
 }
 
+/**
+ * Whether the Skip Intro button may accept D-pad focus.
+ *
+ * While the subtitle selection overlay is open, Skip Intro stays on screen but
+ * must not be focusable — otherwise DPAD_DOWN past the last language/track card
+ * escapes the overlay onto Skip Intro (#2874).
+ */
+internal fun isSkipIntroCanFocus(
+    subtitleOverlayVisible: Boolean,
+): Boolean = !subtitleOverlayVisible
+
 internal fun skipIntroAutoHideRemainingMs(
     progress: Float,
     totalTimeoutMs: Int = SKIP_INTRO_AUTO_HIDE_TIMEOUT_MS,

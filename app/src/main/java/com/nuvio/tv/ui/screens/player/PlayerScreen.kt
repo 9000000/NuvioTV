@@ -844,11 +844,16 @@ fun PlayerScreen(
         )
 
         // Skip Intro button (bottom-left, lifted when controls are visible)
+        val skipIntroCanFocus = isSkipIntroCanFocus(
+            subtitleOverlayVisible = uiState.showSubtitleOverlay,
+        )
         SkipIntroButton(
             interval = if (uiState.showPauseOverlay || uiState.showLoadingOverlay) null else uiState.activeSkipInterval,
             dismissed = uiState.skipIntervalDismissed,
             controlsVisible = uiState.showControls,
-            suppressFocus = uiState.postPlayMode is PostPlayMode.AutoPlay,
+            // Autoplay next-episode card owns focus; subtitle menu must keep D-pad focus (#2874).
+            suppressFocus = uiState.postPlayMode is PostPlayMode.AutoPlay || !skipIntroCanFocus,
+            canFocus = skipIntroCanFocus,
             onSkip = { viewModel.onEvent(PlayerEvent.OnSkipIntro) },
             onDismiss = { viewModel.onEvent(PlayerEvent.OnDismissSkipIntro) },
             onVisibilityChanged = { skipButtonActuallyVisible = it },
