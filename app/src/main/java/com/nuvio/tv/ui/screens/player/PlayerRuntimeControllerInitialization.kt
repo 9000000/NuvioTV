@@ -2281,13 +2281,59 @@ private class CueNormalizingTextOutput(
 ) : TextOutput {
 
     override fun onCues(cueGroup: CueGroup) {
-        val processed = cueGroup.cues.map(::processCue)
-        delegate.onCues(CueGroup(processed, cueGroup.presentationTimeUs))
+        val cues = cueGroup.cues
+        if (cues.isEmpty()) {
+            delegate.onCues(cueGroup)
+            return
+        }
+        var modifiedList: ArrayList<Cue>? = null
+        val count = cues.size
+        for (i in 0 until count) {
+            val original = cues[i]
+            val processed = processCue(original)
+            if (processed !== original) {
+                if (modifiedList == null) {
+                    modifiedList = ArrayList(count)
+                    for (j in 0 until i) {
+                        modifiedList.add(cues[j])
+                    }
+                }
+                modifiedList.add(processed)
+            } else {
+                modifiedList?.add(original)
+            }
+        }
+        if (modifiedList != null) {
+            delegate.onCues(CueGroup(modifiedList, cueGroup.presentationTimeUs))
+        } else {
+            delegate.onCues(cueGroup)
+        }
     }
 
     @Deprecated("Uses the deprecated Media3 callback for text outputs.")
     override fun onCues(cues: List<Cue>) {
-        delegate.onCues(cues.map(::processCue))
+        if (cues.isEmpty()) {
+            delegate.onCues(cues)
+            return
+        }
+        var modifiedList: ArrayList<Cue>? = null
+        val count = cues.size
+        for (i in 0 until count) {
+            val original = cues[i]
+            val processed = processCue(original)
+            if (processed !== original) {
+                if (modifiedList == null) {
+                    modifiedList = ArrayList(count)
+                    for (j in 0 until i) {
+                        modifiedList.add(cues[j])
+                    }
+                }
+                modifiedList.add(processed)
+            } else {
+                modifiedList?.add(original)
+            }
+        }
+        delegate.onCues(modifiedList ?: cues)
     }
 
     private fun processCue(cue: Cue): Cue {
@@ -2337,6 +2383,9 @@ private class CueNormalizingTextOutput(
 
     private fun fixRtlCueText(cue: Cue): Cue {
         val text = cue.text ?: return cue
+        if (!hasAnyRtlCharacter(text)) {
+            return cue
+        }
 
         // Arabic: wrap each physical line with RLE (\u202B) ... PDF (\u202C).
         // This renders boundary punctuation and auto-wrapped lines as RTL in an LTR container.
@@ -2563,6 +2612,30 @@ private class CueNormalizingTextOutput(
             if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
                 d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC ||
                 d == Character.DIRECTIONALITY_ARABIC_NUMBER) return true
+            i += Character.charCount(codePoint)
+        }
+        return false
+    }
+
+    private fun hasAnyRtlCharacter(text: CharSequence): Boolean {
+        var i = 0
+        val len = text.length
+        while (i < len) {
+            val codePoint = Character.codePointAt(text, i)
+            if (codePoint >= 0x0590) {
+                if (codePoint in 0x0590..0x08FF ||
+                    codePoint in 0xFB1D..0xFEFF
+                ) {
+                    return true
+                }
+                val d = Character.getDirectionality(codePoint)
+                if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
+                    d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC ||
+                    d == Character.DIRECTIONALITY_ARABIC_NUMBER
+                ) {
+                    return true
+                }
+            }
             i += Character.charCount(codePoint)
         }
         return false
