@@ -324,6 +324,12 @@ fun ContinueWatchingSection(
     }
 }
 
+// Poster cards always show poster art, so the episode thumbnail setting does not apply to them.
+internal fun continueWatchingUsesEpisodeThumbnails(
+    cardStyle: ContinueWatchingCardStyle,
+    useEpisodeThumbnails: Boolean
+): Boolean = useEpisodeThumbnails && cardStyle != ContinueWatchingCardStyle.POSTER
+
 // Selects the primary Continue Watching image URL, shared by the card and the home-row prefetch so both request the same model.
 internal fun continueWatchingImageModel(
     item: ContinueWatchingItem,
@@ -412,6 +418,8 @@ fun ContinueWatchingCard(
 ) {
     val isPosterStyle = cardStyle == ContinueWatchingCardStyle.POSTER
     val isWideStyle = cardStyle == ContinueWatchingCardStyle.WIDE
+    val effectiveEpisodeThumbnails =
+        continueWatchingUsesEpisodeThumbnails(cardStyle, useEpisodeThumbnails)
     // The wide card shows its art in a poster shaped strip, so it resolves artwork the same way a poster card does.
     val usePosterArtwork = isPosterStyle || isWideStyle
     // Poster cards put their title under the artwork like the mobile app, the landscape card keeps it on top.
@@ -474,8 +482,8 @@ fun ContinueWatchingCard(
         remainingText ?: nextUpBadgeText ?: strNextUp
     }
     val progressFraction = remember(progress) { progress?.progressPercentage ?: 0f }
-    val imageModel = remember(item, useEpisodeThumbnails, usePosterArtwork) {
-        continueWatchingImageModel(item, useEpisodeThumbnails, usePosterArtwork)
+    val imageModel = remember(item, effectiveEpisodeThumbnails, usePosterArtwork) {
+        continueWatchingImageModel(item, effectiveEpisodeThumbnails, usePosterArtwork)
     }
     // A poster card keeps poster art first when falling back, so a load failure does not drop it to a cropped backdrop.
     val fallbackImageModel = remember(nextUp, progress, item, usePosterArtwork) {
@@ -510,7 +518,7 @@ fun ContinueWatchingCard(
         with(density) { imageHeight.roundToPx() }.coerceAtLeast(1)
     }
     val shouldBlur =
-        continueWatchingShouldBlur(item, blurUnwatchedEpisodes, useEpisodeThumbnails, usePosterArtwork)
+        continueWatchingShouldBlur(item, blurUnwatchedEpisodes, effectiveEpisodeThumbnails, usePosterArtwork)
 
     val baseTitleStyle = MaterialTheme.typography.titleSmall
     val titleStyle = remember(baseTitleStyle, isPosterStyle) {

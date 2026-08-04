@@ -619,19 +619,37 @@ fun LayoutSettingsContent(
                     focusRequester = continueWatchingHeaderFocus,
                     onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                 ) {
-                    CompactToggleRow(
-                        title = stringResource(R.string.layout_use_episode_thumbnails_cw),
-                        subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
-                        checked = uiState.useEpisodeThumbnailsInCw,
-                        onToggle = {
-                            viewModel.onEvent(
-                                LayoutSettingsEvent.SetUseEpisodeThumbnailsInCw(!uiState.useEpisodeThumbnailsInCw)
-                            )
+                    SettingsActionRow(
+                        title = stringResource(R.string.layout_cw_card_style),
+                        subtitle = stringResource(R.string.layout_cw_card_style_sub),
+                        value = when (uiState.continueWatchingCardStyle) {
+                            ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
+                            ContinueWatchingCardStyle.WIDE -> stringResource(R.string.layout_cw_card_style_wide)
+                            ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
                         },
+                        onClick = { showCwCardStyleDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
 
-                    if (uiState.useEpisodeThumbnailsInCw) {
+                    // Poster cards always show poster art, so the episode thumbnail options do not apply to them.
+                    val episodeThumbnailsApply =
+                        uiState.continueWatchingCardStyle != ContinueWatchingCardStyle.POSTER
+
+                    if (episodeThumbnailsApply) {
+                        CompactToggleRow(
+                            title = stringResource(R.string.layout_use_episode_thumbnails_cw),
+                            subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
+                            checked = uiState.useEpisodeThumbnailsInCw,
+                            onToggle = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetUseEpisodeThumbnailsInCw(!uiState.useEpisodeThumbnailsInCw)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
+                        )
+                    }
+
+                    if (episodeThumbnailsApply && uiState.useEpisodeThumbnailsInCw) {
                         CompactToggleRow(
                             title = stringResource(R.string.layout_blur_cw_next_up),
                             subtitle = stringResource(R.string.layout_blur_cw_next_up_sub),
@@ -666,18 +684,6 @@ fun LayoutSettingsContent(
                                 LayoutSettingsEvent.SetShowUnairedNextUp(!uiState.showUnairedNextUp)
                             )
                         },
-                        onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
-                    )
-
-                    SettingsActionRow(
-                        title = stringResource(R.string.layout_cw_card_style),
-                        subtitle = stringResource(R.string.layout_cw_card_style_sub),
-                        value = when (uiState.continueWatchingCardStyle) {
-                            ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
-                            ContinueWatchingCardStyle.WIDE -> stringResource(R.string.layout_cw_card_style_wide)
-                            ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
-                        },
-                        onClick = { showCwCardStyleDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
 
