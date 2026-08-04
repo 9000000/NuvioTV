@@ -1026,7 +1026,11 @@ private fun LegacySidebarScaffold(
     }
 
     val sidebarTokens = NuvioComponents.tokens.sidebar
-    val closedDrawerWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.legacyCollapsedWidth
+    val closedDrawerWidth = if (sidebarCollapsed) {
+        NuvioTheme.spacing.none
+    } else {
+        sidebarTokens.legacyCollapsedWidth + NuvioTheme.spacing.xl
+    }
     val openDrawerWidth = sidebarTokens.legacyExpandedWidth
     val openDrawerItemWidth = sidebarTokens.itemWidth
 
