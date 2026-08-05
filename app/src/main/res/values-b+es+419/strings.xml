@@ -1869,7 +1869,7 @@
     <string name="auth_email_placeholder">Correo electrónico</string>
     <string name="auth_password_placeholder">Contraseña</string>
     <string name="auth_email_sign_in">Iniciar sesión</string>
-    <string name="auth_signin_qr_btn">Continuar con QR</string>
+    <string name="auth_email_signing_in">Iniciando sesión…</string>
     
     <string name="auth_qr_title">Iniciar Sesión con QR</string>
     <string name="auth_qr_tagline">Disfruta tu biblioteca en cualquier lugar</string>
