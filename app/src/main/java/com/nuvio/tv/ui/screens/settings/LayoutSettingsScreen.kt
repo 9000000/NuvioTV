@@ -614,11 +614,6 @@ fun LayoutSettingsContent(
                     focusRequester = continueWatchingHeaderFocus,
                     onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                 ) {
-                    Text(
-                        text = stringResource(R.string.layout_cw_card_style),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.colors.TextSecondary
-                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)

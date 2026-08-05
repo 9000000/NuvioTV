@@ -139,7 +139,9 @@
     <string name="continue_watching">視聴を続ける</string>
     <string name="cw_upcoming">近日公開</string>
     <string name="cw_next_up">次のエピソード</string>
+    <string name="cw_next_up_short">次</string>
     <string name="cw_new_episode">新着エピソード</string>
+    <string name="cw_new_episode_short">新着</string>
     <string name="cw_new_season">新シーズン</string>
     <string name="cw_resume">再開</string>
     <string name="cw_percent_watched">%1$d%% 視聴済み</string>
@@ -152,6 +154,14 @@
     <plurals name="cw_airs_in_days">
         <item quantity="one">%d日後に放送</item>
         <item quantity="other">%d日後に放送</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">今日</string>
+    <string name="cw_airs_tomorrow_short">明日</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">%d日後</item>
+        <item quantity="other">%d日後</item>
     </plurals>
     <string name="cw_action_go_to_details">詳細へ</string>
     <string name="cw_action_start_from_beginning">最初から再生</string>

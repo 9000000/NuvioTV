@@ -15,6 +15,7 @@
     <string name="cw_upcoming">Nadchodzące</string>
     <string name="upcoming_section_title">Nadchodzące</string>
     <string name="cw_next_up">Następny odcinek</string>
+    <string name="cw_next_up_short">Następny</string>
     <string name="cw_resume">Wznów</string>
     <string name="cw_percent_watched">%1$d%% obejrzane</string>
     <string name="cw_hours_min_left">Zostało %1$d h %2$d min</string>
@@ -28,6 +29,16 @@
         <item quantity="few">Emisja za %d dni</item>
         <item quantity="many">Emisja za %d dni</item>
         <item quantity="other">Emisja za %d dni</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">Dzisiaj</string>
+    <string name="cw_airs_tomorrow_short">Jutro</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">Za %d dzień</item>
+        <item quantity="few">Za %d dni</item>
+        <item quantity="many">Za %d dni</item>
+        <item quantity="other">Za %d dni</item>
     </plurals>
     <string name="cw_action_go_to_details">Przejdź do szczegółów</string>
     <string name="cw_action_remove">Usuń</string>
@@ -419,6 +430,9 @@
     <string name="layout_next_up_furthest_episode_sub">Pokazuj następny odcinek na podstawie najdalszego obejrzanego. Wyłącz przy ponownym oglądaniu, aby używać ostatnio obejrzanego odcinka.</string>
     <string name="layout_show_unaired_next_up">Pokaż niewyemitowane odcinki</string>
     <string name="layout_show_unaired_next_up_sub">Uwzględnij nadchodzące odcinki w Kontynuuj oglądanie przed ich emisją.</string>
+    <string name="layout_cw_card_style_card">Karta</string>
+    <string name="layout_cw_card_style_wide">Szeroka</string>
+    <string name="layout_cw_card_style_poster">Plakat</string>
     <string name="layout_trailer_button">Pokaż przycisk zwiastuna</string>
     <string name="layout_trailer_button_sub">Pokaż przycisk zwiastuna na stronie szczegółów (tylko gdy zwiastun jest dostępny).</string>
     <string name="layout_prefer_external_meta">Preferuj metadane z zewnętrznego dodatku</string>
@@ -1149,6 +1163,7 @@
     <string name="error_stream_tried_issues">Wypróbowane dodatki strumieni: %1$s. Nie można załadować strumieni dla id=%2$s (typ=%3$s). Problemy: %4$s.</string>
 
     <string name="cw_new_episode">Nowy odcinek</string>
+    <string name="cw_new_episode_short">Nowy</string>
     <string name="cw_new_season">Nowy sezon</string>
 
     <string name="detail_comments_title">Komentarze</string>

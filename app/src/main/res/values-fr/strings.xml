@@ -141,7 +141,9 @@
     <string name="continue_watching">Continuer à regarder</string>
     <string name="cw_upcoming">À venir</string>
     <string name="cw_next_up">Épisode suivant</string>
+    <string name="cw_next_up_short">Suivant</string>
     <string name="cw_new_episode">Nouvel épisode</string>
+    <string name="cw_new_episode_short">Nouveau</string>
     <string name="cw_new_season">Nouvelle saison</string>
     <string name="cw_resume">Reprendre</string>
     <string name="cw_percent_watched">%1$d%% regardé</string>
@@ -155,6 +157,15 @@
         <item quantity="one">Diffusion dans %d jour</item>
         <item quantity="many">Diffusion dans %d jours</item>
         <item quantity="other">Diffusion dans %d jours</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">Aujourd\'hui</string>
+    <string name="cw_airs_tomorrow_short">Demain</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">Dans %d jour</item>
+        <item quantity="many">Dans %d jours</item>
+        <item quantity="other">Dans %d jours</item>
     </plurals>
     <string name="cw_action_go_to_details">Voir les détails</string>
     <string name="cw_action_start_from_beginning">Revoir depuis le début</string>
