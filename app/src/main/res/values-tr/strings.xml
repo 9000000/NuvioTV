@@ -143,7 +143,9 @@
     <string name="continue_watching">İzlemeye Devam Et</string>
     <string name="cw_upcoming">Yaklaşanlar</string>
     <string name="cw_next_up">Sıradaki</string>
+    <string name="cw_next_up_short">Sıradaki</string>
     <string name="cw_new_episode">Yeni Bölüm</string>
+    <string name="cw_new_episode_short">Yeni</string>
     <string name="cw_new_season">Yeni Sezon</string>
     <string name="cw_resume">Devam Et</string>
     <string name="cw_percent_watched">%%%1$d izlendi</string>
@@ -156,6 +158,14 @@
     <plurals name="cw_airs_in_days">
         <item quantity="one">Yayın tarihi: %d gün sonra</item>
         <item quantity="other">Yayın tarihi: %d gün sonra</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">Bugün</string>
+    <string name="cw_airs_tomorrow_short">Yarın</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">%d gün sonra</item>
+        <item quantity="other">%d gün sonra</item>
     </plurals>
     <string name="cw_action_go_to_details">Detaylara git</string>
     <string name="cw_action_start_from_beginning">Baştan başla</string>

@@ -80,6 +80,7 @@ import com.nuvio.tv.ui.util.recompositionHighlighter
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import com.nuvio.tv.ui.util.computeAirDateBadgeText
+import com.nuvio.tv.ui.util.computeAirDateBadgeTextShort
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -107,7 +108,7 @@ private const val POSTER_TITLE_SCALE = 0.85f
 private const val POSTER_TITLE_LINE_HEIGHT = 1.1f
 
 // Fixed height of the poster title row, sized for the two lines the mobile card allows.
-private val POSTER_TITLE_BLOCK_HEIGHT = 28.dp
+private val POSTER_TITLE_BLOCK_HEIGHT = 30.dp
 
 // Width to height ratio of poster art, used to size the wide card's artwork strip.
 private const val WIDE_POSTER_ASPECT = 2f / 3f
@@ -452,19 +453,30 @@ fun ContinueWatchingCard(
     }
     val strUpcoming = stringResource(R.string.cw_upcoming)
     val strNextUp = stringResource(R.string.cw_next_up)
+    val strNextUpShort = stringResource(R.string.cw_next_up_short)
     val strNewEpisode = stringResource(R.string.cw_new_episode)
+    val strNewEpisodeShort = stringResource(R.string.cw_new_episode_short)
     val strNewSeason = stringResource(R.string.cw_new_season)
     val strResume = stringResource(R.string.cw_resume)
     val strPercentWatched = stringResource(R.string.cw_percent_watched)
     val strHoursMinLeft = stringResource(R.string.cw_hours_min_left)
     val strMinLeft = stringResource(R.string.cw_min_left)
+    // In wide and poster styles, use the short label to save space.
+    val useShortLabels = isPosterStyle || isWideStyle
+    val effectiveNextUpLabel = if (useShortLabels) strNextUpShort else strNextUp
+    val effectiveNewEpisodeLabel = if (useShortLabels) strNewEpisodeShort else strNewEpisode
     val nextUpBadgeText = nextUp?.let { info ->
         if (info.isReleaseAlert) {
-            if (info.isNewSeasonRelease) strNewSeason else strNewEpisode
+            if (info.isNewSeasonRelease) strNewSeason else effectiveNewEpisodeLabel
         } else if (!info.hasAired) {
-            computeAirDateBadgeText(cardContext, info.released, info.airDateLabel) ?: strUpcoming
+            val airDateText = if (useShortLabels) {
+                computeAirDateBadgeTextShort(cardContext, info.released, info.airDateLabel)
+            } else {
+                computeAirDateBadgeText(cardContext, info.released, info.airDateLabel)
+            }
+            airDateText ?: strUpcoming
         } else {
-            strNextUp
+            effectiveNextUpLabel
         }
     }
     val remainingText = progress?.let {
@@ -478,8 +490,8 @@ fun ContinueWatchingCard(
             )
         }
     }
-    val badgeText = remember(remainingText, nextUpBadgeText, strNextUp) {
-        remainingText ?: nextUpBadgeText ?: strNextUp
+    val badgeText = remember(remainingText, nextUpBadgeText, effectiveNextUpLabel) {
+        remainingText ?: nextUpBadgeText ?: effectiveNextUpLabel
     }
     val progressFraction = remember(progress) { progress?.progressPercentage ?: 0f }
     val imageModel = remember(item, effectiveEpisodeThumbnails, usePosterArtwork) {
@@ -766,20 +778,23 @@ fun ContinueWatchingCard(
                     }
                 }
 
-                // Remaining time badge
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(NuvioTheme.spacing.sm)
-                        .clip(BadgeShape)
-                        .background(badgeBackground)
-                        .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs)
-                ) {
-                    Text(
-                        text = badgeText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NuvioTheme.colors.TextPrimary
-                    )
+                // Remaining time badge - hide progress labels in poster style (only show next-up/new episode badges)
+                val showBadgeInPoster = progress == null
+                if (!isPosterStyle || showBadgeInPoster) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(NuvioTheme.spacing.sm)
+                            .clip(BadgeShape)
+                            .background(badgeBackground)
+                            .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NuvioTheme.colors.TextPrimary
+                        )
+                    }
                 }
 
                 if (progress != null) {
@@ -927,17 +942,17 @@ private fun WideCardContent(
                     horizontal = NuvioTheme.spacing.md,
                     vertical = NuvioTheme.spacing.sm
                 ),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
         ) {
-            // Unweighted children are measured first, so the progress bar keeps its space and the text yields.
+            // Text content takes available space; progress bar appears at bottom only when present.
             Column(
-                modifier = Modifier.weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
                         FocusMarqueeText(
@@ -955,7 +970,7 @@ private fun WideCardContent(
                                 .background(badgeBackground)
                                 .padding(
                                     horizontal = NuvioTheme.spacing.sm,
-                                    vertical = NuvioTheme.spacing.xs
+                                    vertical = NuvioTheme.spacing.xxs
                                 )
                         ) {
                             Text(
@@ -988,9 +1003,9 @@ private fun WideCardContent(
             // The bar keeps its space even with no progress so every card lays out identically.
             Column(
                 modifier = Modifier
-                    .padding(top = NuvioTheme.spacing.sm)
+                    .padding(top = NuvioTheme.spacing.xxs)
                     .alpha(if (hasProgress) 1f else 0f),
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
             ) {
                 Box(
                     modifier = Modifier

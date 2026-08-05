@@ -139,7 +139,9 @@
     <string name="continue_watching">繼續觀看</string>
     <string name="cw_upcoming">即將播出</string>
     <string name="cw_next_up">下一集</string>
+    <string name="cw_next_up_short">下一集</string>
     <string name="cw_new_episode">新集數</string>
+    <string name="cw_new_episode_short">新</string>
     <string name="cw_new_season">新季數</string>
     <string name="cw_resume">繼續播放</string>
     <string name="cw_percent_watched">已觀看 %1$d%%</string>
@@ -152,6 +154,14 @@
     <plurals name="cw_airs_in_days">
         <item quantity="one">%d 天後播出</item>
         <item quantity="other">%d 天後播出</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">今天</string>
+    <string name="cw_airs_tomorrow_short">明天</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">%d 天後</item>
+        <item quantity="other">%d 天後</item>
     </plurals>
     <string name="cw_action_go_to_details">前往詳情</string>
     <string name="cw_action_start_from_beginning">從頭開始播放</string>

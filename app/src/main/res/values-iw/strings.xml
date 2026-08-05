@@ -139,7 +139,9 @@
     <string name="continue_watching">המשך צפייה</string>
     <string name="cw_upcoming">בקרוב</string>
     <string name="cw_next_up">הפרק הבא</string>
+    <string name="cw_next_up_short">הבא</string>
     <string name="cw_new_episode">פרק חדש</string>
+    <string name="cw_new_episode_short">חדש</string>
     <string name="cw_new_season">עונה חדשה</string>
     <string name="cw_resume">המשך</string>
     <string name="cw_percent_watched">%1$d%% נצפה</string>
@@ -152,6 +154,14 @@
     <plurals name="cw_airs_in_days">
         <item quantity="one">עולה מחר</item>
         <item quantity="other">יעלה בעוד %d ימים</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">היום</string>
+    <string name="cw_airs_tomorrow_short">מחר</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">בעוד יום</item>
+        <item quantity="other">בעוד %d ימים</item>
     </plurals>
     <string name="cw_action_go_to_details">עבור לפרטים</string>
     <string name="cw_action_start_from_beginning">התחל מהתחלה</string>

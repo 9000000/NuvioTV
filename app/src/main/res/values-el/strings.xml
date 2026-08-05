@@ -139,7 +139,9 @@
   <string name="continue_watching">Συνέχεια παρακολούθησης</string>
   <string name="cw_upcoming">Επόμενα</string>
   <string name="cw_next_up">Επόμενο</string>
+  <string name="cw_next_up_short">Επόμενο</string>
   <string name="cw_new_episode">Νέο επεισόδιο</string>
+  <string name="cw_new_episode_short">Νέο</string>
   <string name="cw_new_season">Νέα σεζόν</string>
   <string name="cw_resume">Συνέχεια</string>
   <string name="cw_percent_watched">%1$d%% προβλήθηκε</string>
@@ -152,6 +154,14 @@
   <plurals name="cw_airs_in_days">
     <item quantity="one">Πρεμιέρα σε %d ημέρα</item>
     <item quantity="other">Πρεμιέρα σε %d ημέρες</item>
+  </plurals>
+  <!-- Short versions for compact card styles (wide/poster) -->
+  <string name="cw_airs_date_short">%1$s</string>
+  <string name="cw_airs_today_short">Σήμερα</string>
+  <string name="cw_airs_tomorrow_short">Αύριο</string>
+  <plurals name="cw_airs_in_days_short">
+    <item quantity="one">Σε %d ημέρα</item>
+    <item quantity="other">Σε %d ημέρες</item>
   </plurals>
   <string name="cw_action_go_to_details">Μετάβαση σε λεπτομέρειες</string>
   <string name="cw_action_start_from_beginning">Έναρξη από την αρχή</string>

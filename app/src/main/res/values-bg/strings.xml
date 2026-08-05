@@ -139,7 +139,9 @@
     <string name="continue_watching">Продължаване на гледането</string>
     <string name="cw_upcoming">Предстоящи</string>
     <string name="cw_next_up">Следващ епизод</string>
+    <string name="cw_next_up_short">Следващ</string>
     <string name="cw_new_episode">Нов епизод</string>
+    <string name="cw_new_episode_short">Нов</string>
     <string name="cw_new_season">Нов сезон</string>
     <string name="cw_resume">Продължи</string>
     <string name="cw_percent_watched">%1$d%% гледано</string>
@@ -152,6 +154,14 @@
     <plurals name="cw_airs_in_days">
         <item quantity="one">Излиза след %d ден</item>
         <item quantity="other">Излиза след %d дни</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">Днес</string>
+    <string name="cw_airs_tomorrow_short">Утре</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">След %d ден</item>
+        <item quantity="other">След %d дни</item>
     </plurals>
     <string name="cw_action_go_to_details">Отиди към детайлите</string>
     <string name="cw_action_start_from_beginning">Започни от началото</string>
