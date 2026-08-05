@@ -914,7 +914,6 @@
     <string name="layout_next_up_furthest_episode_sub">A következő epizódot a legelőrébb lévő megnézett rész alapján mutatja. Kapcsold ki újranézésnél, hogy az utoljára megnézettet használja.</string>
     <string name="layout_show_unaired_next_up">Még nem vetített epizódok megjelenítése</string>
     <string name="layout_show_unaired_next_up_sub">Tartalmazza a közeledő epizódokat a Folytatás listában a premier előtt.</string>
-    <string name="layout_cw_card_style">Kártya stílusa</string>
     <string name="layout_cw_card_style_card">Kártya</string>
     <string name="layout_cw_card_style_wide">Széles</string>
     <string name="layout_cw_card_style_poster">Poszter</string>

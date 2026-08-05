@@ -914,7 +914,6 @@
     <string name="layout_next_up_furthest_episode_sub">Muestra el siguiente episodio según el episodio más avanzado visto. Desactívalo si estás volviendo a ver para usar el episodio visto más recientemente.</string>
     <string name="layout_show_unaired_next_up">Mostrar próximos episodios no emitidos</string>
     <string name="layout_show_unaired_next_up_sub">Incluye episodios próximos en "Continuar viendo" antes de su emisión.</string>
-    <string name="layout_cw_card_style">Estilo de tarjeta</string>
     <string name="layout_cw_card_style_card">Tarjeta</string>
     <string name="layout_cw_card_style_wide">Ancha</string>
     <string name="layout_cw_card_style_poster">Póster</string>
