@@ -106,12 +106,15 @@ import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
+import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
 import com.nuvio.tv.domain.model.isPlaceholder
 import com.nuvio.tv.ui.components.ContinueWatchingCard
+import com.nuvio.tv.ui.components.continueWatchingArtworkWidth
 import com.nuvio.tv.ui.components.continueWatchingImageCacheKey
 import com.nuvio.tv.ui.components.continueWatchingImageModel
 import com.nuvio.tv.ui.components.continueWatchingShouldBlur
+import com.nuvio.tv.ui.components.continueWatchingUsesEpisodeThumbnails
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.MonochromePosterPlaceholder
 import com.nuvio.tv.ui.components.TrailerPlayer
@@ -160,6 +163,8 @@ private fun ModernContinueWatchingRowItem(
     imageHeight: Dp,
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
+    continueWatchingCardStyle: ContinueWatchingCardStyle,
+    continueWatchingCornerRadius: Dp,
     onFocused: () -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onShowOptions: (ContinueWatchingItem) -> Unit,
@@ -198,6 +203,9 @@ private fun ModernContinueWatchingRowItem(
         imageHeight = imageHeight,
         blurUnwatchedEpisodes = blurUnwatchedEpisodes,
         useEpisodeThumbnails = useEpisodeThumbnails,
+        cardStyle = continueWatchingCardStyle,
+        cornerRadius = continueWatchingCornerRadius,
+        isFocused = isCardFocused,
         modifier = modifier
             .focusRequester(requester)
             .onFocusChanged {
@@ -450,6 +458,8 @@ internal fun ModernRowSection(
     continueWatchingCardHeight: Dp,
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
+    continueWatchingCardStyle: ContinueWatchingCardStyle,
+    continueWatchingCornerRadius: Dp,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onContinueWatchingOptions: (ContinueWatchingItem) -> Unit,
     isCatalogItemWatched: (MetaPreview) -> Boolean,
@@ -620,7 +630,11 @@ internal fun ModernRowSection(
         ) {
             if (!isActiveRow() || isVerticalRowsScrollingState.value) return@LaunchedEffect
             delay(150) // Wait before spamming image requests to survive rapid vertical D-pad scrolls!
-            val cwWidthPx = with(density) { continueWatchingCardWidth.roundToPx() }
+            val cwWidthPx = with(density) {
+                continueWatchingArtworkWidth(
+                    continueWatchingCardStyle, continueWatchingCardWidth, continueWatchingCardHeight
+                ).roundToPx()
+            }
             val cwHeightPx = with(density) { continueWatchingCardHeight.roundToPx() }
             fun imageUrlAndKey(item: ModernCarouselItem): Pair<String, String>? {
                 return when (val payload = item.payload) {
@@ -652,10 +666,13 @@ internal fun ModernRowSection(
                     }
                     is ModernPayload.ContinueWatching -> {
                         // Use the same model and cache key the card computes so the prefetch warms the entry the card actually reads.
-                        val model = continueWatchingImageModel(payload.item, useEpisodeThumbnails)
-                            ?: return null
+                        val model = continueWatchingImageModel(
+                            payload.item, continueWatchingUsesEpisodeThumbnails(continueWatchingCardStyle, useEpisodeThumbnails),
+                            continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
+                        ) ?: return null
                         val blur = continueWatchingShouldBlur(
-                            payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails
+                            payload.item, blurUnwatchedEpisodes, continueWatchingUsesEpisodeThumbnails(continueWatchingCardStyle, useEpisodeThumbnails),
+                            continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
                         )
                         model to continueWatchingImageCacheKey(model, cwWidthPx, cwHeightPx, blur)
                     }
@@ -667,7 +684,10 @@ internal fun ModernRowSection(
                 if (imageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) return
                 val payload = item.payload
                 val blur = payload is ModernPayload.ContinueWatching &&
-                    continueWatchingShouldBlur(payload.item, blurUnwatchedEpisodes, useEpisodeThumbnails)
+                    continueWatchingShouldBlur(
+                        payload.item, blurUnwatchedEpisodes, continueWatchingUsesEpisodeThumbnails(continueWatchingCardStyle, useEpisodeThumbnails),
+                            continueWatchingCardStyle != ContinueWatchingCardStyle.CARD
+                    )
                 imageLoader.enqueue(
                     ImageRequest.Builder(context)
                         .data(url)
@@ -903,6 +923,8 @@ internal fun ModernRowSection(
                                 imageHeight = continueWatchingCardHeight,
                                 blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                                 useEpisodeThumbnails = useEpisodeThumbnails,
+                                continueWatchingCardStyle = continueWatchingCardStyle,
+                                continueWatchingCornerRadius = continueWatchingCornerRadius,
                                 onFocused = onFocused,
                                 onContinueWatchingClick = onContinueWatchingClick,
                                 onShowOptions = onContinueWatchingOptions
