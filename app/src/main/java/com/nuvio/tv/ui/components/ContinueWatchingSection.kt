@@ -141,7 +141,10 @@ fun ContinueWatchingSection(
     focusRequesters: MutableMap<Int, FocusRequester> = remember { mutableMapOf() },
     lastFocusedIndexState: MutableIntState = remember { mutableIntStateOf(-1) },
     cardWidth: Dp = 288.dp,
-    imageHeight: Dp = 162.dp
+    imageHeight: Dp = 162.dp,
+    cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
+    cornerRadius: Dp = NuvioTheme.radii.md,
+    posterTitleOverride: TextStyle? = null
 ) {
     if (items.isEmpty()) return
 
@@ -250,6 +253,7 @@ fun ContinueWatchingSection(
                 val focusModifier = Modifier.focusRequester(requester)
                 val stableOnClick = remember(progress) { { onItemClick(progress) } }
                 val stableOnLongPress = remember(progress) { { optionsItem = progress } }
+                var isCardFocused by remember { mutableStateOf(false) }
 
                     ContinueWatchingCard(
                     item = progress,
@@ -259,8 +263,13 @@ fun ContinueWatchingSection(
                     useEpisodeThumbnails = useEpisodeThumbnails,
                     cardWidth = cardWidth,
                     imageHeight = imageHeight,
+                    cardStyle = cardStyle,
+                    cornerRadius = cornerRadius,
+                    isFocused = isCardFocused,
+                    posterTitleOverride = posterTitleOverride,
                     modifier = Modifier
                         .onFocusChanged { focusState ->
+                            isCardFocused = focusState.isFocused
                             if (focusState.isFocused && lastFocusedIndex != index) {
                                 lastFocusedIndex = index
                                 onItemFocused(index)
@@ -415,7 +424,8 @@ fun ContinueWatchingCard(
     useEpisodeThumbnails: Boolean = true,
     cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
     isFocused: Boolean = false,
-    cornerRadius: Dp = NuvioTheme.radii.md
+    cornerRadius: Dp = NuvioTheme.radii.md,
+    posterTitleOverride: TextStyle? = null
 ) {
     val isPosterStyle = cardStyle == ContinueWatchingCardStyle.POSTER
     val isWideStyle = cardStyle == ContinueWatchingCardStyle.WIDE
@@ -533,8 +543,10 @@ fun ContinueWatchingCard(
         continueWatchingShouldBlur(item, blurUnwatchedEpisodes, effectiveEpisodeThumbnails, usePosterArtwork)
 
     val baseTitleStyle = MaterialTheme.typography.titleSmall
-    val titleStyle = remember(baseTitleStyle, isPosterStyle) {
-        if (isPosterStyle) {
+    val titleStyle = remember(baseTitleStyle, isPosterStyle, posterTitleOverride) {
+        if (isPosterStyle && posterTitleOverride != null) {
+            posterTitleOverride
+        } else if (isPosterStyle) {
             // Tight line height keeps the title row short so the poster can stay catalog sized.
             val scaled = baseTitleStyle.fontSize * POSTER_TITLE_SCALE
             baseTitleStyle.copy(fontSize = scaled, lineHeight = scaled * POSTER_TITLE_LINE_HEIGHT)
@@ -839,6 +851,7 @@ fun ContinueWatchingCard(
             if (textBelowArtwork) {
                 // The title wraps to two lines beside the episode code like the mobile poster card, and the
                 // row height is fixed so a one line title does not make its card shorter than the rest.
+                val titleBlockHeight = if (posterTitleOverride != null) 46.dp else POSTER_TITLE_BLOCK_HEIGHT
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -847,7 +860,7 @@ fun ContinueWatchingCard(
                             start = NuvioTheme.spacing.xs,
                             end = NuvioTheme.spacing.xs
                         )
-                        .height(POSTER_TITLE_BLOCK_HEIGHT),
+                        .height(titleBlockHeight),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
@@ -864,7 +877,11 @@ fun ContinueWatchingCard(
                         Text(
                             text = episodeStr,
                             modifier = Modifier.padding(start = NuvioTheme.spacing.xs),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = if (posterTitleOverride != null) {
+                                MaterialTheme.typography.labelMedium
+                            } else {
+                                MaterialTheme.typography.labelSmall
+                            },
                             color = NuvioTheme.extendedColors.textSecondary,
                             maxLines = 1
                         )
