@@ -145,7 +145,6 @@ fun LayoutSettingsContent(
     val homeLayoutHeaderFocus = initialFocusRequester ?: defaultHomeLayoutHeaderFocus
 
     var focusedSection by remember { mutableStateOf<LayoutSettingsSection?>(null) }
-    var activePreviewLayout by remember(uiState.selectedLayout) { mutableStateOf(uiState.selectedLayout) }
 
     LaunchedEffect(homeLayoutExpanded, focusedSection) {
         if (!homeLayoutExpanded && focusedSection == LayoutSettingsSection.HOME_LAYOUT) {
@@ -227,39 +226,33 @@ fun LayoutSettingsContent(
                         LayoutCard(
                             layout = HomeLayout.MODERN,
                             isSelected = uiState.selectedLayout == HomeLayout.MODERN,
-                            showLivePreview = activePreviewLayout == HomeLayout.MODERN || uiState.selectedLayout == HomeLayout.MODERN,
                             onClick = {
                                 viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.MODERN))
                             },
                             onFocused = {
                                 focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                                activePreviewLayout = HomeLayout.MODERN
                             },
                             modifier = Modifier.weight(1f)
                         )
                         LayoutCard(
                             layout = HomeLayout.GRID,
                             isSelected = uiState.selectedLayout == HomeLayout.GRID,
-                            showLivePreview = activePreviewLayout == HomeLayout.GRID || uiState.selectedLayout == HomeLayout.GRID,
                             onClick = {
                                 viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.GRID))
                             },
                             onFocused = {
                                 focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                                activePreviewLayout = HomeLayout.GRID
                             },
                             modifier = Modifier.weight(1f)
                         )
                         LayoutCard(
                             layout = HomeLayout.CLASSIC,
                             isSelected = uiState.selectedLayout == HomeLayout.CLASSIC,
-                            showLivePreview = activePreviewLayout == HomeLayout.CLASSIC || uiState.selectedLayout == HomeLayout.CLASSIC,
                             onClick = {
                                 viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.CLASSIC))
                             },
                             onFocused = {
                                 focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                                activePreviewLayout = HomeLayout.CLASSIC
                             },
                             modifier = Modifier.weight(1f)
                         )
@@ -1323,12 +1316,13 @@ private fun CwStyleCard(
 private fun LayoutCard(
     layout: HomeLayout,
     isSelected: Boolean,
-    showLivePreview: Boolean,
     onClick: () -> Unit,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    // Selected always animates; others animate only while focused.
+    val animatePreview = isSelected || isFocused
 
     Card(
         onClick = onClick,
@@ -1367,14 +1361,19 @@ private fun LayoutCard(
                     .fillMaxWidth()
                     .height(112.dp)
             ) {
-                if (showLivePreview) {
-                    when (layout) {
-                        HomeLayout.CLASSIC -> ClassicLayoutPreview(modifier = Modifier.fillMaxWidth())
-                        HomeLayout.GRID -> GridLayoutPreview(modifier = Modifier.fillMaxWidth())
-                        HomeLayout.MODERN -> ModernLayoutPreview(modifier = Modifier.fillMaxWidth())
-                    }
-                } else {
-                    LayoutPreviewPlaceholder()
+                when (layout) {
+                    HomeLayout.CLASSIC -> ClassicLayoutPreview(
+                        modifier = Modifier.fillMaxWidth(),
+                        animated = animatePreview
+                    )
+                    HomeLayout.GRID -> GridLayoutPreview(
+                        modifier = Modifier.fillMaxWidth(),
+                        animated = animatePreview
+                    )
+                    HomeLayout.MODERN -> ModernLayoutPreview(
+                        modifier = Modifier.fillMaxWidth(),
+                        animated = animatePreview
+                    )
                 }
             }
 
@@ -1402,44 +1401,6 @@ private fun LayoutCard(
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = if (isSelected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LayoutPreviewPlaceholder() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(112.dp)
-            .background(
-                color = NuvioTheme.colors.BackgroundCard,
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .height(10.dp)
-                .background(NuvioTheme.colors.Border, RoundedCornerShape(999.dp))
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .background(NuvioTheme.colors.BackgroundElevated, RoundedCornerShape(10.dp))
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(3) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(10.dp)
-                        .background(NuvioTheme.colors.Border, RoundedCornerShape(999.dp))
                 )
             }
         }

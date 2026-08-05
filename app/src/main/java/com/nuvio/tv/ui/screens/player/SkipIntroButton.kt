@@ -70,6 +70,7 @@ fun SkipIntroButton(
     focusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null,
     upFocusRequester: FocusRequester? = null,
+    rightFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
 
@@ -154,6 +155,7 @@ fun SkipIntroButton(
                     this.canFocus = canFocus
                     downFocusRequester?.let { down = it }
                     upFocusRequester?.let { up = it }
+                    rightFocusRequester?.let { right = it }
                 }
                 .onPreviewKeyEvent { keyEvent ->
                     if (!canFocus) return@onPreviewKeyEvent false

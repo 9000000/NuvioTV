@@ -623,7 +623,9 @@ fun PlayerScreen(
                         }
                         KeyEvent.KEYCODE_DPAD_LEFT,
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            if (!uiState.showControls) {
+                            val overlayButtonsCoexist = skipButtonActuallyVisible &&
+                                uiState.postPlayMode is PostPlayMode.AutoPlay
+                            if (!uiState.showControls && !overlayButtonsCoexist) {
                                 val isLeft =
                                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                                 val deltaMs = PlayerScrubRates.deltaMsForKeyRepeat(
@@ -634,6 +636,7 @@ fun PlayerScreen(
                                 true
                             } else {
                                 // Let focus system handle navigation when controls are visible
+                                // or both skip and next-episode buttons are on screen
                                 false
                             }
                         }
@@ -865,6 +868,7 @@ fun PlayerScreen(
             } else {
                 null
             },
+            rightFocusRequester = if (uiState.postPlayMode is PostPlayMode.AutoPlay) nextEpisodeFocusRequester else null,
             onHideControls = {
                 if (uiState.showControls) viewModel.hideControls()
                 else viewModel.onEvent(PlayerEvent.OnToggleControls)
@@ -894,6 +898,7 @@ fun PlayerScreen(
             controlsVisible = uiState.showControls,
             nextEpisodeFocusRequester = nextEpisodeFocusRequester,
             progressBarFocusRequester = if (uiState.showControls) progressBarFocusRequester else null,
+            leftFocusRequester = if (skipButtonActuallyVisible) skipIntroFocusRequester else null,
             onPlayNext = { viewModel.onEvent(PlayerEvent.OnPlayNextEpisode) },
             onContinueStillWatching = { viewModel.onEvent(PlayerEvent.OnStillWatchingContinue) },
             onDismissStillWatching = { viewModel.onEvent(PlayerEvent.OnDismissStillWatchingPrompt) },

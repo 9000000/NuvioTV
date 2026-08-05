@@ -609,17 +609,11 @@ internal fun PlayerRuntimeController.clearPendingInitialResumePosition() {
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(UnstableApi::class)
-internal fun PlayerRuntimeController.retryCurrentStreamFromStartAfter416(fromPositionMs: Long) {
+internal fun PlayerRuntimeController.retryCurrentStreamFromStartAfter416() {
     if (hasRetriedCurrentStreamAfter416) return
     hasRetriedCurrentStreamAfter416 = true
-    // Preserve the current position instead of resetting to the beginning.
-    // A 416 (Range Not Satisfiable) often happens when seeking forward beyond
-    // what the server's current response can serve. Restarting from position 0
-    // loses all playback progress and forces the user to re-seek.
-    // Keep pendingResumeProgress intact so the resume logic can re-apply it
-    // after reinitialization, complementing fromPositionMs.
-    val safePosition = fromPositionMs.takeIf { it > 0L } ?: 0L
-    scheduleDeferredPlayerReinitialize(fromPositionMs = safePosition, clearResumeProgress = false)
+    pendingResumeProgress = null
+    scheduleDeferredPlayerReinitialize(fromPositionMs = 0L, clearResumeProgress = true)
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)

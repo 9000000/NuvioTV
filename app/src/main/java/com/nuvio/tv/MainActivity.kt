@@ -152,6 +152,7 @@ import com.nuvio.tv.ui.screens.account.AuthQrSignInScreen
 import com.nuvio.tv.ui.screens.addon.EssentialAddonSetupScreen
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.theme.NuvioComponents
+import com.nuvio.tv.ui.theme.NuvioLayout
 import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioPrimitives
 import com.nuvio.tv.ui.theme.NuvioRadii
@@ -1218,7 +1219,11 @@ private fun LegacySidebarScaffold(
         }
     ) {
         val contentStartPadding by animateDpAsState(
-            targetValue = if (showSidebar) closedDrawerWidth else NuvioTheme.spacing.none,
+            targetValue = if (showSidebar && !sidebarCollapsed) {
+                NuvioLayout.tokens.sidebarContentOffset
+            } else {
+                NuvioTheme.spacing.none
+            },
             animationSpec = tween(NuvioMotion.tokens.durations.medium),
             label = "contentStartPadding"
         )

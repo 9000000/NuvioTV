@@ -24,16 +24,30 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 
 // Each preview scrolls by a whole number of card periods per cycle so the RepeatMode.Restart loop
 // lands on a pixel-identical frame and the snap back is invisible.
 
-/** Animated preview of the classic horizontal row layout: 3 rows, the middle one scrolling. */
+/** Preview of the classic horizontal row layout: 3 rows, the middle one scrolling when animated. */
 @Composable
 fun ClassicLayoutPreview(
     modifier: Modifier = Modifier,
-    accentColor: Color = NuvioTheme.colors.Primary
+    accentColor: Color = NuvioTheme.colors.Primary,
+    animated: Boolean = true
+) {
+    if (animated) {
+        AnimatedClassicLayoutPreview(modifier = modifier, accentColor = accentColor)
+    } else {
+        StaticClassicLayoutPreview(modifier = modifier, accentColor = accentColor)
+    }
+}
+
+@Composable
+private fun AnimatedClassicLayoutPreview(
+    modifier: Modifier,
+    accentColor: Color
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "classicPreview")
     val scrollOffset by infiniteTransition.animateFloat(
@@ -45,69 +59,108 @@ fun ClassicLayoutPreview(
         ),
         label = "classicScroll"
     )
+    ClassicLayoutPreviewFrame(
+        modifier = modifier,
+        accentColor = accentColor,
+        scrollOffset = scrollOffset
+    )
+}
 
+@Composable
+private fun StaticClassicLayoutPreview(
+    modifier: Modifier,
+    accentColor: Color
+) {
+    ClassicLayoutPreviewFrame(
+        modifier = modifier,
+        accentColor = accentColor,
+        scrollOffset = 0f
+    )
+}
+
+@Composable
+private fun ClassicLayoutPreviewFrame(
+    modifier: Modifier,
+    accentColor: Color,
+    scrollOffset: Float
+) {
     val bgColor = NuvioTheme.colors.Background
     val cardColor = accentColor.copy(alpha = 0.6f)
     val cardColorDim = accentColor.copy(alpha = 0.3f)
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(NuvioTheme.radii.sm))
-            .background(bgColor)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val rowCount = 3
-            val rowSpacing = h * 0.04f
-            val rowHeight = (h - rowSpacing * (rowCount + 1)) / rowCount
-            val cardWidth = w / 5.5f
-            val cardHeight = rowHeight * 0.85f
-            val gap = w / 40f
-            val step = cardWidth + gap
-            val cornerRadius = CornerRadius(h * 0.02f)
-            val shift = scrollOffset * step * 2f
-            val cardsToFill = (w / step).toInt() + 4
+    LayoutPreviewFrame(modifier = modifier, background = bgColor) {
+        drawClassicLayoutPreview(scrollOffset, cardColor, cardColorDim)
+    }
+}
 
-            for (rowIndex in 0 until rowCount) {
-                val rowY = rowSpacing + rowIndex * (rowHeight + rowSpacing)
-                val cardTop = rowY + (rowHeight - cardHeight) / 2f
+private fun DrawScope.drawClassicLayoutPreview(
+    scrollOffset: Float,
+    cardColor: Color,
+    cardColorDim: Color
+) {
+    val w = size.width
+    val h = size.height
+    val rowCount = 3
+    val rowSpacing = h * 0.04f
+    val rowHeight = (h - rowSpacing * (rowCount + 1)) / rowCount
+    val cardWidth = w / 5.5f
+    val cardHeight = rowHeight * 0.85f
+    val gap = w / 40f
+    val step = cardWidth + gap
+    val cornerRadius = CornerRadius(h * 0.02f)
+    val shift = scrollOffset * step * 2f
+    val cardsToFill = (w / step).toInt() + 4
 
-                if (rowIndex == 1) {
-                    for (i in 0..cardsToFill) {
-                        val cardX = gap * 2 + i * step - shift
-                        if (cardX + cardWidth > 0f && cardX < w) {
-                            drawRoundRect(
-                                color = cardColor,
-                                topLeft = Offset(cardX, cardTop),
-                                size = Size(cardWidth, cardHeight),
-                                cornerRadius = cornerRadius
-                            )
-                        }
-                    }
-                } else {
-                    for (i in 0 until 7) {
-                        val cardX = gap * 2 + i * step
-                        if (cardX < w) {
-                            drawRoundRect(
-                                color = cardColorDim,
-                                topLeft = Offset(cardX, cardTop),
-                                size = Size(cardWidth, cardHeight),
-                                cornerRadius = cornerRadius
-                            )
-                        }
-                    }
+    for (rowIndex in 0 until rowCount) {
+        val rowY = rowSpacing + rowIndex * (rowHeight + rowSpacing)
+        val cardTop = rowY + (rowHeight - cardHeight) / 2f
+
+        if (rowIndex == 1) {
+            for (i in 0..cardsToFill) {
+                val cardX = gap * 2 + i * step - shift
+                if (cardX + cardWidth > 0f && cardX < w) {
+                    drawRoundRect(
+                        color = cardColor,
+                        topLeft = Offset(cardX, cardTop),
+                        size = Size(cardWidth, cardHeight),
+                        cornerRadius = cornerRadius
+                    )
+                }
+            }
+        } else {
+            for (i in 0 until 7) {
+                val cardX = gap * 2 + i * step
+                if (cardX < w) {
+                    drawRoundRect(
+                        color = cardColorDim,
+                        topLeft = Offset(cardX, cardTop),
+                        size = Size(cardWidth, cardHeight),
+                        cornerRadius = cornerRadius
+                    )
                 }
             }
         }
     }
 }
 
-/** Animated preview of the grid layout: a 5-column grid scrolling upward. */
+/** Preview of the grid layout: a 5-column grid scrolling upward when animated. */
 @Composable
 fun GridLayoutPreview(
     modifier: Modifier = Modifier,
-    accentColor: Color = NuvioTheme.colors.Primary
+    accentColor: Color = NuvioTheme.colors.Primary,
+    animated: Boolean = true
+) {
+    if (animated) {
+        AnimatedGridLayoutPreview(modifier = modifier, accentColor = accentColor)
+    } else {
+        StaticGridLayoutPreview(modifier = modifier, accentColor = accentColor)
+    }
+}
+
+@Composable
+private fun AnimatedGridLayoutPreview(
+    modifier: Modifier,
+    accentColor: Color
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "gridPreview")
     val scrollOffset by infiniteTransition.animateFloat(
@@ -120,53 +173,92 @@ fun GridLayoutPreview(
         ),
         label = "gridScroll"
     )
+    GridLayoutPreviewFrame(
+        modifier = modifier,
+        accentColor = accentColor,
+        scrollOffset = scrollOffset
+    )
+}
 
+@Composable
+private fun StaticGridLayoutPreview(
+    modifier: Modifier,
+    accentColor: Color
+) {
+    GridLayoutPreviewFrame(
+        modifier = modifier,
+        accentColor = accentColor,
+        scrollOffset = 0f
+    )
+}
+
+@Composable
+private fun GridLayoutPreviewFrame(
+    modifier: Modifier,
+    accentColor: Color,
+    scrollOffset: Float
+) {
     val bgColor = NuvioTheme.colors.Background
     val cardColor = accentColor.copy(alpha = 0.5f)
     val cardColorAlt = accentColor.copy(alpha = 0.3f)
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(NuvioTheme.radii.sm))
-            .background(bgColor)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
+    LayoutPreviewFrame(modifier = modifier, background = bgColor) {
+        drawGridLayoutPreview(scrollOffset, cardColor, cardColorAlt)
+    }
+}
 
-            val cols = 5
-            val cardGap = w * 0.025f
-            val cardW = (w - cardGap * (cols + 1)) / cols
-            val cardH = cardW * 1.4f
-            val rowStep = cardH + cardGap
-            val cornerRadius = CornerRadius(h * 0.015f)
-            val scrollY = scrollOffset * rowStep * 3f
-            val rowsToFill = (h / rowStep).toInt() + 5
+private fun DrawScope.drawGridLayoutPreview(
+    scrollOffset: Float,
+    cardColor: Color,
+    cardColorAlt: Color
+) {
+    val w = size.width
+    val h = size.height
 
-            for (row in 0..rowsToFill) {
-                val cardY = cardGap + row * rowStep - scrollY
-                if (cardY + cardH > 0f && cardY < h) {
-                    val color = if (row % 3 < 2) cardColor else cardColorAlt
-                    for (col in 0 until cols) {
-                        val cardX = cardGap + col * (cardW + cardGap)
-                        drawRoundRect(
-                            color = color,
-                            topLeft = Offset(cardX, cardY),
-                            size = Size(cardW, cardH),
-                            cornerRadius = cornerRadius
-                        )
-                    }
-                }
+    val cols = 5
+    val cardGap = w * 0.025f
+    val cardW = (w - cardGap * (cols + 1)) / cols
+    val cardH = cardW * 1.4f
+    val rowStep = cardH + cardGap
+    val cornerRadius = CornerRadius(h * 0.015f)
+    val scrollY = scrollOffset * rowStep * 3f
+    val rowsToFill = (h / rowStep).toInt() + 5
+
+    for (row in 0..rowsToFill) {
+        val cardY = cardGap + row * rowStep - scrollY
+        if (cardY + cardH > 0f && cardY < h) {
+            val color = if (row % 3 < 2) cardColor else cardColorAlt
+            for (col in 0 until cols) {
+                val cardX = cardGap + col * (cardW + cardGap)
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(cardX, cardY),
+                    size = Size(cardW, cardH),
+                    cornerRadius = cornerRadius
+                )
             }
         }
     }
 }
 
-/** Animated preview of the modern layout: a static hero with a scrolling card row beneath it. */
+/** Preview of the modern layout: a static hero with a scrolling card row when animated. */
 @Composable
 fun ModernLayoutPreview(
     modifier: Modifier = Modifier,
-    accentColor: Color = NuvioTheme.colors.Primary
+    accentColor: Color = NuvioTheme.colors.Primary,
+    animated: Boolean = true
+) {
+    if (animated) {
+        AnimatedModernLayoutPreview(modifier = modifier, accentColor = accentColor)
+    } else {
+        StaticModernLayoutPreview(modifier = modifier, accentColor = accentColor)
+    }
+}
+
+@Composable
+private fun AnimatedModernLayoutPreview(
+    modifier: Modifier,
+    accentColor: Color
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "modernPreview")
     val scrollOffset by infiniteTransition.animateFloat(
@@ -179,50 +271,75 @@ fun ModernLayoutPreview(
         ),
         label = "modernScroll"
     )
+    ModernLayoutPreviewFrame(
+        modifier = modifier,
+        accentColor = accentColor,
+        scrollOffset = scrollOffset
+    )
+}
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(NuvioTheme.radii.sm))
-            .background(NuvioTheme.colors.Background)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val horizontalPadding = w * 0.05f
-            val topPadding = h * 0.06f
-            val heroHeight = h * 0.62f
-            val rowTop = topPadding + heroHeight + (h * 0.05f)
-            val cardHeight = h * 0.24f
-            val cardWidth = cardHeight * 1.45f
-            val gap = w * 0.03f
+@Composable
+private fun StaticModernLayoutPreview(
+    modifier: Modifier,
+    accentColor: Color
+) {
+    ModernLayoutPreviewFrame(
+        modifier = modifier,
+        accentColor = accentColor,
+        scrollOffset = 0f
+    )
+}
 
+@Composable
+private fun ModernLayoutPreviewFrame(
+    modifier: Modifier,
+    accentColor: Color,
+    scrollOffset: Float
+) {
+    LayoutPreviewFrame(modifier = modifier, background = NuvioTheme.colors.Background) {
+        drawModernLayoutPreview(scrollOffset, accentColor)
+    }
+}
+
+private fun DrawScope.drawModernLayoutPreview(
+    scrollOffset: Float,
+    accentColor: Color
+) {
+    val w = size.width
+    val h = size.height
+    val horizontalPadding = w * 0.05f
+    val topPadding = h * 0.06f
+    val heroHeight = h * 0.62f
+    val rowTop = topPadding + heroHeight + (h * 0.05f)
+    val cardHeight = h * 0.24f
+    val cardWidth = cardHeight * 1.45f
+    val gap = w * 0.03f
+
+    drawRoundRect(
+        color = accentColor.copy(alpha = 0.38f),
+        topLeft = Offset(horizontalPadding, topPadding),
+        size = Size(w - (horizontalPadding * 2f), heroHeight),
+        cornerRadius = CornerRadius(h * 0.05f)
+    )
+
+    val step = cardWidth + gap
+    val cornerRadius = CornerRadius(h * 0.03f)
+    val shift = scrollOffset * step * 3f
+    val cardsToFill = (w / step).toInt() + 6
+
+    for (i in 0..cardsToFill) {
+        val x = horizontalPadding + (i * step) - shift
+        if (x + cardWidth > 0f && x < w) {
             drawRoundRect(
-                color = accentColor.copy(alpha = 0.38f),
-                topLeft = Offset(horizontalPadding, topPadding),
-                size = Size(w - (horizontalPadding * 2f), heroHeight),
-                cornerRadius = CornerRadius(h * 0.05f)
+                color = if (i % 3 == 1) {
+                    accentColor.copy(alpha = 0.46f)
+                } else {
+                    accentColor.copy(alpha = 0.28f)
+                },
+                topLeft = Offset(x, rowTop),
+                size = Size(cardWidth, cardHeight),
+                cornerRadius = cornerRadius
             )
-
-            val step = cardWidth + gap
-            val cornerRadius = CornerRadius(h * 0.03f)
-            val shift = scrollOffset * step * 3f
-            val cardsToFill = (w / step).toInt() + 6
-
-            for (i in 0..cardsToFill) {
-                val x = horizontalPadding + (i * step) - shift
-                if (x + cardWidth > 0f && x < w) {
-                    drawRoundRect(
-                        color = if (i % 3 == 1) {
-                            accentColor.copy(alpha = 0.46f)
-                        } else {
-                            accentColor.copy(alpha = 0.28f)
-                        },
-                        topLeft = Offset(x, rowTop),
-                        size = Size(cardWidth, cardHeight),
-                        cornerRadius = cornerRadius
-                    )
-                }
-            }
         }
     }
 }
@@ -464,5 +581,20 @@ fun PosterCwStylePreview(
                 cornerRadius = CornerRadius(titleLineH)
             )
         }
+    }
+}
+
+@Composable
+private fun LayoutPreviewFrame(
+    modifier: Modifier,
+    background: Color,
+    onDraw: DrawScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(NuvioTheme.radii.sm))
+            .background(background)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize(), onDraw = onDraw)
     }
 }
