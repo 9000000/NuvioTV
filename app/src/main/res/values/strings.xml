@@ -915,13 +915,9 @@
     <string name="layout_show_unaired_next_up">Show Unaired Next Up Episodes</string>
     <string name="layout_show_unaired_next_up_sub">Include upcoming episodes in Continue Watching before they air.</string>
     <string name="layout_cw_card_style">Card Style</string>
-    <string name="layout_cw_card_style_sub">Shape of the Continue Watching cards</string>
     <string name="layout_cw_card_style_card">Card</string>
-    <string name="layout_cw_card_style_card_desc">Landscape card using episode thumbnails or backdrops</string>
     <string name="layout_cw_card_style_wide">Wide</string>
-    <string name="layout_cw_card_style_wide_desc">Info dense horizontal card with artwork beside the details</string>
     <string name="layout_cw_card_style_poster">Poster</string>
-    <string name="layout_cw_card_style_poster_desc">Portrait card using poster artwork, matching the catalog rows</string>
     <string name="layout_cw_sort_mode">Sort Order</string>
     <string name="layout_cw_sort_mode_sub">How Continue Watching items are arranged</string>
     <string name="layout_cw_sort_default">Default</string>
