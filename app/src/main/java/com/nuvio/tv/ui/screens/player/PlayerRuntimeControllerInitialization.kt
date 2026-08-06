@@ -71,7 +71,6 @@ import com.nuvio.tv.core.player.DoviBridge
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
 import com.nuvio.tv.ui.screens.settings.MemoryBudget
-import com.nuvio.tv.data.local.AddonSubtitleStartupMode
 import com.nuvio.tv.data.local.AudioLanguageOption
 import com.nuvio.tv.data.local.Dv7HandlingMode
 import com.nuvio.tv.data.local.FrameRateMatchingMode
@@ -92,7 +91,7 @@ import java.net.SocketTimeoutException
 import kotlin.math.min
 import androidx.media3.common.Tracks
 
-private const val STARTUP_SUBTITLE_PREFETCH_TIMEOUT_MS = 20_000L
+
 private const val MPV_AFR_SETTLE_DELAY_MS = 2_000L
 private const val AUDIO_DELAY_REFRESH_DEBOUNCE_MS = 120L
 private const val PLAYER_RELEASE_TIMEOUT_MS = 3000L
@@ -1884,106 +1883,12 @@ internal fun resolveDeviceAudioLanguages(): List<String> {
     }
 }
 
-internal suspend fun PlayerRuntimeController.prepareStartupSubtitles(
-    mode: AddonSubtitleStartupMode,
-    preferredLanguage: String,
-    secondaryLanguage: String?,
-    showOnlyPreferredLanguages: Boolean = false
-): StartupSubtitlePreparation {
-    val effectiveMode = if (showOnlyPreferredLanguages && mode == AddonSubtitleStartupMode.ALL_SUBTITLES) {
-        AddonSubtitleStartupMode.PREFERRED_ONLY
-    } else {
-        mode
-    }
-
-    if (effectiveMode == AddonSubtitleStartupMode.FAST_STARTUP) {
-        return StartupSubtitlePreparation(
-            fetchedSubtitles = emptyList(),
-            attachedSubtitles = emptyList(),
-            fetchCompleted = false
-        )
-    }
-
-    if (buildSubtitleFetchRequest() == null) {
-        return StartupSubtitlePreparation(
-            fetchedSubtitles = emptyList(),
-            attachedSubtitles = emptyList(),
-            fetchCompleted = false
-        )
-    }
-
-    val preferredTargets = when (PlayerSubtitleUtils.normalizeLanguageCode(preferredLanguage)) {
-        "none" -> listOfNotNull(secondaryLanguage?.takeIf { it.isNotBlank() })
-        else -> listOfNotNull(preferredLanguage, secondaryLanguage?.takeIf { it.isNotBlank() })
-    }.map { PlayerSubtitleUtils.normalizeLanguageCode(it) }.distinct()
-
-    if (effectiveMode == AddonSubtitleStartupMode.PREFERRED_ONLY && preferredTargets.isEmpty()) {
-        return StartupSubtitlePreparation(
-            fetchedSubtitles = emptyList(),
-            attachedSubtitles = emptyList(),
-            fetchCompleted = false
-        )
-    }
-
-    val loadingSubtitlesMessage = context.getString(R.string.player_loading_subtitles)
-    _uiState.update {
-        it.copy(
-            isLoadingAddonSubtitles = true,
-            addonSubtitlesError = null,
-            loadingMessage = loadingSubtitlesMessage
-        )
-    }
-    recordLoadingDiagnosticEvent(
-        phase = "fetching_subtitles",
-        message = loadingSubtitlesMessage
-    )
-
-    val fetchedSubtitles = withTimeoutOrNull(STARTUP_SUBTITLE_PREFETCH_TIMEOUT_MS) {
-        fetchAddonSubtitlesNow(
-            onProgress = { completed, total, addonName ->
-                val msg = if (completed == 0) {
-                    context.getString(R.string.player_loading_subtitles_from, total)
-                } else if (addonName != null) {
-                    context.getString(R.string.player_loading_subtitles_addon, addonName, completed, total)
-                } else {
-                    context.getString(R.string.player_loading_subtitles_progress, completed, total)
-                }
-                _uiState.update { it.copy(loadingMessage = msg) }
-                recordLoadingDiagnosticEvent(
-                    phase = "fetching_subtitles",
-                    message = msg,
-                    progress = if (total > 0) completed.toFloat() / total.toFloat() else null,
-                    detail = addonName
-                )
-            }
-        )
-    } ?: run {
-        recordLoadingDiagnosticEvent(
-            phase = "fetching_subtitles_timeout",
-            message = context.getString(R.string.player_loading_subtitles)
-        )
-        return StartupSubtitlePreparation(emptyList(), emptyList(), false)
-    }
-
-    val attachedSubtitles = when (effectiveMode) {
-        AddonSubtitleStartupMode.ALL_SUBTITLES -> fetchedSubtitles
-        AddonSubtitleStartupMode.PREFERRED_ONLY -> fetchedSubtitles.filter { subtitle -> preferredTargets.any { target -> PlayerSubtitleUtils.matchesLanguageCode(subtitle.lang, target) } }
-        AddonSubtitleStartupMode.FAST_STARTUP -> emptyList()
-    }
-
-    val visibleSubtitles = if (showOnlyPreferredLanguages) attachedSubtitles else fetchedSubtitles
-
+internal suspend fun PlayerRuntimeController.prepareStartupSubtitles(): StartupSubtitlePreparation {
     return StartupSubtitlePreparation(
-        fetchedSubtitles = visibleSubtitles,
-        attachedSubtitles = attachedSubtitles,
-        fetchCompleted = true
-    ).also {
-        recordLoadingDiagnosticEvent(
-            phase = "fetching_subtitles_done",
-            message = context.getString(R.string.player_loading_subtitles),
-            detail = visibleSubtitles.size.toString()
-        )
-    }
+        fetchedSubtitles = emptyList(),
+        attachedSubtitles = emptyList(),
+        fetchCompleted = false
+    )
 }
 
 internal fun PlayerRuntimeController.resetAddonSubtitleStateForNewStream() {
@@ -1995,6 +1900,7 @@ internal fun PlayerRuntimeController.resetAddonSubtitleStateForNewStream() {
     explicitSubtitleSelectionForEngineSwitch = null
     effectiveSubtitleSelectionForEngineSwitch = null
     attachedAddonSubtitleKeys = emptySet()
+    stopSidecarAddonSubtitle(clearView = true)
     _uiState.update {
         it.copy(
             addonSubtitles = emptyList(),
@@ -2017,12 +1923,7 @@ internal suspend fun PlayerRuntimeController.prepareStreamStartSubtitles(
         hasDetectedAssSsaTrackForCurrentStream = false
     }
     resetAddonSubtitleStateForNewStream()
-    return prepareStartupSubtitles(
-        mode = playerSettings.addonSubtitleStartupMode,
-        preferredLanguage = playerSettings.subtitleStyle.preferredLanguage,
-        secondaryLanguage = playerSettings.subtitleStyle.secondaryPreferredLanguage,
-        showOnlyPreferredLanguages = playerSettings.subtitleStyle.showOnlyPreferredLanguages
-    )
+    return prepareStartupSubtitles()
 }
 
 internal fun PlayerRuntimeController.applyStartupSubtitlePreparation(startupSubtitlePreparation: StartupSubtitlePreparation) {
