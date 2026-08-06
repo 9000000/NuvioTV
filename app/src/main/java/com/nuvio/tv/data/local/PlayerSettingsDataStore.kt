@@ -291,7 +291,7 @@ data class PlayerSettings(
     val parallelChunkSizeKb: Int = DEFAULT_PARALLEL_CHUNK_SIZE_KB,
     val enableHttp2: Boolean = DEFAULT_ENABLE_HTTP2,
 
-    val addonSubtitleStartupMode: AddonSubtitleStartupMode = AddonSubtitleStartupMode.FAST_STARTUP,
+    val addonSubtitleStartupMode: AddonSubtitleStartupMode = AddonSubtitleStartupMode.ALL_SUBTITLES,
     val enableBufferLogs: Boolean = false,
     val resizeMode: Int = 0,
     // Nuvio ExoPlayer Performance Mode
@@ -364,11 +364,7 @@ enum class SubtitleOrganizationMode {
 }
 
 enum class AddonSubtitleStartupMode {
-    FAST_STARTUP,
-    @Deprecated("Fast startup is now universal.")
-    PREFERRED_ONLY,
-    @Deprecated("Fast startup is now universal.")
-    ALL_SUBTITLES
+    FAST_STARTUP, PREFERRED_ONLY, ALL_SUBTITLES
 }
 
 enum class MpvHardwareDecodeMode {
@@ -540,6 +536,9 @@ class PlayerSettingsDataStore @Inject constructor(
     private val enableHttp2Key = booleanPreferencesKey("enable_http2")
     private val lastPlaybackDiagnosticsKey = stringPreferencesKey("last_playback_diagnostics_json")
 
+    private val addonSubtitleStartupModeKey = stringPreferencesKey("addon_subtitle_startup_mode")
+    private val addonSubtitleStartupModeAutoPreferredKey =
+        booleanPreferencesKey("addon_subtitle_startup_mode_auto_preferred")
     private val enableBufferLogsKey = booleanPreferencesKey("enable_buffer_logs")
     private val resizeModeKey = intPreferencesKey("resize_mode")
 
@@ -922,7 +921,7 @@ class PlayerSettingsDataStore @Inject constructor(
                         savedMb * 1024
                     }
                 },
-                addonSubtitleStartupMode = AddonSubtitleStartupMode.FAST_STARTUP,
+                addonSubtitleStartupMode = parseAddonSubtitleStartupMode(prefs[addonSubtitleStartupModeKey]),
                 enableBufferLogs = prefs[enableBufferLogsKey] ?: false,
                 resizeMode = (prefs[resizeModeKey] ?: 0).coerceIn(0, 4),
                 enableHttp2 = prefs[enableHttp2Key] ?: PlayerSettings.DEFAULT_ENABLE_HTTP2,
@@ -1312,15 +1311,30 @@ class PlayerSettingsDataStore @Inject constructor(
             prefs[subtitleOrganizationModeKey] = mode.name
         }
     }
+
+    suspend fun setAddonSubtitleStartupMode(mode: AddonSubtitleStartupMode) {
+        store().edit { prefs ->
+            prefs[addonSubtitleStartupModeKey] = mode.name
+            prefs[addonSubtitleStartupModeAutoPreferredKey] = false
+        }
+    }
+
     suspend fun setResizeMode(mode: Int) {
         store().edit { prefs ->
             prefs[resizeModeKey] = mode.coerceIn(0, 4)
         }
     }
 
+
+
     private fun parseSubtitleOrganizationMode(value: String?): SubtitleOrganizationMode {
         return when (value) { "BY_LANGUAGE" -> SubtitleOrganizationMode.BY_LANGUAGE; "BY_ADDON" -> SubtitleOrganizationMode.BY_ADDON; else -> SubtitleOrganizationMode.NONE }
     }
+
+    private fun parseAddonSubtitleStartupMode(value: String?): AddonSubtitleStartupMode {
+        return when (value) { "PREFERRED_ONLY" -> AddonSubtitleStartupMode.PREFERRED_ONLY; "FAST_STARTUP" -> AddonSubtitleStartupMode.FAST_STARTUP; else -> AddonSubtitleStartupMode.ALL_SUBTITLES }
+    }
+
     private fun parseMpvHardwareDecodeMode(value: String?): MpvHardwareDecodeMode {
         return when (value) { "HARDWARE_COPY" -> MpvHardwareDecodeMode.HARDWARE_COPY; "HARDWARE_DIRECT" -> MpvHardwareDecodeMode.HARDWARE_DIRECT; "DISABLED" -> MpvHardwareDecodeMode.DISABLED; "LEGACY_DIRECT_COPY" -> MpvHardwareDecodeMode.LEGACY_DIRECT_COPY; else -> MpvHardwareDecodeMode.AUTO_SAFE }
     }
@@ -1412,7 +1426,22 @@ class PlayerSettingsDataStore @Inject constructor(
 
     suspend fun setSubtitleShowOnlyPreferredLanguages(enabled: Boolean) {
         store().edit { prefs ->
+            val currentStartupMode = parseAddonSubtitleStartupMode(prefs[addonSubtitleStartupModeKey])
             prefs[subtitleShowOnlyPreferredLanguagesKey] = enabled
+            if (enabled) {
+                if (currentStartupMode == AddonSubtitleStartupMode.ALL_SUBTITLES) {
+                    prefs[addonSubtitleStartupModeKey] = AddonSubtitleStartupMode.PREFERRED_ONLY.name
+                    prefs[addonSubtitleStartupModeAutoPreferredKey] = true
+                } else {
+                    prefs[addonSubtitleStartupModeAutoPreferredKey] = false
+                }
+            } else {
+                val wasAutoPreferred = prefs[addonSubtitleStartupModeAutoPreferredKey] ?: false
+                if (wasAutoPreferred && currentStartupMode == AddonSubtitleStartupMode.PREFERRED_ONLY) {
+                    prefs[addonSubtitleStartupModeKey] = AddonSubtitleStartupMode.ALL_SUBTITLES.name
+                }
+                prefs[addonSubtitleStartupModeAutoPreferredKey] = false
+            }
         }
     }
 
