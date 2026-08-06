@@ -722,6 +722,9 @@ fun SearchScreen(
                                 },
                                 onItemClick = { id, type, addonBaseUrl ->
                                     lastFocusedRowKey = catalogKey
+                                    // Entering a result confirms the query for recent history
+                                    // (keyboard Done is not required after live search).
+                                    viewModel.onEvent(SearchEvent.RememberSearchFromResults)
                                     // Save focus state to ViewModel before navigating
                                     viewModel.savedFocusRowKey = catalogKey
                                     viewModel.savedFocusItemIndex = searchRowFocusedItemIndex[catalogKey] ?: 0

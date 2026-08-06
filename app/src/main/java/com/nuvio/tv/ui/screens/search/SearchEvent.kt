@@ -3,6 +3,8 @@ package com.nuvio.tv.ui.screens.search
 sealed interface SearchEvent {
     data class QueryChanged(val query: String) : SearchEvent
     data object SubmitSearch : SearchEvent
+    /** Opening a result counts as confirming the current search (see #2928 review). */
+    data object RememberSearchFromResults : SearchEvent
     data object ClearRecentSearches : SearchEvent
 
     data class LoadMoreCatalog(
