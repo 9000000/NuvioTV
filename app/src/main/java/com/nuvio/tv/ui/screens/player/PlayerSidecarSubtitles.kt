@@ -106,15 +106,6 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
     lastSidecarCueSignature = null
     sidecarTimedCues = emptyList()
 
-    // Suppress Exo text tracks so PlayerView does not overwrite our manual cues.
-    _exoPlayer?.let { player ->
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .build()
-    }
-
     sidecarSubtitleJob = scope.launch {
         try {
             val rawBody = downloadSubtitleBody(subtitle.url)
@@ -183,7 +174,7 @@ internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition(
             subtitleDelayUs.get()
         ).coerceAtLeast(0L)
     val active = collectActiveSidecarCues(cues, positionUs)
-    val signature = activeCueSignature(active, positionUs)
+    val signature = activeCueSignature(active)
     if (signature == lastSidecarCueSignature) return
     lastSidecarCueSignature = signature
     val processed = if (normalizeCuePosition) {
@@ -309,16 +300,18 @@ private fun collectActiveSidecarCues(
     return active
 }
 
-private fun activeCueSignature(cues: List<Cue>, positionUs: Long): Long {
-    if (cues.isEmpty()) return positionUs xor EMPTY_CUE_SIGNATURE
+private fun activeCueSignature(cues: List<Cue>): Long {
+    if (cues.isEmpty()) return EMPTY_CUE_SIGNATURE
     var hash = cues.size.toLong()
     for (cue in cues) {
         hash = 31L * hash + (cue.text?.hashCode()?.toLong() ?: 0L)
         hash = 31L * hash + cue.line.toBits().toLong()
         hash = 31L * hash + cue.position.toBits().toLong()
+        hash = 31L * hash + cue.lineAnchor.toLong()
+        hash = 31L * hash + cue.positionAnchor.toLong()
+        hash = 31L * hash + cue.size.toBits().toLong()
     }
-    // Bucket position so we do not thrash setCues every frame when text is stable.
-    return hash xor (positionUs / 200_000L)
+    return hash
 }
 
 private fun normalizeSidecarCuePosition(cue: Cue): Cue {
