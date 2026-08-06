@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
   <string name="app_name">Nuvio</string>
   <string name="tv_channel_continue_watching">Συνέχεια παρακολούθησης</string>
   <string name="type_movie">Ταινία</string>
@@ -685,6 +685,13 @@
   <string name="sub_org_none_desc">Εμφάνιση υπότιτλων με την προεπιλεγμένη σειρά αποτελεσμάτων πρόσθετου.</string>
   <string name="sub_org_by_lang_desc">Ομαδοποίηση υπότιτλων ανά γλώσσα.</string>
   <string name="sub_org_by_addon_desc">Ομαδοποίηση υπότιτλων ανά πηγή πρόσθετου.</string>
+  <string name="sub_startup_mode_title">Φόρτωση υπότιτλων πρόσθετου</string>
+  <string name="sub_startup_mode_fast">Γρήγορη εκκίνηση</string>
+  <string name="sub_startup_mode_preferred">Προτιμώμενες γλώσσες</string>
+  <string name="sub_startup_mode_all">Όλοι οι υπότιτλοι πρόσθετου</string>
+  <string name="sub_startup_mode_fast_desc">Άμεση έναρξη αναπαραγωγής. Η επιλογή υπότιτλων πρόσθετου μπορεί να επαναφορτώσει το πρόγραμμα αναπαραγωγής μία φορά.</string>
+  <string name="sub_startup_mode_preferred_desc">Προφόρτωση υπότιτλων πρόσθετου πριν την αναπαραγωγή και επισύναψη κομματιών προτιμώμενης/δευτερεύουσας γλώσσας.</string>
+  <string name="sub_startup_mode_all_desc">Προφόρτωση και επισύναψη όλων των υπότιτλων πρόσθετου πριν την αναπαραγωγή. Πιο αργή εκκίνηση.</string>
   <!-- PlaybackAutoPlaySettings -->
   <string name="autoplay_reuse_last_link">Επαναχρησιμοποίηση τελευταίας σύνδεσης</string>
   <string name="autoplay_reuse_last_link_sub">Αυτόματη αναπαραγωγή της τελευταίας λειτουργικής ροής για την ίδια ταινία/επεισόδιο όταν η προσωρινή μνήμη είναι ακόμα έγκυρη</string>
