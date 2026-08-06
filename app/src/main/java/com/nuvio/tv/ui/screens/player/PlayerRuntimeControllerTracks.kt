@@ -78,12 +78,18 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                         if (!ambiguousCinemaTrack) {
                             frameRateProbeJob?.cancel()
                         }
-                        _uiState.update {
-                            it.copy(
-                                detectedFrameRateRaw = raw,
-                                detectedFrameRate = snapped,
-                                detectedFrameRateSource = FrameRateSource.TRACK
-                            )
+                        _uiState.update { currentState ->
+                            if (currentState.detectedFrameRateSource == FrameRateSource.PROBE &&
+                                currentState.detectedFrameRate > 0f
+                            ) {
+                                currentState
+                            } else {
+                                currentState.copy(
+                                    detectedFrameRateRaw = raw,
+                                    detectedFrameRate = snapped,
+                                    detectedFrameRateSource = FrameRateSource.TRACK
+                                )
+                            }
                         }
                     }
                     // Extract video codec, resolution, and bitrate for stream info
