@@ -14,6 +14,7 @@ import androidx.media3.extractor.text.CuesWithTiming
 import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.extractor.text.SubtitleParser
 import androidx.media3.ui.SubtitleView
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.Subtitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -66,7 +67,7 @@ private fun PlayerRuntimeController.shouldKeepAssOnLibassMediaPath(): Boolean {
 }
 
 internal fun PlayerRuntimeController.isSidecarAddonSubtitleActive(): Boolean {
-    return activeSidecarSubtitleKey != null
+    return activeSidecarSubtitleKey != null && _uiState.value.selectedAddonSubtitle != null
 }
 
 internal fun PlayerRuntimeController.bindExoSubtitleView(subtitleView: SubtitleView?) {
@@ -87,7 +88,10 @@ internal fun PlayerRuntimeController.stopSidecarAddonSubtitle(clearView: Boolean
     sidecarTimedCues = emptyList()
     lastSidecarCueSignature = null
     if (clearView) {
-        postToSubtitleView { it.setCues(emptyList()) }
+        postToSubtitleView { view ->
+            view.setTag(R.id.player_view_sidecar_generation_tag, null)
+            view.setCues(emptyList())
+        }
     }
 }
 
@@ -105,7 +109,10 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
     activeSidecarSubtitleKey = subtitleKey
     lastSidecarCueSignature = null
     sidecarTimedCues = emptyList()
-    postToSubtitleView { it.setCues(emptyList()) }
+    postToSubtitleView { view ->
+        view.setTag(R.id.player_view_sidecar_generation_tag, subtitleKey)
+        view.setCues(emptyList())
+    }
 
     sidecarSubtitleJob = scope.launch {
         try {
@@ -128,7 +135,10 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
                 // Stay on sidecar path — do not wipe progressive buffer via setMediaSource.
                 activeSidecarSubtitleKey = null
                 sidecarTimedCues = emptyList()
-                postToSubtitleView { it.setCues(emptyList()) }
+                postToSubtitleView { view ->
+                    view.setTag(R.id.player_view_sidecar_generation_tag, null)
+                    view.setCues(emptyList())
+                }
                 return@launch
             }
 
@@ -156,7 +166,10 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
             )
             activeSidecarSubtitleKey = null
             sidecarTimedCues = emptyList()
-            postToSubtitleView { it.setCues(emptyList()) }
+            postToSubtitleView { view ->
+                view.setTag(R.id.player_view_sidecar_generation_tag, null)
+                view.setCues(emptyList())
+            }
             // Intentionally no attachAddonSubtitleViaMediaReload — keeps A/V buffer intact.
         }
     }
@@ -178,12 +191,17 @@ internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition(
     val signature = activeCueSignature(active)
     if (signature == lastSidecarCueSignature) return
     lastSidecarCueSignature = signature
+    val currentKey = activeSidecarSubtitleKey ?: return
     val processed = if (normalizeCuePosition) {
         active.map { normalizeSidecarCuePosition(it) }
     } else {
         active
     }
-    postToSubtitleView { it.setCues(processed) }
+    postToSubtitleView { view ->
+        if (view.getTag(R.id.player_view_sidecar_generation_tag) == currentKey) {
+            view.setCues(processed)
+        }
+    }
 }
 
 private fun PlayerRuntimeController.postToSubtitleView(block: (SubtitleView) -> Unit) {
