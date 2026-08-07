@@ -230,14 +230,23 @@ internal fun parseSidecarTimedCuesRobust(rawText: String, sourceUrl: String): Si
     for (mime in candidates) {
         val parsed = parseSidecarTimedCuesWithMime(cleaned, mime)
         if (parsed.isNotEmpty()) {
-            return SidecarParseResult(parsed, mime, source = "media3")
+            // RTL once at parse (Dispatchers.Default) — never on the 100ms ticker.
+            return SidecarParseResult(
+                PlayerSubtitleRtlFix.fixTimedCues(parsed, isBuiltInSubtitle = false),
+                mime,
+                source = "media3"
+            )
         }
     }
 
     val lenient = parseSidecarTimedCuesLenient(cleaned, sourceUrl)
     if (lenient.isNotEmpty()) {
         val mime = PlayerSubtitleUtils.sniffSubtitleMimeType(cleaned, sourceUrl)
-        return SidecarParseResult(lenient, mime, source = "lenient")
+        return SidecarParseResult(
+            PlayerSubtitleRtlFix.fixTimedCues(lenient, isBuiltInSubtitle = false),
+            mime,
+            source = "lenient"
+        )
     }
 
     return SidecarParseResult(
