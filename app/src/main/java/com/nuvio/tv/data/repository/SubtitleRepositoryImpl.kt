@@ -109,9 +109,13 @@ class SubtitleRepositoryImpl @Inject constructor(
     }
     
     private fun supportsType(addon: Addon, resource: com.nuvio.tv.domain.model.AddonResource, type: String, id: String): Boolean {
-        // Check if type is supported
-        if (resource.types.isNotEmpty() && resource.types.none { it.equals(type, ignoreCase = true) }) {
-            return false
+        // Check if type is supported (normalizing "tv" and "series" to be equivalent)
+        if (resource.types.isNotEmpty()) {
+            val reqType = canonicalSubtitleType(type)
+            val matchesType = resource.types.any { resType ->
+                canonicalSubtitleType(resType) == reqType
+            }
+            if (!matchesType) return false
         }
         
         // Check if id prefix is supported (check resource first, then fallback to addon top-level idPrefixes)
