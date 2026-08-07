@@ -105,6 +105,7 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
     activeSidecarSubtitleKey = subtitleKey
     lastSidecarCueSignature = null
     sidecarTimedCues = emptyList()
+    postToSubtitleView { it.setCues(emptyList()) }
 
     sidecarSubtitleJob = scope.launch {
         try {

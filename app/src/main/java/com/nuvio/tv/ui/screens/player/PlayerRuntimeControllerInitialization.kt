@@ -814,6 +814,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                 isBuiltInSubtitleProvider = {
                     _uiState.value.selectedAddonSubtitle == null
                 },
+                isSidecarAddonSubtitleActiveProvider = {
+                    isSidecarAddonSubtitleActive()
+                },
                 videoBoundsFractionProvider = {
                     val pv = exoPlayerView
                     if (pv != null) pv.videoBoundsFraction(videoAspectRatio) else null
@@ -2000,6 +2003,7 @@ private class SubtitleOffsetRenderersFactory(
     private val audioDelayUsProvider: () -> Long,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
     private val isBuiltInSubtitleProvider: () -> Boolean,
+    private val isSidecarAddonSubtitleActiveProvider: () -> Boolean = { false },
     private val videoBoundsFractionProvider: () -> RectF?,
     private val gainAudioProcessor: GainAudioProcessor,
     private val downmixEnabled: Boolean,
@@ -2129,6 +2133,7 @@ private class SubtitleOffsetRenderersFactory(
             delegate = output,
             shouldNormalizeCuePositionProvider = shouldNormalizeCuePositionProvider,
             isBuiltInSubtitleProvider = isBuiltInSubtitleProvider,
+            isSidecarAddonSubtitleActiveProvider = isSidecarAddonSubtitleActiveProvider,
             videoBoundsFractionProvider = videoBoundsFractionProvider
         )
         val startIndex = out.size
@@ -2182,10 +2187,14 @@ private class CueNormalizingTextOutput(
     private val delegate: TextOutput,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
     private val isBuiltInSubtitleProvider: () -> Boolean,
+    private val isSidecarAddonSubtitleActiveProvider: () -> Boolean,
     private val videoBoundsFractionProvider: () -> RectF?
 ) : TextOutput {
 
     override fun onCues(cueGroup: CueGroup) {
+        if (isSidecarAddonSubtitleActiveProvider()) {
+            return
+        }
         val cues = cueGroup.cues
         if (cues.isEmpty()) {
             delegate.onCues(cueGroup)
@@ -2217,6 +2226,9 @@ private class CueNormalizingTextOutput(
 
     @Deprecated("Uses the deprecated Media3 callback for text outputs.")
     override fun onCues(cues: List<Cue>) {
+        if (isSidecarAddonSubtitleActiveProvider()) {
+            return
+        }
         if (cues.isEmpty()) {
             delegate.onCues(cues)
             return
