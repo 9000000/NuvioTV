@@ -23,7 +23,7 @@ internal object PlayerSubtitleCueParser {
     }
 
     private fun parseSrt(text: String): List<SubtitleSyncCue> {
-        val blocks = text.split(Regex("""\n{2,}"""))
+        val blocks = text.split(Regex("""\n\s*\n"""))
         val cues = mutableListOf<SubtitleSyncCue>()
         for (block in blocks) {
             val lines = block

@@ -1896,6 +1896,7 @@ internal suspend fun PlayerRuntimeController.prepareStartupSubtitles(): StartupS
 
 internal fun PlayerRuntimeController.resetAddonSubtitleStateForNewStream() {
     autoSubtitleSelected = subtitleDisabledByPersistedPreference || subtitleAddonRestoredByPersistedPreference
+    isUserExplicitSubtitleSelection = false
     hasScannedTextTracksOnce = false
     pendingAddonSubtitleLanguage = null
     pendingAddonSubtitleTrackId = null
