@@ -42,7 +42,7 @@ internal object PlayerSubtitleCueParser {
             // Skip zero-duration cues that cause desync after scene transitions (#2757)
             if (endTimeMs - startTimeMs <= 0) continue
             val textLines = lines.drop(index + 1)
-            val cueText = normalizeCueText(textLines.joinToString(" "))
+            val cueText = normalizeCueText(textLines.joinToString("\n"))
             if (cueText.isBlank()) continue
             cues += SubtitleSyncCue(startTimeMs = startTimeMs, endTimeMs = endTimeMs, text = cueText)
         }
@@ -95,7 +95,7 @@ internal object PlayerSubtitleCueParser {
                 textParts += lines[i].trim()
                 i++
             }
-            val cueText = normalizeCueText(textParts.joinToString(" "))
+            val cueText = normalizeCueText(textParts.joinToString("\n"))
             if (cueText.isNotBlank()) {
                 cues += SubtitleSyncCue(startTimeMs = startTimeMs, endTimeMs = endTimeMs, text = cueText)
             }
@@ -135,13 +135,15 @@ internal object PlayerSubtitleCueParser {
 
     private fun normalizeCueText(text: String): String {
         return text
-            .replace(Regex("<[^>]+>"), " ")
+            .replace(Regex("<[^>]+>"), "")
             .replace("&nbsp;", " ")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
+            .lines()
+            .map { it.replace(Regex("""[ \t]+"""), " ").trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
     }
 }

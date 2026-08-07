@@ -281,9 +281,9 @@ private fun parseSidecarTimedCuesWithMime(rawText: String, mimeType: String): Li
 
 /**
  * Lenient SRT/VTT path using [PlayerSubtitleCueParser] when Media3 rejects slightly malformed files.
- * End time = next cue start (or [LENIENT_DEFAULT_CUE_DURATION_US] for the last cue).
+ * Uses each cue's exact [SubtitleSyncCue.endTimeMs] (not stretched to the next cue start).
  */
-private fun parseSidecarTimedCuesLenient(rawText: String, sourceUrl: String): List<CuesWithTiming> {
+internal fun parseSidecarTimedCuesLenient(rawText: String, sourceUrl: String): List<CuesWithTiming> {
     val syncCues = try {
         PlayerSubtitleCueParser.parseFromText(rawText, sourceUrl)
             .filter { it.text.isNotBlank() && it.startTimeMs >= 0L }
@@ -295,11 +295,7 @@ private fun parseSidecarTimedCuesLenient(rawText: String, sourceUrl: String): Li
     val out = ArrayList<CuesWithTiming>(syncCues.size)
     for (i in syncCues.indices) {
         val startUs = syncCues[i].startTimeMs * 1_000L
-        val endUs = if (i + 1 < syncCues.size) {
-            (syncCues[i + 1].startTimeMs * 1_000L).coerceAtLeast(startUs + 1L)
-        } else {
-            startUs + LENIENT_DEFAULT_CUE_DURATION_US
-        }
+        val endUs = (syncCues[i].endTimeMs * 1_000L).coerceAtLeast(startUs + 1L)
         val durationUs = (endUs - startUs).coerceAtLeast(1L)
         val cue = Cue.Builder().setText(syncCues[i].text).build()
         out.add(CuesWithTiming(listOf(cue), startUs, durationUs))
@@ -353,5 +349,4 @@ private fun normalizeSidecarCuePosition(cue: Cue): Cue {
 }
 
 private const val SIDECAR_RENDER_INTERVAL_MS = 100L
-private const val LENIENT_DEFAULT_CUE_DURATION_US = 5_000_000L
 private const val EMPTY_CUE_SIGNATURE = 0x4E5556494FL // "NUVIO"
