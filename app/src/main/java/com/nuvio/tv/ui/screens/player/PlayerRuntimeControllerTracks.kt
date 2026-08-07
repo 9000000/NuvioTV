@@ -1584,12 +1584,24 @@ private fun audioMatchesSubtitleTargetForForced(audioTrack: TrackInfo, target: S
 }
 
 internal fun PlayerRuntimeController.tryAutoSelectPreferredSubtitleFromAvailableTracks() {
-    if (autoSubtitleSelected) return
-
     val state = _uiState.value
     val preferredTargets = subtitleLanguageTargets()
-    val selectedAudioTrack = selectedAudioTrackForSubtitleMatching(state)
     val primaryTarget = preferredTargets.firstOrNull()
+
+    if (autoSubtitleSelected) {
+        val currentSelectedLang = when {
+            state.selectedAddonSubtitle != null -> state.selectedAddonSubtitle?.lang
+            state.selectedSubtitleTrackIndex >= 0 -> state.subtitleTracks.getOrNull(state.selectedSubtitleTrackIndex)?.language
+            else -> null
+        }
+        val isPrimarySatisfied = primaryTarget != null && currentSelectedLang != null &&
+            PlayerSubtitleUtils.matchesLanguageCode(currentSelectedLang, primaryTarget)
+        val hasBetterAddonMatch = !isPrimarySatisfied && primaryTarget != null &&
+            state.addonSubtitles.any { PlayerSubtitleUtils.matchesLanguageCode(it.lang, primaryTarget) }
+
+        if (!hasBetterAddonMatch) return
+    }
+    val selectedAudioTrack = selectedAudioTrackForSubtitleMatching(state)
     val useForcedSubtitles = state.subtitleStyle.useForcedSubtitles
     val forcedTarget = when {
         !useForcedSubtitles -> null
