@@ -543,6 +543,7 @@ class ProfileSettingsSyncService @Inject constructor(
         mutablePrefs: MutablePreferences,
         entries: Map<Preferences.Key<*>, Any>
     ) {
+        val gson = com.google.gson.Gson()
         entries.forEach { (key, value) ->
             when (value) {
                 is String -> mutablePrefs[key as Preferences.Key<String>] = value
@@ -553,7 +554,14 @@ class ProfileSettingsSyncService @Inject constructor(
                 is Double -> mutablePrefs[key as Preferences.Key<Double>] = value
                 is Set<*> -> {
                     if (value.all { it is String }) {
-                        mutablePrefs[key as Preferences.Key<Set<String>>] = value as Set<String>
+                        // Catalog keys should be stored as JSON strings, not Sets.
+                        // Convert to prevent ClassCastException on read.
+                        if (key.name in catalogKeysExcludedFromProfileSettingsBlob) {
+                            val jsonValue = gson.toJson((value as Set<String>).toList())
+                            mutablePrefs[stringPreferencesKey(key.name)] = jsonValue
+                        } else {
+                            mutablePrefs[key as Preferences.Key<Set<String>>] = value as Set<String>
+                        }
                     }
                 }
             }
