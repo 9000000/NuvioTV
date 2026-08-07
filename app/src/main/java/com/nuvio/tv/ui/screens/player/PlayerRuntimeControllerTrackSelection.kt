@@ -238,6 +238,7 @@ internal fun PlayerRuntimeController.rememberInternalSubtitleSelection(trackInde
         )
     )
     val basePreference = currentTrackPreferenceForPersistence()
+    isUserExplicitSubtitleSelection = true
     clearPendingEngineSwitchTrackPreference()
     persistedTrackPreference = null
     subtitleDisabledByPersistedPreference = false
@@ -367,6 +368,7 @@ internal fun PlayerRuntimeController.rememberSubtitleDisabled() {
         message = "selectedSubtitleIndex=${_uiState.value.selectedSubtitleTrackIndex} addonSelected=${_uiState.value.selectedAddonSubtitle != null}"
     )
     val basePreference = currentTrackPreferenceForPersistence()
+    isUserExplicitSubtitleSelection = true
     clearPendingEngineSwitchTrackPreference()
     persistedTrackPreference = null
     subtitleDisabledByPersistedPreference = false
@@ -626,6 +628,7 @@ internal fun PlayerRuntimeController.rememberAddonSubtitleSelection(subtitle: Su
         addonName = subtitle.addonName
     )
     val basePreference = currentTrackPreferenceForPersistence()
+    isUserExplicitSubtitleSelection = true
     clearPendingEngineSwitchTrackPreference()
     persistedTrackPreference = null
     subtitleDisabledByPersistedPreference = false
