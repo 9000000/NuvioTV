@@ -290,8 +290,6 @@ data class PlayerSettings(
     val parallelConnectionCount: Int = DEFAULT_PARALLEL_CONNECTION_COUNT,
     val parallelChunkSizeKb: Int = DEFAULT_PARALLEL_CHUNK_SIZE_KB,
     val enableHttp2: Boolean = DEFAULT_ENABLE_HTTP2,
-
-    val addonSubtitleStartupMode: AddonSubtitleStartupMode = AddonSubtitleStartupMode.FAST_STARTUP,
     val enableBufferLogs: Boolean = false,
     val resizeMode: Int = 0,
     // Nuvio ExoPlayer Performance Mode
@@ -363,13 +361,6 @@ enum class SubtitleOrganizationMode {
     NONE, BY_LANGUAGE, BY_ADDON
 }
 
-enum class AddonSubtitleStartupMode {
-    FAST_STARTUP,
-    @Deprecated("Fast startup is now universal.")
-    PREFERRED_ONLY,
-    @Deprecated("Fast startup is now universal.")
-    ALL_SUBTITLES
-}
 
 enum class MpvHardwareDecodeMode {
     LEGACY_DIRECT_COPY, AUTO_SAFE, HARDWARE_COPY, HARDWARE_DIRECT, DISABLED
@@ -922,7 +913,6 @@ class PlayerSettingsDataStore @Inject constructor(
                         savedMb * 1024
                     }
                 },
-                addonSubtitleStartupMode = AddonSubtitleStartupMode.FAST_STARTUP,
                 enableBufferLogs = prefs[enableBufferLogsKey] ?: false,
                 resizeMode = (prefs[resizeModeKey] ?: 0).coerceIn(0, 4),
                 enableHttp2 = prefs[enableHttp2Key] ?: PlayerSettings.DEFAULT_ENABLE_HTTP2,
