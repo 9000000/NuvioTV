@@ -190,17 +190,17 @@ class PlayerRuntimeController(
     internal var currentHeaders: Map<String, String>
 
     init {
-        val (cleanInitialUrl, mergedInitialHeaders) = PlayerMediaSourceFactory.extractUserInfoAuth(
+        val initialPlaybackRequest = PlayerMediaSourceFactory.normalizePlaybackRequest(
             initialStreamUrl,
-            PlayerMediaSourceFactory.sanitizeHeaders(PlayerMediaSourceFactory.parseHeaders(headersJson))
+            PlayerMediaSourceFactory.parseHeaders(headersJson)
         )
-        currentStreamUrl = cleanInitialUrl
+        currentStreamUrl = initialPlaybackRequest.url
         currentStreamMimeType = PlayerMediaSourceFactory.inferMimeType(
-            url = cleanInitialUrl,
+            url = initialPlaybackRequest.url,
             filename = currentFilename,
             responseHeaders = currentStreamResponseHeaders
         )
-        currentHeaders = mergedInitialHeaders
+        currentHeaders = initialPlaybackRequest.headers
     }
 
     fun getCurrentStreamUrl(): String = currentStreamUrl
