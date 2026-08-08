@@ -91,8 +91,10 @@ class SubtitleRepositoryImpl @Inject constructor(
                     }
                     onProgress?.invoke(completedCount.incrementAndGet(), total, addon.displayName)
                     if (!subtitles.isNullOrEmpty()) {
-                        accumulatedSubtitles.addAll(subtitles)
-                        val snapshot = accumulatedSubtitles.toList()
+                        val snapshot = synchronized(accumulatedSubtitles) {
+                            accumulatedSubtitles.addAll(subtitles)
+                            accumulatedSubtitles.toList()
+                        }
                         if (onSubtitlesEmitted != null) {
                             withContext(Dispatchers.Main.immediate) {
                                 onSubtitlesEmitted.invoke(snapshot)
