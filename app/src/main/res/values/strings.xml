@@ -1658,6 +1658,7 @@
     <string name="subtitle_tab_languages">Languages</string>
     <string name="subtitle_tab_style">Style</string>
     <string name="subtitle_tab_delay">Delay</string>
+    <string name="subtitle_delay_reset">Reset</string>
     <string name="subtitle_none">None</string>
     <string name="subtitle_built_in">Built in</string>
     <string name="subtitle_all">All</string>

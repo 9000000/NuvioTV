@@ -1532,6 +1532,7 @@
     <string name="playback_show_loading_status">Yükleme durumunu göster</string>
     <string name="playback_show_loading_status_sub">Oynatıcı başlatılırken adım adım ilerlemeyi göster.</string>
     <string name="player_sync_line">Satırı Senkronize Et</string>
+    <string name="subtitle_delay_reset">Sıfırla</string>
     <string name="subtitle_timing_press_sync">Bir replik duyduğunuzda Senkronize Et\'e basın.</string>
     <string name="subtitle_timing_sync_button">Senkronize Et</string>
     <string name="subtitle_timing_select_addon_first">Önce bir eklenti altyazı kaynağı seçin.</string>
