@@ -216,7 +216,9 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                     val displayPosition = pendingPreviewSeekPosition ?: pos
                     updatePlaybackTimeline(
                         currentPosition = displayPosition,
-                        duration = playerDuration
+                        duration = playerDuration,
+                        bufferedPosition = (pos + (view.demuxerCacheDurationSec() * 1000.0).toLong())
+                            .coerceAtLeast(displayPosition)
                     )
                     val nearEnd = playerDuration > 0L && pos >= (playerDuration - 500L)
                     val naturalEnded = nearEnd && shouldTreatAsNaturalPlaybackCompletion(
