@@ -805,6 +805,9 @@
   <string name="layout_next_up_furthest_episode_sub">Εμφάνιση επόμενου επεισοδίου με βάση το πιο προχωρημένο προβληθέν επεισόδιο. Απενεργοποιήστε το για επαναπροβολές ώστε να χρησιμοποιείται το πιο πρόσφατα προβληθέν επεισόδιο.</string>
   <string name="layout_show_unaired_next_up">Εμφάνιση μη προβληθέντων επόμενων επεισοδίων</string>
   <string name="layout_show_unaired_next_up_sub">Συμπερίληψη επερχόμενων επεισοδίων στη Συνέχεια παρακολούθησης πριν την προβολή τους.</string>
+  <string name="layout_cw_card_style_card">Κάρτα</string>
+  <string name="layout_cw_card_style_wide">Ευρεία</string>
+  <string name="layout_cw_card_style_poster">Αφίσα</string>
   <string name="layout_cw_sort_mode">Σειρά ταξινόμησης</string>
   <string name="layout_cw_sort_mode_sub">Πώς ταξινομούνται τα στοιχεία Συνέχεια παρακολούθησης</string>
   <string name="layout_cw_sort_default">Προεπιλογή</string>
@@ -1747,7 +1750,7 @@
   <string name="plugin_readonly_notice">Χρησιμοποιείτε τα πρόσθετα του κύριου προφίλ και δεν μπορούν να αλλάξουν</string>
   <string name="plugin_repositories_section">Αποθετήρια (%1$d)</string>
   <string name="plugin_providers_section">Πάροχοι (%1$d)</string>
-  <string name="plugin_title">Πρόσθετα</string>
+  <string name="plugin_title">Αποθετήρια πρόσθετων</string>
   <string name="plugin_subtitle">Διαχείριση τοπικών ανιχνευτών και παρόχων</string>
   <string name="plugin_enable_plugins_title">Καθολική ενεργοποίηση παρόχων πρόσθετων</string>
   <string name="plugin_enable_plugins_subtitle">Χρήση παρόχων πρόσθετων κατά την αναζήτηση ροών</string>
