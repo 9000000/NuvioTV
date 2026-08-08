@@ -310,11 +310,7 @@ internal fun PlayerRuntimeController.refreshActiveSubtitleTrackAfterTimingChange
     // Sidecar path applies delay via position offset in the render loop — force a fresh paint.
     if (isSidecarAddonSubtitleActive()) {
         lastSidecarCueSignature = null
-        renderSidecarCuesAtCurrentPosition(
-            normalizeCuePosition = state.selectedAddonSubtitle?.let {
-                PlayerSubtitleUtils.mimeTypeFromUrl(it.url) == androidx.media3.common.MimeTypes.TEXT_VTT
-            } == true
-        )
+        renderSidecarCuesAtCurrentPosition()
         return
     }
 
@@ -477,10 +473,7 @@ internal fun PlayerRuntimeController.selectAddonSubtitle(subtitle: Subtitle) {
             // Re-assert sidecar paint if the same track is already selected via hot path.
             if (isSidecarAddonSubtitleActive()) {
                 lastSidecarCueSignature = null
-                renderSidecarCuesAtCurrentPosition(
-                    normalizeCuePosition = PlayerSubtitleUtils.mimeTypeFromUrl(subtitle.url) ==
-                        androidx.media3.common.MimeTypes.TEXT_VTT
-                )
+                renderSidecarCuesAtCurrentPosition()
             }
             return@let
         }

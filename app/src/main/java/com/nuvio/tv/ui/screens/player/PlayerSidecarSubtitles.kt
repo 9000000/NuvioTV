@@ -143,7 +143,6 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
             }
 
             sidecarTimedCues = parseResult.cues
-            val normalizeCuePosition = parseResult.effectiveMime == MimeTypes.TEXT_VTT
             Log.d(
                 PlayerRuntimeController.TAG,
                 "Sidecar subtitle ready id=${subtitle.id} cues=${parseResult.cues.size} " +
@@ -152,7 +151,7 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
             )
 
             while (isActive && activeSidecarSubtitleKey == subtitleKey) {
-                renderSidecarCuesAtCurrentPosition(normalizeCuePosition = normalizeCuePosition)
+                renderSidecarCuesAtCurrentPosition()
                 delay(SIDECAR_RENDER_INTERVAL_MS)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -176,9 +175,7 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
     return true
 }
 
-internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition(
-    normalizeCuePosition: Boolean = false
-) {
+internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition() {
     val cues = sidecarTimedCues
     if (cues.isEmpty() || activeSidecarSubtitleKey == null) return
     val player = _exoPlayer ?: return
@@ -192,14 +189,9 @@ internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition(
     if (signature == lastSidecarCueSignature) return
     lastSidecarCueSignature = signature
     val currentKey = activeSidecarSubtitleKey ?: return
-    val processed = if (normalizeCuePosition) {
-        active.map { normalizeSidecarCuePosition(it) }
-    } else {
-        active
-    }
     postToSubtitleView { view ->
         if (view.getTag(R.id.player_view_sidecar_generation_tag) == currentKey) {
-            view.setCues(processed)
+            view.setCues(active)
         }
     }
 }
@@ -230,9 +222,10 @@ internal fun parseSidecarTimedCuesRobust(rawText: String, sourceUrl: String): Si
     for (mime in candidates) {
         val parsed = parseSidecarTimedCuesWithMime(cleaned, mime)
         if (parsed.isNotEmpty()) {
-            // RTL once at parse (Dispatchers.Default) — never on the 100ms ticker.
+            val fixed = PlayerSubtitleRtlFix.fixTimedCues(parsed, isBuiltInSubtitle = false)
+            val normalized = if (mime == MimeTypes.TEXT_VTT) normalizeTimedCuePositions(fixed) else fixed
             return SidecarParseResult(
-                PlayerSubtitleRtlFix.fixTimedCues(parsed, isBuiltInSubtitle = false),
+                normalized,
                 mime,
                 source = "media3"
             )
@@ -242,8 +235,10 @@ internal fun parseSidecarTimedCuesRobust(rawText: String, sourceUrl: String): Si
     val lenient = parseSidecarTimedCuesLenient(cleaned, sourceUrl)
     if (lenient.isNotEmpty()) {
         val mime = PlayerSubtitleUtils.sniffSubtitleMimeType(cleaned, sourceUrl)
+        val fixed = PlayerSubtitleRtlFix.fixTimedCues(lenient, isBuiltInSubtitle = false)
+        val normalized = if (mime == MimeTypes.TEXT_VTT) normalizeTimedCuePositions(fixed) else fixed
         return SidecarParseResult(
-            PlayerSubtitleRtlFix.fixTimedCues(lenient, isBuiltInSubtitle = false),
+            normalized,
             mime,
             source = "lenient"
         )
@@ -254,6 +249,19 @@ internal fun parseSidecarTimedCuesRobust(rawText: String, sourceUrl: String): Si
         effectiveMime = candidates.firstOrNull() ?: MimeTypes.APPLICATION_SUBRIP,
         source = "none"
     )
+}
+
+private fun normalizeTimedCuePositions(cues: List<CuesWithTiming>): List<CuesWithTiming> {
+    return cues.map { entry ->
+        val normalized = entry.cues.map { normalizeSidecarCuePosition(it) }
+        val durationUs = when {
+            entry.durationUs != C.TIME_UNSET -> entry.durationUs
+            entry.endTimeUs != C.TIME_UNSET && entry.startTimeUs != C.TIME_UNSET ->
+                (entry.endTimeUs - entry.startTimeUs).coerceAtLeast(1L)
+            else -> C.TIME_UNSET
+        }
+        CuesWithTiming(normalized, entry.startTimeUs, durationUs)
+    }
 }
 
 private fun parseSidecarTimedCuesWithMime(rawText: String, mimeType: String): List<CuesWithTiming> {
@@ -310,11 +318,10 @@ private fun collectActiveSidecarCues(
     if (cues.isEmpty()) return emptyList()
     val active = ArrayList<Cue>(4)
     for (entry in cues) {
-        val start = entry.startTimeUs
-        if (start > positionUs) break
+        if (entry.startTimeUs > positionUs) break
         val end = when {
             entry.endTimeUs != C.TIME_UNSET -> entry.endTimeUs
-            entry.durationUs != C.TIME_UNSET -> start + entry.durationUs
+            entry.durationUs != C.TIME_UNSET -> entry.startTimeUs + entry.durationUs
             else -> Long.MAX_VALUE
         }
         if (positionUs < end) {
