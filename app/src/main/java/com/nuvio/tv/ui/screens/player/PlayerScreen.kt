@@ -634,6 +634,9 @@ fun PlayerScreen(
                                 // Resume directly from pause overlay in one click.
                                 viewModel.onEvent(PlayerEvent.OnPlayPause)
                             }
+                            KeyEvent.KEYCODE_MEDIA_PAUSE,
+                            KeyEvent.KEYCODE_MEDIA_STOP -> {
+                            }
                             else -> {
                                 viewModel.onEvent(PlayerEvent.OnDismissPauseOverlay)
                             }
@@ -711,6 +714,16 @@ fun PlayerScreen(
                             if (!uiState.isPlaying) {
                                 viewModel.onEvent(PlayerEvent.OnPlayPause)
                             }
+                            true
+                        }
+                        KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                            if (uiState.isPlaying) {
+                                viewModel.onEvent(PlayerEvent.OnPlayPause)
+                            }
+                            true
+                        }
+                        KeyEvent.KEYCODE_MEDIA_STOP -> {
+                            viewModel.onEvent(PlayerEvent.OnPlayPause)
                             true
                         }
                         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
