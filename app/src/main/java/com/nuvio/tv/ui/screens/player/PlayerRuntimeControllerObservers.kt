@@ -153,6 +153,9 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
 internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
     val keepDisabled = subtitleDisabledByPersistedPreference ||
         (rememberedTrackPreference?.subtitle == PlayerRuntimeController.RememberedSubtitleSelection.Disabled)
+    if (!isUserExplicitSubtitleSelection && !keepDisabled) {
+        rememberedTrackPreference = rememberedTrackPreference?.copy(subtitle = null)
+    }
     autoSubtitleSelected = keepDisabled
     isUserExplicitSubtitleSelection = false
     subtitleDisabledByPersistedPreference = keepDisabled
