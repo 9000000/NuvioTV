@@ -761,6 +761,7 @@ fun PlayerScreen(
                     useLibass = uiState.useLibass,
                     libassRenderType = uiState.libassRenderType,
                     subtitleStyle = uiState.subtitleStyle,
+                    onBindSubtitleView = viewModel::bindExoSubtitleView,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -1448,10 +1449,12 @@ private fun ExoPlayerSurface(
     useLibass: Boolean,
     libassRenderType: LibassRenderType,
     subtitleStyle: SubtitleStyleSettings,
+    onBindSubtitleView: (androidx.media3.ui.SubtitleView?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val latestAspectMode by rememberUpdatedState(aspectMode)
+    val latestBindSubtitleView by rememberUpdatedState(onBindSubtitleView)
     val latestSubtitleStyle by rememberUpdatedState(subtitleStyle)
     val playerView = remember(context, player) {
         PlayerView(context).apply {
@@ -1473,6 +1476,7 @@ private fun ExoPlayerSurface(
                 enabled = useLibass,
                 renderType = libassRenderType
             )
+            latestBindSubtitleView(it.subtitleView)
         }
     )
 
@@ -1480,7 +1484,9 @@ private fun ExoPlayerSurface(
         if (playerView.player !== player) {
             playerView.player = player
         }
+        latestBindSubtitleView(playerView.subtitleView)
         onDispose {
+            latestBindSubtitleView(null)
             if (playerView.player === player) {
                 playerView.player = null
             }

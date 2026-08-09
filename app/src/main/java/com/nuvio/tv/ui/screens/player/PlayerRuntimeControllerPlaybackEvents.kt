@@ -500,7 +500,7 @@ private fun PlayerRuntimeController.buildPlaybackIssuePlaybackSettingsInput(): P
         useLibass = settings.useLibass,
         activePlayerUsesLibass = requestedUseLibassByUser && !isUsingMpvEngine(),
         libassRenderType = settings.libassRenderType.name,
-        addonSubtitleStartupMode = settings.addonSubtitleStartupMode.name,
+        addonSubtitleStartupMode = "SIDECAR",
         externalPlayerForwardSubtitles = settings.externalPlayerForwardSubtitles,
         subtitleOrganizationMode = settings.subtitleOrganizationMode.name,
         loadingOverlayEnabled = settings.loadingOverlayEnabled,
