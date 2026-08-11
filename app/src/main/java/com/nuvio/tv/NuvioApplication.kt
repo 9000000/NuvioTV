@@ -113,9 +113,14 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 val memoryInfo = ActivityManager.MemoryInfo()
                 activityManager.getMemoryInfo(memoryInfo)
                 val totalRamMb = memoryInfo.totalMem / (1024 * 1024)
-                // Low-RAM devices (≤3GB): use 15% to leave headroom for system + player buffers.
-                // Normal devices (>3GB): use 25% for snappy image loading.
-                val cachePercent = if (totalRamMb <= 3072) 0.15 else 0.30
+                // Low-RAM devices (≤2GB): use 0.12 to leave headroom for system + player buffers.
+                // Mid-range devices (≤3GB): use 0.20 for decent image caching.
+                // Normal devices (>3GB): use 0.25 for snappy image loading.
+                val cachePercent = when {
+                    totalRamMb <= 2048 -> 0.12
+                    totalRamMb <= 3072 -> 0.20
+                    else -> 0.25
+                }
                 MemoryCache.Builder()
                     .maxSizePercent(context, cachePercent)
                     .build()

@@ -848,12 +848,16 @@ class MetaDetailsViewModel @Inject constructor(
 
         // Pre-compute nextToWatch before applyMeta so the PlayButton text is stable
         // from the first composition — prevents focus invalidation from late recomposition.
-        val progressMap = watchProgressRepository
-            .getAllEpisodeProgress(_effectiveContentId.value)
-            .first()
-        val watchedEpisodes = watchedItemsPreferences
-            .getWatchedEpisodesForContent(_effectiveContentId.value)
-            .first()
+        val contentId = _effectiveContentId.value
+        val (progressMap, watchedEpisodes) = coroutineScope {
+            val progressDeferred = async {
+                watchProgressRepository.getAllEpisodeProgress(contentId).first()
+            }
+            val watchedDeferred = async {
+                watchedItemsPreferences.getWatchedEpisodesForContent(contentId).first()
+            }
+            progressDeferred.await() to watchedDeferred.await()
+        }
         val precomputedNextToWatch = computeNextToWatch(enriched, progressMap, watchedEpisodes)
         updateNextToWatch(precomputedNextToWatch)
 

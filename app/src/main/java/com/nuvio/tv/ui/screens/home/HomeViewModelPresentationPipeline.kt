@@ -321,7 +321,6 @@ internal fun HomeViewModel.observeModernHomePresentationPipeline() {
 internal fun HomeViewModel.observeExternalMetaPrefetchPreferencePipeline() {
     viewModelScope.launch {
         layoutPreferenceDataStore.preferExternalMetaAddonDetail
-            .distinctUntilChanged()
             .collectLatest { enabled ->
                 externalMetaPrefetchEnabled = enabled
                 if (!enabled) {
@@ -451,6 +450,16 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 _enrichedPreviews.update { it + (item.id to enriched) }
             }
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+            // Still prefetch full meta in background for instant detail screen.
+            if (item.id !in backgroundMetaPrefetchedIds) {
+                backgroundMetaPrefetchedIds.add(item.id)
+                viewModelScope.launch {
+                    metaRepository.getMetaFromAllAddons(
+                        type = item.apiType,
+                        id = item.id
+                    ).first { it !is NetworkResult.Loading }
+                }
+            }
             return
         }
     }
@@ -482,6 +491,16 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 item.logo.isNullOrBlank()
             if (!artworkStillNeeded) {
                 if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+                // Still prefetch full meta in background for instant detail screen.
+                if (item.id !in backgroundMetaPrefetchedIds) {
+                    backgroundMetaPrefetchedIds.add(item.id)
+                    launch {
+                        metaRepository.getMetaFromAllAddons(
+                            type = item.apiType,
+                            id = item.id
+                        ).first { it !is NetworkResult.Loading }
+                    }
+                }
                 return@launch
             }
         }
@@ -548,6 +567,18 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 } finally {
                     externalMetaPrefetchInFlightIds.remove(item.id)
                     if (pendingTmdbEnrichItemId == item.id) pendingTmdbEnrichItemId = null
+                }
+            }
+
+            // Always prefetch full meta in background for instant detail screen loading,
+            // regardless of whether external addon was needed for the hero display.
+            if (item.id !in backgroundMetaPrefetchedIds) {
+                backgroundMetaPrefetchedIds.add(item.id)
+                viewModelScope.launch {
+                    metaRepository.getMetaFromAllAddons(
+                        type = item.apiType,
+                        id = item.id
+                    ).first { it !is NetworkResult.Loading }
                 }
             }
         } finally {
@@ -623,6 +654,13 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
                         result is NetworkResult.Error && result.code == NetworkResult.SOURCE_SUFFICIENT_CODE -> {
                             prefetchedExternalMetaIds.add(item.id)
                             _enrichedPreviews.update { it + (item.id to item) }
+                            viewModelScope.launch {
+                                metaRepository.getMetaFromAllAddons(
+                                    type = item.apiType,
+                                    id = item.id,
+                                    sourceAddonBaseUrl = null
+                                ).first { it !is NetworkResult.Loading }
+                            }
                         }
                         else -> { /* Error — leave unresolved */ }
                     }
