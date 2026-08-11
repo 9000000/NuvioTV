@@ -25,7 +25,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+
+private const val TMDB_HERO_ENRICHMENT_CONCURRENCY = 4
 
 private data class CoreLayoutPrefs(
     val layout: HomeLayout,
@@ -829,66 +833,69 @@ internal suspend fun HomeViewModel.enrichHeroItemsPipeline(
     val mdbEnabled = mdbSettings.enabled && mdbSettings.apiKey.isNotBlank()
 
     return coroutineScope {
+        val semaphore = Semaphore(TMDB_HERO_ENRICHMENT_CONCURRENCY)
         items.map { item ->
             async(Dispatchers.IO) {
-                try {
-                    val tmdbDeferred = async {
-                        val tmdbId = tmdbService.ensureTmdbId(item.id, item.apiType) ?: return@async null
-                        tmdbId.toIntOrNull()?.let { numericId ->
-                            runCatching { tmdbService.tmdbToImdb(numericId, item.apiType) }
+                semaphore.withPermit {
+                    try {
+                        val tmdbDeferred = async {
+                            val tmdbId = tmdbService.ensureTmdbId(item.id, item.apiType) ?: return@async null
+                            tmdbId.toIntOrNull()?.let { numericId ->
+                                runCatching { tmdbService.tmdbToImdb(numericId, item.apiType) }
+                            }
+                            tmdbMetadataService.fetchEnrichment(
+                                tmdbId = tmdbId,
+                                contentType = item.type,
+                                language = settings.language
+                            )
                         }
-                        tmdbMetadataService.fetchEnrichment(
-                            tmdbId = tmdbId,
-                            contentType = item.type,
-                            language = settings.language
-                        )
+                        val mdbDeferred = if (mdbEnabled) async {
+                            runCatching { mdbListRepository.getImdbRatingForItem(item.id, item.apiType) }.getOrNull()
+                        } else null
+
+                        val enrichment = tmdbDeferred.await() ?: return@withPermit item
+                        val mdbImdbRating = mdbDeferred?.await()
+
+                        var enriched = item
+
+                        if (settings.useArtwork) {
+                            enriched = enriched.copy(
+                                background = enrichment.backdrop ?: enriched.background,
+                                logo = enrichment.logo ?: enriched.logo,
+                                poster = enrichment.poster ?: enriched.poster
+                            )
+                        }
+
+                        if (settings.useBasicInfo) {
+                            enriched = enriched.copy(
+                                name = enrichment.localizedTitle ?: enriched.name,
+                                description = enrichment.description ?: enriched.description,
+                                genres = if (enrichment.genres.isNotEmpty()) enrichment.genres else enriched.genres,
+                                imdbRating = mdbImdbRating?.toFloat() ?: enriched.imdbRating
+                            )
+                        }
+
+                        if (settings.useDetails) {
+                            enriched = enriched.copy(
+                                runtime = enrichment.runtimeMinutes?.toString() ?: enriched.runtime,
+                                status = enrichment.status ?: enriched.status,
+                                ageRating = enrichment.ageRating ?: enriched.ageRating,
+                                country = enrichment.countries?.joinToString(", ") ?: enriched.country,
+                                language = enrichment.language ?: enriched.language
+                            )
+                        }
+
+                        if (settings.useReleaseDates) {
+                            enriched = enriched.copy(
+                                releaseInfo = enrichment.releaseInfo ?: enriched.releaseInfo
+                            )
+                        }
+
+                        enriched
+                    } catch (e: Exception) {
+                        Log.w(HomeViewModel.TAG, "Hero enrichment failed for ${item.id}: ${e.message}")
+                        item
                     }
-                    val mdbDeferred = if (mdbEnabled) async {
-                        runCatching { mdbListRepository.getImdbRatingForItem(item.id, item.apiType) }.getOrNull()
-                    } else null
-
-                    val enrichment = tmdbDeferred.await() ?: return@async item
-                    val mdbImdbRating = mdbDeferred?.await()
-
-                    var enriched = item
-
-                    if (settings.useArtwork) {
-                        enriched = enriched.copy(
-                            background = enrichment.backdrop ?: enriched.background,
-                            logo = enrichment.logo ?: enriched.logo,
-                            poster = enrichment.poster ?: enriched.poster
-                        )
-                    }
-
-                    if (settings.useBasicInfo) {
-                        enriched = enriched.copy(
-                            name = enrichment.localizedTitle ?: enriched.name,
-                            description = enrichment.description ?: enriched.description,
-                            genres = if (enrichment.genres.isNotEmpty()) enrichment.genres else enriched.genres,
-                            imdbRating = mdbImdbRating?.toFloat() ?: enriched.imdbRating
-                        )
-                    }
-
-                    if (settings.useDetails) {
-                        enriched = enriched.copy(
-                            runtime = enrichment.runtimeMinutes?.toString() ?: enriched.runtime,
-                            status = enrichment.status ?: enriched.status,
-                            ageRating = enrichment.ageRating ?: enriched.ageRating,
-                            country = enrichment.countries?.joinToString(", ") ?: enriched.country,
-                            language = enrichment.language ?: enriched.language
-                        )
-                    }
-
-                    if (settings.useReleaseDates) {
-                        enriched = enriched.copy(
-                            releaseInfo = enrichment.releaseInfo ?: enriched.releaseInfo
-                        )
-                    }
-
-                    enriched
-                } catch (e: Exception) {
-                    Log.w(HomeViewModel.TAG, "Hero enrichment failed for ${item.id}: ${e.message}")
-                    item
                 }
             }
         }.awaitAll()
