@@ -27,14 +27,21 @@ import com.nuvio.tv.domain.model.DEFAULT_CARD_DEPTH_SHEEN_STRENGTH
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.HomeLayout
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class LayoutPreferenceDataStore @Inject constructor(
     private val factory: ProfileDataStoreFactory,
     private val profileManager: ProfileManager
@@ -48,6 +55,8 @@ class LayoutPreferenceDataStore @Inject constructor(
         private const val DEFAULT_FOCUSED_POSTER_BACKDROP_EXPAND_DELAY_SECONDS = 3
         private const val MIN_FOCUSED_POSTER_BACKDROP_EXPAND_DELAY_SECONDS = 0
     }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private fun store(profileId: Int = profileManager.activeProfileId.value) =
         factory.get(profileId, FEATURE)
@@ -344,9 +353,9 @@ class LayoutPreferenceDataStore @Inject constructor(
         prefs[detailPageTrailerButtonEnabledKey] ?: true
     }
 
-    val preferExternalMetaAddonDetail: Flow<Boolean> = profileFlow { prefs ->
+    val preferExternalMetaAddonDetail: StateFlow<Boolean> = profileFlow { prefs ->
         prefs[preferExternalMetaAddonDetailKey] ?: true
-    }
+    }.stateIn(scope, SharingStarted.Eagerly, true)
 
     val hideUnreleasedContent: Flow<Boolean> = profileFlow { prefs ->
         prefs[hideUnreleasedContentKey] ?: false

@@ -192,6 +192,7 @@ class HomeViewModel @Inject constructor(
     internal var heroItemOrder: List<String> = emptyList()
     internal val modernCarouselRowBuildCache = ModernCarouselRowBuildCache()
     internal val prefetchedExternalMetaIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    internal val backgroundMetaPrefetchedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     internal val externalMetaPrefetchInFlightIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     internal var externalMetaPrefetchJob: Job? = null
     internal var pendingExternalMetaPrefetchItemId: String? = null

@@ -105,7 +105,6 @@ internal fun HomeViewModel.loadCustomCatalogTitlesPipeline() {
 internal fun HomeViewModel.observeTmdbSettingsPipeline() {
     viewModelScope.launch {
         tmdbSettingsDataStore.settings
-            .distinctUntilChanged()
             .collectLatest { settings ->
                 val languageChanged = currentTmdbSettings.language != settings.language
                 val releaseDatesChanged = currentTmdbSettings.useReleaseDates != settings.useReleaseDates

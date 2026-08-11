@@ -49,7 +49,7 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         applyHeaders(headers)
         val startOption = startPositionMs
             .takeIf { it > 0L }
-            ?.let { String.format(Locale.US, "start=%.3f", it / 1000.0) }
+            ?.let { String.format(Locale.US, "start=+%.3f", it / 1000.0) }
         if (startOption != null && holder.surface?.isValid == true) {
             ensureSurfaceAttachedIfAlreadyAvailable()
             loadFileWithOptions(url, startOption)
@@ -319,14 +319,16 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
                 else -> 1.0
             }
             val backgroundAlpha = (style.backgroundColor ushr 24) and 0xFF
-            val borderStyle = if (backgroundAlpha > 0) "opaque-box" else "outline-and-shadow"
+            val borderStyle = if (backgroundAlpha > 0) "background-box" else "outline-and-shadow"
+            // In background-box mode, sub-shadow-offset controls the box padding/margin
+            val shadowOffset = if (backgroundAlpha > 0) 5.0 else 0.0
 
             mpv.setPropertyDouble("sub-scale", scale)
             mpv.setPropertyBoolean("sub-bold", style.bold)
             mpv.setPropertyDouble("sub-outline-size", outlineSize)
             mpv.setPropertyDouble("sub-pos", subPos)
             mpv.setPropertyInt("sub-margin-y", subMarginY)
-            mpv.setPropertyDouble("sub-shadow-offset", 0.0)
+            mpv.setPropertyDouble("sub-shadow-offset", shadowOffset)
             mpv.setPropertyString("sub-border-style", borderStyle)
             mpv.setPropertyString("sub-color", toMpvColor(style.textColor))
             mpv.setPropertyString("sub-back-color", toMpvColor(style.backgroundColor))

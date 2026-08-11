@@ -321,7 +321,6 @@ internal fun HomeViewModel.observeModernHomePresentationPipeline() {
 internal fun HomeViewModel.observeExternalMetaPrefetchPreferencePipeline() {
     viewModelScope.launch {
         layoutPreferenceDataStore.preferExternalMetaAddonDetail
-            .distinctUntilChanged()
             .collectLatest { enabled ->
                 externalMetaPrefetchEnabled = enabled
                 if (!enabled) {
@@ -451,6 +450,16 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 _enrichedPreviews.update { it + (item.id to enriched) }
             }
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+            // Still prefetch full meta in background for instant detail screen.
+            if (item.id !in backgroundMetaPrefetchedIds) {
+                backgroundMetaPrefetchedIds.add(item.id)
+                viewModelScope.launch {
+                    metaRepository.getMetaFromAllAddons(
+                        type = item.apiType,
+                        id = item.id
+                    ).first { it !is NetworkResult.Loading }
+                }
+            }
             return
         }
     }
@@ -482,17 +491,28 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 item.logo.isNullOrBlank()
             if (!artworkStillNeeded) {
                 if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+                // Still prefetch full meta in background for instant detail screen.
+                if (item.id !in backgroundMetaPrefetchedIds) {
+                    backgroundMetaPrefetchedIds.add(item.id)
+                    launch {
+                        metaRepository.getMetaFromAllAddons(
+                            type = item.apiType,
+                            id = item.id
+                        ).first { it !is NetworkResult.Loading }
+                    }
+                }
                 return@launch
             }
         }
 
         try {
-            var tmdbEnriched = false
-
-            if (tmdbEnabledForCurrentLayout) {
+            // Launch TMDB and external meta addon fetch in parallel.
+            // Which sources are used depends on settings:
+            // - tmdbEnabledForCurrentLayout: controls TMDB enrichment
+            // - externalMetaPrefetchEnabled: controls external meta addon fetch
+            val tmdbDeferred = if (tmdbEnabledForCurrentLayout) {
                 val tmdbId = runCatching { tmdbService.ensureTmdbId(item.id, item.apiType) }.getOrNull()
-
-                val enrichmentDeferred = if (tmdbId != null) async {
+                if (tmdbId != null) async {
                     runCatching {
                         tmdbMetadataService.fetchEnrichment(
                             tmdbId = tmdbId,
@@ -501,53 +521,58 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                         )
                     }.getOrNull()
                 } else null
+            } else null
 
-                val enrichment = enrichmentDeferred?.await()
-
-                if (enrichment != null) {
-                    prefetchedTmdbIds.add(item.id)
-                    // Only mark external meta as done if TMDB covered artwork too.
-                    if (currentTmdbSettings.useArtwork || !item.logo.isNullOrBlank()) {
-                        prefetchedExternalMetaIds.add(item.id)
-                    }
-                    updateCatalogItemWithTmdb(item.id, enrichment)
-                    tmdbEnriched = true
-                }
-            }
-            // Fall through to external addon when:
-            // 1. TMDB didn't enrich at all, OR
-            // 2. TMDB enriched but useArtwork is off and the item still lacks a logo.
-            val artworkStillMissing = tmdbEnriched && !currentTmdbSettings.useArtwork &&
-                item.logo.isNullOrBlank()
-            val needsExternalAddon = !tmdbEnriched || artworkStillMissing
-            if (needsExternalAddon && externalMetaPrefetchEnabled &&
+            val externalMetaDeferred = if (externalMetaPrefetchEnabled &&
                 item.id !in prefetchedExternalMetaIds &&
-                externalMetaPrefetchInFlightIds.add(item.id)) {
-                try {
-                    val result = metaRepository.getMetaFromAllAddons(item.apiType, item.id, item.sourceAddonBaseUrl)
-                        .first { it is NetworkResult.Success || it is NetworkResult.Error }
-                    when {
-                        result is NetworkResult.Success -> {
-                            prefetchedExternalMetaIds.add(item.id)
-                            if (artworkStillMissing) {
-                                updateCatalogItemArtworkOnly(item.id, result.data)
-                            } else {
-                                updateCatalogItemWithMeta(item.id, result.data)
-                            }
+                externalMetaPrefetchInFlightIds.add(item.id)
+            ) {
+                async {
+                    try {
+                        val result = metaRepository.getMetaFromAllAddons(item.apiType, item.id, item.sourceAddonBaseUrl)
+                            .first { it is NetworkResult.Success || it is NetworkResult.Error }
+                        when {
+                            result is NetworkResult.Success -> result.data
+                            result is NetworkResult.Error && result.code == NetworkResult.SOURCE_SUFFICIENT_CODE -> null
+                            else -> null
                         }
-                        result is NetworkResult.Error && result.code == NetworkResult.SOURCE_SUFFICIENT_CODE -> {
-                            // Catalog already has the best available meta from this addon —
-                            // mark as resolved without making any changes.
-                            prefetchedExternalMetaIds.add(item.id)
-                            // Also mark in enrichedPreviews so the finally-block doesn't
-                            // treat this item as a failed enrichment.
-                            _enrichedPreviews.update { it + (item.id to item) }
-                        }
-                        else -> { /* Error — leave unresolved */ }
+                    } finally {
+                        externalMetaPrefetchInFlightIds.remove(item.id)
                     }
-                } finally {
-                    externalMetaPrefetchInFlightIds.remove(item.id)
-                    if (pendingTmdbEnrichItemId == item.id) pendingTmdbEnrichItemId = null
+                }
+            } else null
+
+            // Await both results
+            val tmdbEnrichment = tmdbDeferred?.await()
+            val externalMeta = externalMetaDeferred?.await()
+
+            // Mark as prefetched
+            if (tmdbEnrichment != null) prefetchedTmdbIds.add(item.id)
+            if (externalMetaDeferred != null) prefetchedExternalMetaIds.add(item.id)
+
+            // Merge results: apply external meta first (base layer), then TMDB on top
+            // respecting which TMDB settings are enabled.
+            if (externalMeta != null) {
+                updateCatalogItemWithMeta(item.id, externalMeta)
+            }
+            if (tmdbEnrichment != null) {
+                updateCatalogItemWithTmdb(item.id, tmdbEnrichment)
+            }
+
+            // If neither source produced anything, mark enrichment in previews
+            // so UI doesn't keep showing spinner.
+            if (tmdbEnrichment == null && externalMeta == null) {
+                _enrichedPreviews.update { it + (item.id to item) }
+            }
+
+            // Always prefetch full meta in background for instant detail screen loading.
+            if (item.id !in backgroundMetaPrefetchedIds) {
+                backgroundMetaPrefetchedIds.add(item.id)
+                viewModelScope.launch {
+                    metaRepository.getMetaFromAllAddons(
+                        type = item.apiType,
+                        id = item.id
+                    ).first { it !is NetworkResult.Loading }
                 }
             }
         } finally {
@@ -581,53 +606,64 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
         if (item.id in prefetchedTmdbIds || item.id in prefetchedExternalMetaIds) return@launch
 
         try {
-            var tmdbEnriched = false
-            if (tmdbEnabledForCurrentLayout) {
+            // Launch TMDB and external meta addon fetch in parallel (same as focused pipeline).
+            val tmdbDeferred = if (tmdbEnabledForCurrentLayout) {
                 val tmdbId = runCatching { tmdbService.ensureTmdbId(item.id, item.apiType) }.getOrNull()
-                val enrichment = if (tmdbId != null) runCatching {
-                    tmdbMetadataService.fetchEnrichment(
-                        tmdbId = tmdbId,
-                        contentType = item.type,
-                        language = currentTmdbSettings.language
-                    )
-                }.getOrNull() else null
-                if (enrichment != null) {
-                    prefetchedTmdbIds.add(item.id)
-                    if (currentTmdbSettings.useArtwork || !item.logo.isNullOrBlank()) {
-                        prefetchedExternalMetaIds.add(item.id)
-                    }
-                    updateCatalogItemWithTmdb(item.id, enrichment)
-                    tmdbEnriched = true
-                }
-            }
-            val artworkStillMissing = tmdbEnriched && !currentTmdbSettings.useArtwork &&
-                item.logo.isNullOrBlank()
-            val needsExternalAddon = !tmdbEnriched || artworkStillMissing
-            if (needsExternalAddon &&
-                externalMetaPrefetchEnabled &&
+                if (tmdbId != null) async {
+                    runCatching {
+                        tmdbMetadataService.fetchEnrichment(
+                            tmdbId = tmdbId,
+                            contentType = item.type,
+                            language = currentTmdbSettings.language
+                        )
+                    }.getOrNull()
+                } else null
+            } else null
+
+            val externalMetaDeferred = if (externalMetaPrefetchEnabled &&
                 item.id !in prefetchedExternalMetaIds &&
                 externalMetaPrefetchInFlightIds.add(item.id)
             ) {
-                try {
-                    val result = metaRepository.getMetaFromAllAddons(item.apiType, item.id, item.sourceAddonBaseUrl)
-                        .first { it is NetworkResult.Success || it is NetworkResult.Error }
-                    when {
-                        result is NetworkResult.Success -> {
-                            prefetchedExternalMetaIds.add(item.id)
-                            if (artworkStillMissing) {
-                                updateCatalogItemArtworkOnly(item.id, result.data)
-                            } else {
-                                updateCatalogItemWithMeta(item.id, result.data)
-                            }
+                async {
+                    try {
+                        val result = metaRepository.getMetaFromAllAddons(item.apiType, item.id, item.sourceAddonBaseUrl)
+                            .first { it is NetworkResult.Success || it is NetworkResult.Error }
+                        when {
+                            result is NetworkResult.Success -> result.data
+                            result is NetworkResult.Error && result.code == NetworkResult.SOURCE_SUFFICIENT_CODE -> null
+                            else -> null
                         }
-                        result is NetworkResult.Error && result.code == NetworkResult.SOURCE_SUFFICIENT_CODE -> {
-                            prefetchedExternalMetaIds.add(item.id)
-                            _enrichedPreviews.update { it + (item.id to item) }
-                        }
-                        else -> { /* Error — leave unresolved */ }
+                    } finally {
+                        externalMetaPrefetchInFlightIds.remove(item.id)
                     }
-                } finally {
-                    externalMetaPrefetchInFlightIds.remove(item.id)
+                }
+            } else null
+
+            val tmdbEnrichment = tmdbDeferred?.await()
+            val externalMeta = externalMetaDeferred?.await()
+
+            if (tmdbEnrichment != null) prefetchedTmdbIds.add(item.id)
+            if (externalMetaDeferred != null) prefetchedExternalMetaIds.add(item.id)
+
+            if (externalMeta != null) {
+                updateCatalogItemWithMeta(item.id, externalMeta)
+            }
+            if (tmdbEnrichment != null) {
+                updateCatalogItemWithTmdb(item.id, tmdbEnrichment)
+            }
+
+            if (tmdbEnrichment == null && externalMeta == null) {
+                _enrichedPreviews.update { it + (item.id to item) }
+            }
+
+            // Background prefetch for detail screen cache.
+            if (item.id !in backgroundMetaPrefetchedIds) {
+                backgroundMetaPrefetchedIds.add(item.id)
+                viewModelScope.launch {
+                    metaRepository.getMetaFromAllAddons(
+                        type = item.apiType,
+                        id = item.id
+                    ).first { it !is NetworkResult.Loading }
                 }
             }
         } finally {

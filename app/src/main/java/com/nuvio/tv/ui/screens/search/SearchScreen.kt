@@ -718,6 +718,10 @@ fun SearchScreen(
                                     // pending auto-focus so it doesn't steal focus later.
                                     pendingFocusMoveToResultsQuery = null
                                     searchRowFocusedItemIndex[catalogKey] = itemIndex
+                                    // Prefetch meta for the focused item to warm cache for detail screen.
+                                    catalogRow.items.getOrNull(itemIndex)?.let { item ->
+                                        viewModel.prefetchMetaOnFocus(item.id, item.rawType)
+                                    }
                                     lastFocusedRowKey = catalogKey
                                 },
                                 onItemClick = { id, type, addonBaseUrl ->
@@ -730,7 +734,9 @@ fun SearchScreen(
                                     }
                                     viewModel.hasSavedSearchFocus = true
                                     val clickedItem = catalogRow.items.firstOrNull { it.id == id }
-                                    HeroBackdropState.update(clickedItem?.backdropUrl)
+                                    val backdrop = viewModel.getCachedBackdrop(id, type)
+                                        ?: clickedItem?.backdropUrl
+                                    HeroBackdropState.update(backdrop)
                                     onNavigateToDetail(id, type, addonBaseUrl)
                                 },
                                 onItemLongPress = { item, addonBaseUrl ->

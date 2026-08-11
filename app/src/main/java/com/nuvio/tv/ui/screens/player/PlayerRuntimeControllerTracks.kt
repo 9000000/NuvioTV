@@ -1025,6 +1025,7 @@ internal fun PlayerRuntimeController.applyPersistedTrackPreference(
                         autoSubtitleSelected = true
                         selectSubtitleTrack(index)
                         updatedSubtitleIndex = index
+                        updatedPending = updatedPending.copy(subtitle = null)
                     } else {
                         Log.d(PlayerRuntimeController.TAG, "TRACK_PREF restore: internal subtitle index=$index already selected, keeping for pipeline restart")
                         autoSubtitleSelected = true

@@ -317,7 +317,7 @@ class LayoutSettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            layoutPreferenceDataStore.preferExternalMetaAddonDetail.distinctUntilChanged().collectLatest { enabled ->
+            layoutPreferenceDataStore.preferExternalMetaAddonDetail.collectLatest { enabled ->
                 updateUiStateIfChanged { it.copy(preferExternalMetaAddonDetail = enabled) }
             }
         }
