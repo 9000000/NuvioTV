@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.tmdb
 
+import com.nuvio.tv.data.remote.api.TmdbAggregateCreditsResponse
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbCompany
 import com.nuvio.tv.data.remote.api.TmdbCompanyDetailsResponse
@@ -7,16 +8,19 @@ import com.nuvio.tv.data.remote.api.TmdbCreditsResponse
 import com.nuvio.tv.data.remote.api.TmdbDetailsResponse
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResponse
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
+import com.nuvio.tv.data.remote.api.TmdbEpisode
 import com.nuvio.tv.data.remote.api.TmdbImagesResponse
 import com.nuvio.tv.data.remote.api.TmdbMovieReleaseDatesResponse
 import com.nuvio.tv.data.remote.api.TmdbNetwork
 import com.nuvio.tv.data.remote.api.TmdbNetworkDetailsResponse
+import com.nuvio.tv.data.remote.api.TmdbSeasonResponse
 import com.nuvio.tv.data.remote.api.TmdbTvContentRatingsResponse
 import com.nuvio.tv.data.remote.api.TmdbVideosResponse
 import com.nuvio.tv.domain.model.ContentType
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,6 +33,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Response
+import java.util.concurrent.atomic.AtomicInteger
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TmdbMetadataServiceTest {
@@ -77,7 +82,7 @@ class TmdbMetadataServiceTest {
                 status = "Returning Series"
             )
         )
-        coEvery { api.getTvCredits(any(), any(), any()) } returns Response.success(TmdbCreditsResponse())
+        coEvery { api.getTvAggregateCredits(any(), any(), any()) } returns Response.success(TmdbAggregateCreditsResponse())
         coEvery { api.getTvImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
         coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
         coEvery { api.getTvVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 20))
@@ -105,7 +110,7 @@ class TmdbMetadataServiceTest {
                 status = "Ended"
             )
         )
-        coEvery { api.getTvCredits(any(), any(), any()) } returns Response.success(TmdbCreditsResponse())
+        coEvery { api.getTvAggregateCredits(any(), any(), any()) } returns Response.success(TmdbAggregateCreditsResponse())
         coEvery { api.getTvImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
         coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
         coEvery { api.getTvVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 21))
@@ -165,6 +170,62 @@ class TmdbMetadataServiceTest {
         assertEquals(1, imagesCalls)
         assertEquals(1, releaseCalls)
         assertEquals(results[0], results[1])
+    }
+
+    @Test
+    fun `episode enrichment fetches seasons with bounded concurrency`() = runTest {
+        val api = mockk<TmdbApi>()
+        val releaseRequests = CompletableDeferred<Unit>()
+        val firstBatchStarted = CompletableDeferred<Unit>()
+        val callCount = AtomicInteger()
+        val activeRequests = AtomicInteger()
+        val maximumActiveRequests = AtomicInteger()
+
+        coEvery { api.getTvSeasonDetails(any(), any(), any(), any()) } coAnswers {
+            val season = arg<Int>(1)
+            val active = activeRequests.incrementAndGet()
+            maximumActiveRequests.updateAndGet { current -> maxOf(current, active) }
+            if (callCount.incrementAndGet() == 4) {
+                firstBatchStarted.complete(Unit)
+            }
+
+            try {
+                releaseRequests.await()
+                Response.success(
+                    TmdbSeasonResponse(
+                        seasonNumber = season,
+                        episodes = listOf(
+                            TmdbEpisode(
+                                episodeNumber = 1,
+                                name = "Season $season premiere"
+                            )
+                        )
+                    )
+                )
+            } finally {
+                activeRequests.decrementAndGet()
+            }
+        }
+
+        val service = TmdbMetadataService(api)
+        val resultDeferred = async(Dispatchers.Default) {
+            service.fetchEpisodeEnrichment(
+                tmdbId = "42",
+                seasonNumbers = (1..6).toList(),
+                language = "en"
+            )
+        }
+
+        firstBatchStarted.await()
+        assertEquals(4, callCount.get())
+        assertEquals(4, maximumActiveRequests.get())
+
+        releaseRequests.complete(Unit)
+        val result = resultDeferred.await()
+
+        assertEquals(6, callCount.get())
+        assertEquals(6, result.size)
+        assertEquals("Season 6 premiere", result[6 to 1]?.title)
     }
 
     @Test
