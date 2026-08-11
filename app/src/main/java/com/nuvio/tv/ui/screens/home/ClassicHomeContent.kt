@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -333,21 +334,21 @@ fun ClassicHomeContent(
         return
     }
 
-    // Lazy catalog loading: trigger load after scroll settles
+    // Lazy catalog loading: trigger load when rows approach visibility
     val latestOnRequestLazyCatalogLoad = rememberUpdatedState(onRequestLazyCatalogLoad)
     val latestVisibleHomeRows = rememberUpdatedState(visibleHomeRows)
     LaunchedEffect(columnListState) {
-        val prefetchAhead = 1
+        val prefetchAhead = 3
         snapshotFlow {
-            val scrolling = columnListState.isScrollInProgress
             val info = columnListState.layoutInfo
             val firstVisible = info.visibleItemsInfo.firstOrNull()?.index ?: -1
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            Triple(scrolling, firstVisible, lastVisible)
-        }.collect { (scrolling, firstVisible, lastVisible) ->
-            if (scrolling || lastVisible < 0) return@collect
-            delay(150)
-            if (columnListState.isScrollInProgress) return@collect
+            firstVisible to lastVisible
+        }.collectLatest { (firstVisible, lastVisible) ->
+            if (lastVisible < 0) return@collectLatest
+            // Debounce: restarts on every new emission during rapid scroll.
+            // Only fires when visible indices stabilize for 120ms.
+            delay(120)
             val rows = latestVisibleHomeRows.value
             // Offset for hero + CW sections that precede homeRows in LazyColumn
             val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
