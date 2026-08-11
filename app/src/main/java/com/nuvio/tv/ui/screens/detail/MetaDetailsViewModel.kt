@@ -681,7 +681,9 @@ class MetaDetailsViewModel @Inject constructor(
                 } else {
                     metaRepository.getMetaFromAllAddons(type = itemType, id = metaLookupId).collect { result ->
                         when (result) {
-                            is NetworkResult.Success -> applyMetaWithEnrichment(result.data)
+                            is NetworkResult.Success -> {
+                                applyMetaWithEnrichment(result.data)
+                            }
                             is NetworkResult.Error -> {
                                 if (!tryApplyTmdbFallbackMeta()) {
                                     val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
