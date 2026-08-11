@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -136,6 +137,7 @@ data class LibraryUiState(
 class LibraryViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val cloudLibraryRepository: CloudLibraryRepository,
+    private val metaRepository: com.nuvio.tv.domain.repository.MetaRepository,
     private val debridSettingsDataStore: DebridSettingsDataStore,
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
     private val libraryPreferences: LibraryPreferences,
@@ -166,6 +168,30 @@ class LibraryViewModel @Inject constructor(
             watchProgressRepository.observeWatchedMovieIds()
                 .collect { ids -> _watchedMovieIds.value = ids }
         }
+    }
+
+    private val metaPrefetchedIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private var metaPrefetchJob: Job? = null
+
+    /**
+     * Prefetch meta from addons in background when an item receives focus.
+     * Warms the MetaRepository cache so the detail screen loads instantly.
+     * Debounced to avoid flooding the network during rapid scrolling.
+     */
+    fun prefetchMetaOnFocus(id: String, type: String) {
+        if (id.isBlank() || id in metaPrefetchedIds) return
+        metaPrefetchJob?.cancel()
+        metaPrefetchJob = viewModelScope.launch {
+            delay(150)
+            if (id in metaPrefetchedIds) return@launch
+            metaPrefetchedIds.add(id)
+            metaRepository.getMetaFromAllAddons(type = type, id = id)
+                .first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
+        }
+    }
+
+    fun getCachedBackdrop(id: String, type: String): String? {
+        return metaRepository.getCachedMeta(type, id)?.backdropUrl
     }
 
     fun onSelectTypeTab(tab: LibraryTypeTab) {

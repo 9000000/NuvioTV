@@ -31,6 +31,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +48,7 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val addonRepository: AddonRepository,
     private val catalogRepository: CatalogRepository,
+    private val metaRepository: com.nuvio.tv.domain.repository.MetaRepository,
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
     private val searchHistoryDataStore: SearchHistoryDataStore,
     private val watchProgressRepository: com.nuvio.tv.domain.repository.WatchProgressRepository,
@@ -185,6 +187,33 @@ class SearchViewModel @Inject constructor(
         if (state.discoverLocation == DiscoverLocation.OFF) return
         if (state.discoverInitialized || state.discoverLoading) return
         viewModelScope.launch { loadDiscoverCatalogs() }
+    }
+
+    private val metaPrefetchedIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private var metaPrefetchJob: Job? = null
+
+    /**
+     * Prefetch meta from addons in background when an item receives focus.
+     * Warms the MetaRepository cache so the detail screen loads instantly.
+     * Debounced to avoid flooding the network during rapid scrolling.
+     */
+    fun prefetchMetaOnFocus(id: String, type: String) {
+        if (id.isBlank() || id in metaPrefetchedIds) return
+        metaPrefetchJob?.cancel()
+        metaPrefetchJob = viewModelScope.launch {
+            delay(150)
+            if (id in metaPrefetchedIds) return@launch
+            metaPrefetchedIds.add(id)
+            metaRepository.getMetaFromAllAddons(type = type, id = id)
+                .first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
+        }
+    }
+
+    /**
+     * Returns the cached backdrop URL from a previously prefetched meta, or null.
+     */
+    fun getCachedBackdrop(id: String, type: String): String? {
+        return metaRepository.getCachedMeta(type, id)?.backdropUrl
     }
 
     fun onEvent(event: SearchEvent) {
