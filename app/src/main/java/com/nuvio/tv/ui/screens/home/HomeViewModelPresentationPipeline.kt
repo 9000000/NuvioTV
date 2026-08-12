@@ -278,7 +278,7 @@ internal fun HomeViewModel.observeModernHomePresentationPipeline() {
                 if (catalogsLoadInProgress) 300L else 80L
             }
             .collectLatest { input ->
-                val shouldWarmStart = uiState.value.modernHomePresentation.rows.list.isEmpty()
+                val shouldWarmStart = _modernHomePresentation.value.rows.list.isEmpty()
                 val visibleCatalogRowCount = input.catalogRows.count { it.items.isNotEmpty() }
                 val warmStartCatalogRowCount = if (input.continueWatchingItems.isNotEmpty()) 2 else 3
 
@@ -291,12 +291,8 @@ internal fun HomeViewModel.observeModernHomePresentationPipeline() {
                             maxCatalogRows = warmStartCatalogRowCount
                         )
                     }
-                    _uiState.update { state ->
-                        if (state.modernHomePresentation == warmStartPresentation) {
-                            state
-                        } else {
-                            state.copy(modernHomePresentation = warmStartPresentation)
-                        }
+                    if (_modernHomePresentation.value != warmStartPresentation) {
+                        _modernHomePresentation.value = warmStartPresentation
                     }
                 }
 
@@ -307,12 +303,8 @@ internal fun HomeViewModel.observeModernHomePresentationPipeline() {
                         context = appContext
                     )
                 }
-                _uiState.update { state ->
-                    if (state.modernHomePresentation == presentation) {
-                        state
-                    } else {
-                        state.copy(modernHomePresentation = presentation)
-                    }
+                if (_modernHomePresentation.value != presentation) {
+                    _modernHomePresentation.value = presentation
                 }
             }
     }
@@ -447,7 +439,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             // before the user focused on it).
             if (item.id !in _enrichedPreviews.value) {
                 val enriched = findCatalogItemById(item.id) ?: item
-                _enrichedPreviews.update { it + (item.id to enriched) }
+                addEnrichedPreview(item.id, enriched)
             }
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
             // Still prefetch full meta in background for instant detail screen.
@@ -474,8 +466,6 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
         (_uiState.value.homeLayout != HomeLayout.MODERN || currentTmdbSettings.modernHomeEnabled)
     val willEnrich = tmdbEnabledForCurrentLayout || externalMetaPrefetchEnabled
 
-    if (willEnrich) setEnrichingItemId(item.id)
-
     pendingTmdbEnrichItemId = item.id
     tmdbEnrichFocusJob?.cancel()
     tmdbEnrichFocusJob = viewModelScope.launch(Dispatchers.IO) {
@@ -484,6 +474,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
             return@launch
         }
+        if (willEnrich) setEnrichingItemId(item.id)
         if (item.id in prefetchedTmdbIds || item.id in prefetchedExternalMetaIds) {
             val artworkStillNeeded = item.id !in prefetchedExternalMetaIds &&
                 externalMetaPrefetchEnabled &&
@@ -562,7 +553,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             // If neither source produced anything, mark enrichment in previews
             // so UI doesn't keep showing spinner.
             if (tmdbEnrichment == null && externalMeta == null) {
-                _enrichedPreviews.update { it + (item.id to item) }
+                addEnrichedPreview(item.id, item)
             }
 
             // Always prefetch full meta in background for instant detail screen loading.
@@ -575,6 +566,12 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                     ).first { it !is NetworkResult.Loading }
                 }
             }
+
+            // Warm up watch progress pipeline so detail screen reads are fast.
+            viewModelScope.launch {
+                watchProgressRepository.getAllEpisodeProgress(item.id.substringBefore(":")).first()
+            }
+
         } finally {
             if (_enrichingItemId.value == item.id) {
                 setEnrichingItemId(null)
@@ -653,7 +650,7 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
             }
 
             if (tmdbEnrichment == null && externalMeta == null) {
-                _enrichedPreviews.update { it + (item.id to item) }
+                addEnrichedPreview(item.id, item)
             }
 
             // Background prefetch for detail screen cache.
@@ -666,6 +663,7 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
                     ).first { it !is NetworkResult.Loading }
                 }
             }
+
         } finally {
             if (pendingAdjacentPrefetchItemId == item.id) {
                 pendingAdjacentPrefetchItemId = null
@@ -733,7 +731,7 @@ private fun HomeViewModel.updateCatalogItemWithTmdb(itemId: String, enrichment: 
 
     findCatalogItemById(itemId)?.let { enriched ->
         _lastEnrichedPreview.value = enriched
-        _enrichedPreviews.update { it + (itemId to enriched) }
+        addEnrichedPreview(itemId, enriched)
     }
 }
 
@@ -810,7 +808,7 @@ private fun HomeViewModel.updateCatalogItemWithMeta(itemId: String, meta: Meta) 
     }
     findCatalogItemById(itemId)?.let { enriched ->
         _lastEnrichedPreview.value = enriched
-        _enrichedPreviews.update { it + (itemId to enriched) }
+        addEnrichedPreview(itemId, enriched)
     }
 
     // If external meta brought new trailerYtIds and the item has no trailer resolved yet, retry.
@@ -856,7 +854,7 @@ private fun HomeViewModel.updateCatalogItemArtworkOnly(itemId: String, meta: Met
     }
     findCatalogItemById(itemId)?.let { enriched ->
         _lastEnrichedPreview.value = enriched
-        _enrichedPreviews.update { it + (itemId to enriched) }
+        addEnrichedPreview(itemId, enriched)
     }
 }
 

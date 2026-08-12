@@ -78,7 +78,7 @@ internal data class PlayerNavigationArgs(
                 initialSeason = savedStateHandle.get<String>("season")?.toIntOrNull(),
                 initialEpisode = savedStateHandle.get<String>("episode")?.toIntOrNull(),
                 initialEpisodeTitle = decodedOrNull("episodeTitle"),
-                bingeGroup = decodedOrNull("bingeGroup"),
+                bingeGroup = savedStateHandle.get<String>("bingeGroup")?.takeIf { it.isNotEmpty() },
                 filename = decodedOrNull("filename"),
                 videoHash = savedStateHandle.get<String>("videoHash")?.takeIf { it.isNotEmpty() },
                 videoSize = savedStateHandle.get<String>("videoSize")?.toLongOrNull(),

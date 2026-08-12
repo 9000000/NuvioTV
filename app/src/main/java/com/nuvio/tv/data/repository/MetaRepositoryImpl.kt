@@ -41,8 +41,8 @@ class MetaRepositoryImpl @Inject constructor(
          *  Prevents excessive re-fetching on every details screen visit for addons
          *  that don't set meaningful Cache-Control headers. */
         private const val MIN_META_TTL_MS = 5L * 60 * 1000
-        private const val MAX_META_CACHE_ENTRIES = 64
-        private const val MAX_PRIMARY_META_CACHE_ENTRIES = 32
+        private const val MAX_META_CACHE_ENTRIES = 32
+        private const val MAX_PRIMARY_META_CACHE_ENTRIES = 16
     }
 
     /**
@@ -162,6 +162,22 @@ class MetaRepositoryImpl @Inject constructor(
                 return@flow
             }
             addonMetaCache.remove(cacheKey)
+        }
+
+        inFlightAddonMeta[cacheKey]?.let { existingDeferred ->
+            when (val lookupResult = existingDeferred.await()) {
+                is MetaLookupResult.Found -> {
+                    emit(NetworkResult.Success(lookupResult.meta))
+                    return@flow
+                }
+                is MetaLookupResult.SourceSufficient -> {
+                    emit(NetworkResult.Error("Source addon sufficient", NetworkResult.SOURCE_SUFFICIENT_CODE))
+                    return@flow
+                }
+                is MetaLookupResult.NotFound -> {
+                    // Fall through — the in-flight request failed, try ourselves
+                }
+            }
         }
 
         emit(NetworkResult.Loading)
