@@ -296,6 +296,24 @@ data class PlayerSettings(
     // Nuvio ExoPlayer Performance Mode
     val nuvioPerformanceModeEnabled: Boolean = DEFAULT_NUVIO_PERFORMANCE_MODE_ENABLED
 ) {
+    /** Prefer FFmpeg/extension audio decoder (EXTENSION_RENDERER_MODE_PREFER). */
+    val isPreferAppDecoder: Boolean
+        get() = decoderPriority == 2
+
+    /** FFmpeg downmix only runs when the app decoder is preferred. */
+    val effectiveDownmixEnabled: Boolean
+        get() = downmixEnabled && isPreferAppDecoder
+
+    /**
+     * Tunneled playback cannot share the FFmpeg audio path. Prefer-app decoder
+     * (required for downmix) plus tunneling races at startup and playback never begins.
+     */
+    val isTunnelingCompatible: Boolean
+        get() = !isPreferAppDecoder
+
+    val effectiveTunnelingEnabled: Boolean
+        get() = tunnelingEnabled && isTunnelingCompatible
+
     companion object {
         const val DEFAULT_STILL_WATCHING_EPISODE_THRESHOLD = 3
         const val MIN_STILL_WATCHING_EPISODE_THRESHOLD = 2
