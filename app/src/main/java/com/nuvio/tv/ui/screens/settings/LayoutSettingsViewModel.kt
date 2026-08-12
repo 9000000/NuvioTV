@@ -332,7 +332,7 @@ class LayoutSettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            layoutPreferenceDataStore.nextUpFromFurthestEpisode.distinctUntilChanged().collectLatest { enabled ->
+            layoutPreferenceDataStore.nextUpFromFurthestEpisode.collectLatest { enabled ->
                 updateUiStateIfChanged { it.copy(nextUpFromFurthestEpisode = enabled) }
             }
         }

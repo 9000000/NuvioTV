@@ -335,9 +335,9 @@ class LayoutPreferenceDataStore @Inject constructor(
         prefs[showUnairedNextUpKey] ?: true
     }
 
-    val nextUpFromFurthestEpisode: Flow<Boolean> = profileFlow { prefs ->
+    val nextUpFromFurthestEpisode: StateFlow<Boolean> = profileFlow { prefs ->
         prefs[nextUpFromFurthestEpisodeKey] ?: true
-    }
+    }.stateIn(scope, SharingStarted.Eagerly, true)
 
     val blurContinueWatchingNextUp: Flow<Boolean> = profileFlow { prefs ->
         prefs[blurContinueWatchingNextUpKey] ?: false

@@ -41,6 +41,9 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
@@ -286,24 +289,28 @@ class WatchProgressRepositoryImpl @Inject constructor(
     ) { states -> states.toMap() }
     @Volatile private var activeProgressProviderId: TrackingProviderId? = null
 
-    init {
-        syncScope.launch {
-            activeProgressProviderFlow().collect { provider ->
-                activeProgressProviderId = provider?.providerId
-            }
-        }
-    }
-
     @OptIn(FlowPreview::class)
-    private fun activeProgressProviderFlow(): Flow<TrackingProgressProvider?> = combine(
+    private val activeProgressProviderState: StateFlow<TrackingProgressProvider?> = combine(
         traktSettingsDataStore.watchProgressSource,
         progressProviderConnections
     ) { requested, connections ->
         effectiveWatchProgressSource(requested) { providerId -> connections[providerId] == true }
             .providerId
             ?.let(trackingProgressProviders::provider)
-    }.debounce { provider -> if (provider == null) 300L else 0L }
-        .distinctUntilChanged()
+    }.debounce { provider ->
+        if (provider == null) 100L else 0L
+    }.distinctUntilChanged()
+        .stateIn(syncScope, SharingStarted.Eagerly, null)
+
+    init {
+        syncScope.launch {
+            activeProgressProviderState.collect { provider ->
+                activeProgressProviderId = provider?.providerId
+            }
+        }
+    }
+
+    private fun activeProgressProviderFlow(): Flow<TrackingProgressProvider?> = activeProgressProviderState
 
     private suspend fun activeProgressProvider(): TrackingProgressProvider? =
         activeProgressProviderFlow().first()

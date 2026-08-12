@@ -187,6 +187,7 @@ class LibraryViewModel @Inject constructor(
             metaPrefetchedIds.add(id)
             metaRepository.getMetaFromAllAddons(type = type, id = id)
                 .first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
+            watchProgressRepository.getAllEpisodeProgress(id.substringBefore(":")).first()
         }
     }
 

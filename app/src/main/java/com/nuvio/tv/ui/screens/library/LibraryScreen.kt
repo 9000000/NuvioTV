@@ -169,7 +169,9 @@ fun LibraryScreen(
 
             var focused = false
             if (restoreIndex != null && restoreRequester != null) {
-                runCatching { gridState.scrollToItem(restoreIndex) }
+                if (gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0) {
+                    runCatching { gridState.scrollToItem(restoreIndex) }
+                }
                 focused = runCatching { restoreRequester.requestFocus() }.isSuccess
                 if (!focused) {
                     delay(16)

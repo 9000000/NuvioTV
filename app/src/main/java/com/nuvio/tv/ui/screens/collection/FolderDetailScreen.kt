@@ -867,6 +867,7 @@ private fun FollowLayoutContent(
         )
         HomeLayout.MODERN -> ModernHomeContent(
             uiState = homeState,
+            modernPresentation = homeState.modernHomePresentation,
             focusState = focusState,
             enrichingItemId = enrichingItemId,
             enrichedPreviews = enrichedPreviews,

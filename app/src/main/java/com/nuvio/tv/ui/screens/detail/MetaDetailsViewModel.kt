@@ -45,6 +45,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -538,7 +539,6 @@ class MetaDetailsViewModel @Inject constructor(
         // Re-calculate next-to-watch when "furthest episode" preference changes
         viewModelScope.launch {
             layoutPreferenceDataStore.nextUpFromFurthestEpisode
-                .distinctUntilChanged()
                 .collectLatest {
                     calculateNextToWatch()
                 }
@@ -833,7 +833,6 @@ class MetaDetailsViewModel @Inject constructor(
 
         // Calculate next to watch after meta is loaded
         reevaluateSeriesWatchedBadge()
-        calculateNextToWatch()
 
         // Start fetching trailer after meta is loaded
         fetchTrailerUrl()
@@ -848,22 +847,33 @@ class MetaDetailsViewModel @Inject constructor(
         loadMoreLikeThisAsync(meta)
         val enriched = enrichMeta(meta)
 
-        // Pre-compute nextToWatch before applyMeta so the PlayButton text is stable
-        // from the first composition — prevents focus invalidation from late recomposition.
+        // Show detail screen IMMEDIATELY — no shimmer. PlayButton starts icon-only.
+        applyMeta(enriched)
+
+        // Compute nextToWatch AFTER screen is visible.
+        // PlayButton text animates in when this resolves.
         val contentId = _effectiveContentId.value
-        val (progressMap, watchedEpisodes) = coroutineScope {
-            val progressDeferred = async {
-                watchProgressRepository.getAllEpisodeProgress(contentId).first()
-            }
-            val watchedDeferred = async {
-                watchedItemsPreferences.getWatchedEpisodesForContent(contentId).first()
-            }
-            progressDeferred.await() to watchedDeferred.await()
+
+        // Wait for remote progress provider (Simkl/Trakt) to finish initial load.
+        watchProgressRepository.observeRemoteProgressLoaded().first { it }
+
+        // After remote is loaded, getAllEpisodeProgress may start with an onStart{emptyMap()}
+        // then emit real data. Take the first non-empty emission, or fallback to empty after timeout.
+        val progressDeferred = viewModelScope.async {
+            val flow = watchProgressRepository.getAllEpisodeProgress(contentId)
+            // Try to get a non-empty result within 150ms; fall back to whatever is available.
+            withTimeoutOrNull(150L) {
+                flow.first { it.isNotEmpty() }
+            } ?: flow.first()
         }
+        val watchedDeferred = viewModelScope.async {
+            watchedItemsPreferences.getWatchedEpisodesForContent(contentId).first()
+        }
+        val progressMap = progressDeferred.await()
+        val watchedEpisodes = watchedDeferred.await()
         val precomputedNextToWatch = computeNextToWatch(enriched, progressMap, watchedEpisodes)
         updateNextToWatch(precomputedNextToWatch)
 
-        applyMeta(enriched)
         // Episode ratings and MDBList are independent — launch both without waiting.
         loadEpisodeRatingsAsync(enriched)
         viewModelScope.launch { loadMDBListRatings(enriched) }
@@ -1608,6 +1618,14 @@ class MetaDetailsViewModel @Inject constructor(
         val meta = _uiState.value.meta ?: return
         val progressMap = _uiState.value.episodeProgressMap
         val watchedEpisodes = _uiState.value.watchedEpisodes
+
+        // Don't override an existing nextToWatch with a computation from empty progress data.
+        // The inline computation in applyMetaWithEnrichment reads directly from the repo
+        // and may have better data than the UI state observer at this point.
+        if (progressMap.isEmpty() && watchedEpisodes.isEmpty() && _uiState.value.nextToWatch != null) {
+            return
+        }
+
         nextToWatchJob?.cancel()
 
         nextToWatchJob = viewModelScope.launch {

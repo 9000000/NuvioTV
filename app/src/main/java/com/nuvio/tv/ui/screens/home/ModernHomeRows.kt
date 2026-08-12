@@ -410,10 +410,12 @@ private fun ModernCatalogRowItem(
                         )
                     }
                 }
-                is ModernPayload.CollectionFolder -> onNavigateToFolderDetail(
-                    payload.collectionId,
-                    payload.folderId
-                )
+                is ModernPayload.CollectionFolder -> {
+                    onNavigateToFolderDetail(
+                        payload.collectionId,
+                        payload.folderId
+                    )
+                }
                 is ModernPayload.ContinueWatching -> Unit
             }
         },
