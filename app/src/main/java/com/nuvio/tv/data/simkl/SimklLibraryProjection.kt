@@ -115,7 +115,7 @@ private fun SimklLibraryEntry.toLibraryEntry(
     }
     return LibraryEntry(
         id = contentId,
-        type = entryType,
+        type = if (entryType == "tv") "series" else entryType,
         name = media.title?.takeIf(String::isNotBlank) ?: contentId,
         poster = resolvedPosterUrl(),
         posterShape = PosterShape.POSTER,
