@@ -528,7 +528,12 @@ fun SearchScreen(
                     isVoiceListening = isVoiceListening,
                     voiceRmsLevel = voiceRmsLevel,
                     onVoiceSearch = launchVoiceSearch,
-                    onMoveToResults = { focusResults = true },
+                    onMoveToResults = {
+                        // D-pad down from the text field is the user's confirmation that the
+                        // live-search results are useful, even before a particular card opens.
+                        viewModel.onEvent(SearchEvent.RememberSearchFromTextInput)
+                        focusResults = true
+                    },
                     onOpenDiscover = onOpenDiscover,
                     showDiscoverButton = uiState.discoverLocation == DiscoverLocation.IN_SEARCH,
                     keyboardController = keyboardController,
@@ -722,9 +727,6 @@ fun SearchScreen(
                                 },
                                 onItemClick = { id, type, addonBaseUrl ->
                                     lastFocusedRowKey = catalogKey
-                                    // Entering a result confirms the query for recent history
-                                    // (keyboard Done is not required after live search).
-                                    viewModel.onEvent(SearchEvent.RememberSearchFromResults)
                                     // Save focus state to ViewModel before navigating
                                     viewModel.savedFocusRowKey = catalogKey
                                     viewModel.savedFocusItemIndex = searchRowFocusedItemIndex[catalogKey] ?: 0
