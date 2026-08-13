@@ -776,6 +776,8 @@
     <string name="sub_use_forced_subtitles_desc">Prefer forced subtitles when audio matches subtitle language; if unavailable, select nothing</string>
     <string name="sub_show_only_preferred_languages">Show Only Preferred Languages</string>
     <string name="sub_show_only_preferred_languages_desc">Hide all other subtitles languages from selection list</string>
+    <string name="sub_strip_sdh">Strip SDH subtitles</string>
+    <string name="sub_strip_sdh_desc">Hide sound descriptions and speaker labels from text subtitles</string>
     <string name="sub_organization">Subtitle Organization</string>
     <string name="sub_size">Size</string>
     <string name="sub_vertical_offset">Vertical Offset</string>
