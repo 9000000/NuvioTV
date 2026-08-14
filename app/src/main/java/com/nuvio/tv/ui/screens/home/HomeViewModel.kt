@@ -326,19 +326,6 @@ class HomeViewModel @Inject constructor(
             observeCollections()
             observeInstalledAddons()
 
-            viewModelScope.launch {
-                combine(
-                    _uiState.map { it.continueWatchingItems + it.upcomingItems }.distinctUntilChanged(),
-                    TvRecommendationManager.isPlaybackActive
-                ) { items, isPlaying ->
-                    Pair(items, isPlaying)
-                }.collect { (items, isPlaying) ->
-                    if (!isPlaying) {
-                        runCatching { tvRecommendationManager.updateWatchNextFromCwItems(items) }
-                    }
-                }
-            }
-
             // Clear CW state when profile changes so items don't leak between profiles.
             var previousProfileId = profileManager.activeProfileId.value
             profileManager.activeProfileId.collect { newId ->
