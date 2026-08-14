@@ -285,6 +285,18 @@ class StreamScreenViewModel @Inject constructor(
                     )
                 }
             }
+            StreamScreenEvent.OnRefresh -> {
+                // A user refresh is a clean request, not a resume of a partially
+                // completed load captured before playback.
+                resumeBaselineStreams = null
+                updateUiStateIfChanged {
+                    it.copy(
+                        selectedAddonFilter = null,
+                        filteredStreams = it.allStreams
+                    )
+                }
+                loadStreams()
+            }
             StreamScreenEvent.OnRetry -> loadStreams()
             StreamScreenEvent.OnBackPress -> { /* Handle in screen */ }
             StreamScreenEvent.OnResume -> {

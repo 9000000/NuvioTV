@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -420,6 +421,7 @@ fun StreamScreen(
                     badgePlacement = streamBadgeSettings.badgePlacement,
                     hasBadgeRules = streamBadgeSettings.rules.hasImport,
                     onAddonFilterSelected = { viewModel.onEvent(StreamScreenEvent.OnAddonFilterSelected(it)) },
+                    onRefresh = { viewModel.onEvent(StreamScreenEvent.OnRefresh) },
                     onStreamSelected = { stream ->
                         val currentIndex = uiState.filteredStreams.indexOfFirst {
                             it.url == stream.url &&
@@ -693,6 +695,7 @@ private fun RightStreamSection(
     badgePlacement: StreamBadgePlacement,
     hasBadgeRules: Boolean = false,
     onAddonFilterSelected: (String?) -> Unit,
+    onRefresh: () -> Unit,
     onStreamSelected: (Stream) -> Unit,
     focusedStreamIndex: Int,
     shouldRestoreFocusedStream: Boolean,
@@ -714,11 +717,11 @@ private fun RightStreamSection(
         }
     }
     val chipFocusRequesters = remember(orderedAddonNames.size) {
-        List(orderedAddonNames.size + 1) { FocusRequester() }
+        List(orderedAddonNames.size + 2) { FocusRequester() }
     }
     fun onAddonFilterSelectedGuarded(addon: String?) {
         onAddonFilterSelected(addon)
-        val idx = if (addon == null) 0 else orderedAddonNames.indexOf(addon) + 1
+        val idx = if (addon == null) 1 else orderedAddonNames.indexOf(addon) + 2
         focusJob?.cancel()
         focusJob = scope.coroutineLaunch {
             withFrameNanos {}
@@ -755,6 +758,7 @@ private fun RightStreamSection(
                     addons = availableAddons,
                     sourceChips = sourceChips,
                     selectedAddon = selectedAddonFilter,
+                    onRefresh = onRefresh,
                     onAddonSelected = { onAddonFilterSelectedGuarded(it) },
                     focusRequesters = chipFocusRequesters,
                     orderedNames = orderedAddonNames
@@ -827,6 +831,7 @@ private fun AddonFilterChips(
     addons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddon: String?,
+    onRefresh: () -> Unit,
     onAddonSelected: (String?) -> Unit,
     focusRequesters: List<FocusRequester>,
     orderedNames: List<String>
@@ -837,14 +842,27 @@ private fun AddonFilterChips(
     // Track the focused chip index to handle duplicate addon names correctly.
     // indexOf(selectedAddon) would always return the first duplicate.
     var focusedChipIndex by remember { mutableStateOf(
-        if (selectedAddon == null) 0 else (orderedNames.indexOf(selectedAddon) + 1).coerceAtLeast(0)
+        if (selectedAddon == null) 1 else (orderedNames.indexOf(selectedAddon) + 2).coerceAtLeast(1)
     ) }
     LaunchedEffect(selectedAddon, orderedNames) {
-        val idx = if (selectedAddon == null) 0 else (orderedNames.indexOf(selectedAddon) + 1).coerceAtLeast(0)
+        val idx = if (selectedAddon == null) 1 else (orderedNames.indexOf(selectedAddon) + 2).coerceAtLeast(1)
         focusedChipIndex = idx
     }
     val scope = rememberCoroutineScope()
     val lastKeyRepeatDispatchRef = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+    fun moveFocusTo(targetIndex: Int) {
+        focusedChipIndex = targetIndex
+        if (targetIndex == 0) {
+            scope.coroutineLaunch {
+                withFrameNanos {}
+                try { focusRequesters[0].requestFocus() } catch (_: Exception) {}
+            }
+            return
+        }
+
+        val selectedFilter = if (targetIndex == 1) null else orderedNames[targetIndex - 2]
+        onAddonSelected(selectedFilter)
+    }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
         contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs),
@@ -869,27 +887,34 @@ private fun AddonFilterChips(
                     lastKeyRepeatDispatchRef.set(now)
                 }
 
-                val allOptions = listOf<String?>(null) + orderedNames
-                val currentIdx = focusedChipIndex.coerceIn(0, allOptions.lastIndex)
+                val lastIndex = orderedNames.size + 1
+                val currentIdx = focusedChipIndex.coerceIn(0, lastIndex)
                 when (event.key) {
                     androidx.compose.ui.input.key.Key.DirectionLeft -> {
                         if (isRtl) {
-                            if (currentIdx < allOptions.lastIndex) { focusedChipIndex = currentIdx + 1; onAddonSelected(allOptions[currentIdx + 1]); true } else false
+                            if (currentIdx < lastIndex) { moveFocusTo(currentIdx + 1); true } else false
                         } else {
-                            if (currentIdx > 0) { focusedChipIndex = currentIdx - 1; onAddonSelected(allOptions[currentIdx - 1]); true } else false
+                            if (currentIdx > 0) { moveFocusTo(currentIdx - 1); true } else false
                         }
                     }
                     androidx.compose.ui.input.key.Key.DirectionRight -> {
                         if (isRtl) {
-                            if (currentIdx > 0) { focusedChipIndex = currentIdx - 1; onAddonSelected(allOptions[currentIdx - 1]); true } else false
+                            if (currentIdx > 0) { moveFocusTo(currentIdx - 1); true } else false
                         } else {
-                            if (currentIdx < allOptions.lastIndex) { focusedChipIndex = currentIdx + 1; onAddonSelected(allOptions[currentIdx + 1]); true } else false
+                            if (currentIdx < lastIndex) { moveFocusTo(currentIdx + 1); true } else false
                         }
                     }
                     else -> false
                 }
             }
     ) {
+        item {
+            RefreshFilterChip(
+                onClick = onRefresh,
+                modifier = Modifier.focusRequester(focusRequesters[0])
+            )
+        }
+
         item {
             SourceStatusFilterChip(
                 name = stringResource(R.string.stream_filter_all),
@@ -898,7 +923,7 @@ private fun AddonFilterChips(
                 isSelectable = true,
                 onClick = { onAddonSelected(null) },
                 modifier = Modifier
-                    .focusRequester(focusRequesters[0])
+                    .focusRequester(focusRequesters[1])
                     .focusProperties { canFocus = selectedAddon == null || chipRowHasFocus }
             )
         }
@@ -913,9 +938,52 @@ private fun AddonFilterChips(
                 status = chipStatus,
                 isSelectable = isSelectable,
                 onClick = { if (isSelectable) onAddonSelected(addon) },
-                modifier = Modifier.focusRequester(focusRequesters[i + 1])
+                modifier = Modifier.focusRequester(focusRequesters[i + 2])
             )
         }
+    }
+}
+
+@Composable
+private fun RefreshFilterChip(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val contentColor = if (isFocused) {
+        NuvioTheme.colors.OnSecondary
+    } else {
+        NuvioTheme.colors.TextSecondary
+    }
+
+    FilterChip(
+        selected = false,
+        onClick = onClick,
+        modifier = modifier.onFocusChanged { isFocused = it.isFocused },
+        colors = FilterChipDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.Secondary,
+            contentColor = contentColor,
+            focusedContentColor = contentColor
+        ),
+        border = FilterChipDefaults.border(
+            border = Border(
+                border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
+                shape = RoundedCornerShape(20.dp)
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                shape = RoundedCornerShape(20.dp)
+            )
+        ),
+        shape = FilterChipDefaults.shape(shape = RoundedCornerShape(20.dp))
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Refresh,
+            contentDescription = stringResource(R.string.cd_refresh),
+            modifier = Modifier.size(20.dp),
+            tint = contentColor
+        )
     }
 }
 
@@ -1120,8 +1188,8 @@ private fun StreamsList(
                         else -> null
                     },
                     onUpKey = if (index == 0 && chipFocusRequesters.isNotEmpty()) {{
-                        val idx = if (selectedAddonFilter == null) 0
-                                  else orderedAddonNames.indexOf(selectedAddonFilter) + 1
+                        val idx = if (selectedAddonFilter == null) 1
+                                  else orderedAddonNames.indexOf(selectedAddonFilter) + 2
                         if (idx >= 0 && idx < chipFocusRequesters.size) {
                             try { chipFocusRequesters[idx].requestFocus() } catch (_: Exception) {}
                         }
