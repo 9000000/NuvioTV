@@ -813,9 +813,12 @@ class MainActivity : ComponentActivity() {
 
                     val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
                     val updateState by updateViewModel.uiState.collectAsState()
+                    val updateBannerState = updateState.copy(
+                        showBanner = updateState.showBanner && currentRoute?.startsWith("player/") != true
+                    )
 
                     UpdateBannerHost(
-                        state = updateState,
+                        state = updateBannerState,
                         onDismissBanner = updateViewModel::dismissBanner,
                         onDownload = updateViewModel::downloadUpdate,
                         onInstall = updateViewModel::installUpdateOrRequestPermission,
