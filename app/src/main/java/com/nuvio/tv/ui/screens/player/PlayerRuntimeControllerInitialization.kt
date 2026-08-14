@@ -1499,7 +1499,15 @@ internal fun PlayerRuntimeController.initializePlayer(
                             return
                         }
 
-                        handleParsingErrorFallback(error)
+                        if (tryParsingErrorProbeFallback(
+                            error = error,
+                            detailedError = detailedError,
+                            allowEngineFailover = allowEngineFailover,
+                            savedPosition = currentPosition,
+                            paused = userPausedManually
+                        )) {
+                            return
+                        }
 
                         // ── Main Engine Failover ──
                         if (maybeAutoSwitchInternalPlayerOnStartupError(detailedError = detailedError, allowEngineFailover = allowEngineFailover)) {
