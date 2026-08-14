@@ -43,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -53,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,11 +81,14 @@ import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.domain.model.TraktListPrivacy
+import com.nuvio.tv.data.local.PlayerPreference
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
+import com.nuvio.tv.ui.screens.stream.PlayerChoiceDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.NuvioDialog
@@ -128,10 +133,14 @@ fun LibraryScreen(
     val uiState by viewModel.uiState.collectAsState()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsState()
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsState()
+    val activityContext = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var expandedPicker by remember { mutableStateOf<String?>(null) }
     var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.Saved) }
     var activeCloudItem by remember { mutableStateOf<CloudLibraryItem?>(null) }
+    var pendingCloudPlayback by remember { mutableStateOf<CloudLibraryPlaybackInfo?>(null) }
+    var showCloudPlayerChoice by remember { mutableStateOf(false) }
     val primaryFocusRequester = remember { FocusRequester() }
     val selectorFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
@@ -148,6 +157,21 @@ fun LibraryScreen(
     }
     val firstVisiblePosterKey = visibleItemKeys.firstOrNull()
     val posterCardStyle = PosterCardDefaults.Style
+
+    val routeCloudPlayback: (CloudLibraryPlaybackInfo) -> Unit = { info ->
+        scope.launch {
+            when (viewModel.getPlayerPreference()) {
+                PlayerPreference.INTERNAL -> onCloudPlaybackResolved(info)
+                PlayerPreference.EXTERNAL -> {
+                    viewModel.launchCloudPlaybackExternally(info, activityContext)
+                }
+                PlayerPreference.ASK_EVERY_TIME -> {
+                    pendingCloudPlayback = info
+                    showCloudPlayerChoice = true
+                }
+            }
+        }
+    }
 
     LaunchedEffect(viewMode, uiState.cloudLibrary.isEnabled, uiState.cloudLibrary.isLoaded, uiState.cloudLibrarySettingsVersion) {
         if (viewMode == LibraryViewMode.Cloud) {
@@ -502,7 +526,7 @@ fun LibraryScreen(
                         val playableFiles = item.playableFiles
                         when (playableFiles.size) {
                             0 -> viewModel.onCloudItemHasNoPlayableFiles()
-                            1 -> viewModel.resolveCloudPlayback(item, playableFiles.first(), onCloudPlaybackResolved)
+                            1 -> viewModel.resolveCloudPlayback(item, playableFiles.first(), routeCloudPlayback)
                             else -> activeCloudItem = item
                         }
                     }
@@ -560,10 +584,32 @@ fun LibraryScreen(
             onPlay = { file ->
                 viewModel.resolveCloudPlayback(item, file) { info ->
                     activeCloudItem = null
-                    onCloudPlaybackResolved(info)
+                    routeCloudPlayback(info)
                 }
             },
             onDismiss = { activeCloudItem = null }
+        )
+    }
+
+    if (showCloudPlayerChoice && pendingCloudPlayback != null) {
+        PlayerChoiceDialog(
+            onInternalSelected = {
+                showCloudPlayerChoice = false
+                pendingCloudPlayback?.let(onCloudPlaybackResolved)
+                pendingCloudPlayback = null
+            },
+            onExternalSelected = {
+                showCloudPlayerChoice = false
+                val info = pendingCloudPlayback
+                pendingCloudPlayback = null
+                if (info != null) {
+                    scope.launch { viewModel.launchCloudPlaybackExternally(info, activityContext) }
+                }
+            },
+            onDismiss = {
+                showCloudPlayerChoice = false
+                pendingCloudPlayback = null
+            }
         )
     }
 
