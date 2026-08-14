@@ -62,6 +62,25 @@ import kotlinx.coroutines.async
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun resolveProviderEpisodeProgress(
+    contentId: String,
+    season: Int,
+    episode: Int,
+    episodeProgress: Map<Pair<Int, Int>, WatchProgress>,
+    allProgress: List<WatchProgress>
+): WatchProgress? {
+    val liveProgress = allProgress
+        .asSequence()
+        .filter { progress ->
+            progress.contentId.equals(contentId, ignoreCase = true) &&
+                progress.season == season &&
+                progress.episode == episode
+        }
+        .maxByOrNull(WatchProgress::lastWatched)
+    return listOfNotNull(episodeProgress[season to episode], liveProgress)
+        .maxByOrNull(WatchProgress::lastWatched)
+}
+
 @Singleton
 @OptIn(ExperimentalCoroutinesApi::class)
 class WatchProgressRepositoryImpl @Inject constructor(
@@ -399,7 +418,18 @@ class WatchProgressRepositoryImpl @Inject constructor(
         return activeProgressProviderFlow()
             .flatMapLatest { provider ->
                 if (provider != null) {
-                    provider.episodeProgress(contentId).map { items -> items[season to episode] }
+                    combine(
+                        provider.episodeProgress(contentId),
+                        provider.allProgress
+                    ) { items, allProgress ->
+                        resolveProviderEpisodeProgress(
+                            contentId = contentId,
+                            season = season,
+                            episode = episode,
+                            episodeProgress = items,
+                            allProgress = allProgress
+                        )
+                    }
                 } else {
                     watchProgressPreferences.getEpisodeProgress(contentId, season, episode)
                 }
