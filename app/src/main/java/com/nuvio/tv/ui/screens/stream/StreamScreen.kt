@@ -705,9 +705,10 @@ private fun RightStreamSection(
 ) {
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     var enter by remember { mutableStateOf(false) }
-    var shouldFocusFirstStream by remember { mutableStateOf(false) }
-    var wasLoading by remember { mutableStateOf(true) }
+    var firstStreamFocusRequestId by remember { mutableStateOf(0) }
     var listHasFocus by remember { mutableStateOf(false) }
+    var userMovedFromFirstResult by remember { mutableStateOf(shouldRestoreFocusedStream) }
+    var lastObservedFirstStreamKey by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val orderedAddonNames = remember(availableAddons, sourceChips) {
@@ -716,10 +717,21 @@ private fun RightStreamSection(
             sourceChips.forEach { if (it.name !in this) add(it.name) }
         }
     }
-    val chipFocusRequesters = remember(orderedAddonNames.size) {
-        List(orderedAddonNames.size + 2) { FocusRequester() }
+    val firstStreamKey = streams.firstOrNull()?.stableKey(0)
+    val refreshFocusRequester = remember { FocusRequester() }
+    val allFocusRequester = remember { FocusRequester() }
+    val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val chipFocusRequesters = remember(orderedAddonNames) {
+        buildList {
+            add(refreshFocusRequester)
+            add(allFocusRequester)
+            orderedAddonNames.forEach { addon ->
+                add(addonFocusRequesters.getOrPut(addon) { FocusRequester() })
+            }
+        }
     }
     fun onAddonFilterSelectedGuarded(addon: String?) {
+        userMovedFromFirstResult = true
         onAddonFilterSelected(addon)
         val idx = if (addon == null) 1 else orderedAddonNames.indexOf(addon) + 2
         focusJob?.cancel()
@@ -734,11 +746,28 @@ private fun RightStreamSection(
     LaunchedEffect(Unit) {
         enter = true
     }
-    LaunchedEffect(isLoading, streams.size) {
-        if (wasLoading && !isLoading && streams.isNotEmpty()) {
-            shouldFocusFirstStream = true
+    LaunchedEffect(shouldRestoreFocusedStream) {
+        if (shouldRestoreFocusedStream) {
+            userMovedFromFirstResult = true
         }
-        wasLoading = isLoading
+    }
+    LaunchedEffect(isLoading, firstStreamKey, userMovedFromFirstResult) {
+        if (!isLoading && firstStreamKey != null) {
+            val firstResultChanged = lastObservedFirstStreamKey != firstStreamKey
+            lastObservedFirstStreamKey = firstStreamKey
+            if (!userMovedFromFirstResult && firstResultChanged) {
+                firstStreamFocusRequestId += 1
+            }
+        }
+    }
+    fun requestChipFocus(index: Int) {
+        if (index !in chipFocusRequesters.indices) return
+        userMovedFromFirstResult = true
+        focusJob?.cancel()
+        focusJob = scope.coroutineLaunch {
+            withFrameNanos { }
+            runCatching { chipFocusRequesters[index].requestFocus() }
+        }
     }
 
     Column(
@@ -758,7 +787,11 @@ private fun RightStreamSection(
                     addons = availableAddons,
                     sourceChips = sourceChips,
                     selectedAddon = selectedAddonFilter,
-                    onRefresh = onRefresh,
+                    onRefresh = {
+                        userMovedFromFirstResult = false
+                        lastObservedFirstStreamKey = null
+                        onRefresh()
+                    },
                     onAddonSelected = { onAddonFilterSelectedGuarded(it) },
                     focusRequesters = chipFocusRequesters,
                     orderedNames = orderedAddonNames
@@ -805,8 +838,7 @@ private fun RightStreamSection(
                             focusedStreamIndex = focusedStreamIndex,
                             shouldRestoreFocusedStream = shouldRestoreFocusedStream,
                             onRestoreFocusedStreamHandled = onRestoreFocusedStreamHandled,
-                            requestInitialFocus = shouldFocusFirstStream,
-                            onInitialFocusConsumed = { shouldFocusFirstStream = false },
+                            firstStreamFocusRequestId = firstStreamFocusRequestId,
                             availableAddons = availableAddons,
                             selectedAddonFilter = selectedAddonFilter,
                             showFileSizeBadges = showFileSizeBadges,
@@ -814,8 +846,11 @@ private fun RightStreamSection(
                             badgePlacement = badgePlacement,
                             hasBadgeRules = hasBadgeRules,
                             onAddonFilterSelected = { onAddonFilterSelectedGuarded(it) },
-                            chipFocusRequesters = chipFocusRequesters,
                             orderedAddonNames = orderedAddonNames,
+                            onRequestChipFocus = { requestChipFocus(it) },
+                            onUserNavigatedFromFirstResult = {
+                                userMovedFromFirstResult = true
+                            },
                             onFocusChanged = { listHasFocus = it }
                         )
                     }
@@ -911,7 +946,9 @@ private fun AddonFilterChips(
         item {
             RefreshFilterChip(
                 onClick = onRefresh,
-                modifier = Modifier.focusRequester(focusRequesters[0])
+                modifier = Modifier
+                    .focusRequester(focusRequesters[0])
+                    .focusProperties { canFocus = focusedChipIndex == 0 }
             )
         }
 
@@ -1081,8 +1118,7 @@ private fun StreamsList(
     focusedStreamIndex: Int = 0,
     shouldRestoreFocusedStream: Boolean = false,
     onRestoreFocusedStreamHandled: () -> Unit = {},
-    requestInitialFocus: Boolean = false,
-    onInitialFocusConsumed: () -> Unit = {},
+    firstStreamFocusRequestId: Int = 0,
     availableAddons: List<String> = emptyList(),
     selectedAddonFilter: String? = null,
     showFileSizeBadges: Boolean = true,
@@ -1090,32 +1126,44 @@ private fun StreamsList(
     badgePlacement: StreamBadgePlacement = StreamBadgePlacement.BOTTOM,
     hasBadgeRules: Boolean = false,
     onAddonFilterSelected: (String?) -> Unit = {},
-    chipFocusRequesters: List<FocusRequester> = emptyList(),
     orderedAddonNames: List<String> = emptyList(),
+    onRequestChipFocus: (Int) -> Unit = {},
+    onUserNavigatedFromFirstResult: () -> Unit = {},
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
-    val firstCardFocusRequester = remember { FocusRequester() }
     val lastKeyRepeatDispatchRef = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val restoreFocusRequester = remember { FocusRequester() }
     val streamListState = rememberLazyListState()
-    val firstStreamKey = streams.firstOrNull()?.let { first ->
-        "${first.addonName}_${first.url ?: first.infoHash ?: first.ytId ?: "unknown"}"
+    val streamKeys = remember(streams) {
+        val seen = mutableMapOf<String, Int>()
+        streams.map { stream ->
+            val base = stream.stableKey(0)
+            val occurrence = seen.getOrDefault(base, 0)
+            seen[base] = occurrence + 1
+            stream.stableKey(occurrence)
+        }
     }
-
+    val firstStreamKey = streamKeys.firstOrNull()
+    val streamFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    streamKeys.forEach { key ->
+        streamFocusRequesters.getOrPut(key) { FocusRequester() }
+    }
+    var firstCardHasFocus by remember(firstStreamKey) { mutableStateOf(false) }
     // Reset scroll position to the top when the addon filter changes (#2538).
     LaunchedEffect(selectedAddonFilter) {
         streamListState.scrollToItem(0)
     }
 
-    LaunchedEffect(requestInitialFocus, firstStreamKey) {
-        if (!requestInitialFocus || streams.isEmpty()) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
-        try {
-            firstCardFocusRequester.requestFocus()
-        } catch (_: Exception) {
+    LaunchedEffect(firstStreamFocusRequestId) {
+        val requestedKey = firstStreamKey
+        if (firstStreamFocusRequestId <= 0 || requestedKey == null) return@LaunchedEffect
+        streamListState.scrollToItem(0)
+        repeat(30) {
+            withFrameNanos { }
+            if (firstCardHasFocus) return@LaunchedEffect
+            runCatching { streamFocusRequesters.getValue(requestedKey).requestFocus() }
         }
-        onInitialFocusConsumed()
     }
 
     LaunchedEffect(shouldRestoreFocusedStream, focusedStreamIndex, streams.size) {
@@ -1147,6 +1195,9 @@ private fun StreamsList(
                     if (now - lastKeyRepeatDispatchRef.get() < 112L) return@onKeyEvent true
                     lastKeyRepeatDispatchRef.set(now)
                 }
+                if (event.key == Key.DirectionDown) {
+                    onUserNavigatedFromFirstResult()
+                }
                 if (availableAddons.isEmpty()) return@onKeyEvent false
                 val allOptions = listOf<String?>(null) + availableAddons
                 val currentIdx = allOptions.indexOf(selectedAddonFilter)
@@ -1171,8 +1222,8 @@ private fun StreamsList(
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
         contentPadding = PaddingValues(start = NuvioTheme.spacing.sm, end = NuvioTheme.spacing.sm, top = NuvioTheme.spacing.sm, bottom = NuvioTheme.spacing.xxl)
     ) {
-        itemsIndexed(streams, key = { index, stream ->
-            stream.stableKey(index)
+        itemsIndexed(streams, key = { index, _ ->
+            streamKeys[index]
         }) { index, stream ->
             Box(modifier = Modifier.padding(vertical = NuvioTheme.spacing.xs)) {
                 StreamCard(
@@ -1184,15 +1235,17 @@ private fun StreamsList(
                     onClick = { onStreamSelected(stream) },
                     focusRequester = when {
                         shouldRestoreFocusedStream && index == focusedStreamIndex.coerceIn(0, (streams.lastIndex).coerceAtLeast(0)) -> restoreFocusRequester
-                        index == 0 -> firstCardFocusRequester
-                        else -> null
+                        else -> streamFocusRequesters.getValue(streamKeys[index])
                     },
-                    onUpKey = if (index == 0 && chipFocusRequesters.isNotEmpty()) {{
+                    onFocusChanged = { focused ->
+                        if (index == 0) {
+                            firstCardHasFocus = focused
+                        }
+                    },
+                    onUpKey = if (index == 0) {{
                         val idx = if (selectedAddonFilter == null) 1
                                   else orderedAddonNames.indexOf(selectedAddonFilter) + 2
-                        if (idx >= 0 && idx < chipFocusRequesters.size) {
-                            try { chipFocusRequesters[idx].requestFocus() } catch (_: Exception) {}
-                        }
+                        onRequestChipFocus(idx)
                     }} else null
                 )
             }
@@ -1210,6 +1263,7 @@ private fun StreamCard(
     reserveBadgeSpace: Boolean = false,
     onClick: () -> Unit,
     focusRequester: FocusRequester? = null,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
     onUpKey: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -1247,7 +1301,10 @@ private fun StreamCard(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged {
+                isFocused = it.isFocused
+                onFocusChanged?.invoke(it.isFocused)
+            }
             .then(if (onUpKey != null) Modifier.onKeyEvent { event ->
                 if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && event.key == Key.DirectionUp) {
                     onUpKey(); true
