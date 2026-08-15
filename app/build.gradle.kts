@@ -57,11 +57,6 @@ val doviExtractorHookReady = parseBooleanProperty(
 val doviEnableRealLink = parseBooleanProperty(
     resolveProperty(devProperties, localProperties, "DOVI_ENABLE_REAL_LINK")
 )
-val selfHosted = parseBooleanProperty(
-    providers.gradleProperty("SELF_HOSTED").orNull
-        ?: providers.environmentVariable("SELF_HOSTED").orNull
-        ?: resolveProperty(devProperties, localProperties, "SELF_HOSTED")
-)
 val doviStaticLibPath = resolveProperty(devProperties, localProperties, "DOVI_LIBDOVI_STATIC_LIB")
 val doviIncludeDirPath = resolveProperty(devProperties, localProperties, "DOVI_LIBDOVI_INCLUDE_DIR")
 val doviPrebuiltRootPath = resolveProperty(devProperties, localProperties, "DOVI_LIBDOVI_PREBUILT_ROOT")
@@ -127,7 +122,6 @@ android {
         buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
         buildConfigField("boolean", "DOVI_NATIVE_ENABLED", enableDoviNative.toString())
         buildConfigField("boolean", "DOVI_EXTRACTOR_HOOK_READY", doviExtractorHookReady.toString())
-        buildConfigField("boolean", "SELF_HOSTED", selfHosted.toString())
         if (enableDoviNative) {
             externalNativeBuild {
                 cmake {
@@ -163,6 +157,7 @@ android {
             buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "true")
         }
         create("playstore") {
             dimension = "distribution"
@@ -172,6 +167,7 @@ android {
             buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "false")
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "false")
         }
     }
 

@@ -1,6 +1,6 @@
 package com.nuvio.tv.data.remote.supabase
 
-import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.domain.model.ServerConfiguration
 import io.github.jan.supabase.postgrest.Postgrest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,7 +16,8 @@ data class AvatarCatalogItem(
 
 @Singleton
 class AvatarRepository @Inject constructor(
-    private val postgrest: Postgrest
+    private val postgrest: Postgrest,
+    private val serverConfiguration: ServerConfiguration
 ) {
     private var cachedCatalog: List<AvatarCatalogItem>? = null
 
@@ -47,10 +48,9 @@ class AvatarRepository @Inject constructor(
         cachedCatalog = null
     }
 
-    companion object {
-        fun avatarImageUrl(storagePath: String): String {
-            val baseUrl = BuildConfig.AVATAR_PUBLIC_BASE_URL.trimEnd('/')
-            return if (baseUrl.isNotEmpty()) "$baseUrl/$storagePath" else storagePath
-        }
+    private fun avatarImageUrl(storagePath: String): String {
+        if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) return storagePath
+        val baseUrl = serverConfiguration.avatarPublicBaseUrl.orEmpty().trimEnd('/')
+        return if (baseUrl.isNotEmpty()) "$baseUrl/$storagePath" else storagePath
     }
 }

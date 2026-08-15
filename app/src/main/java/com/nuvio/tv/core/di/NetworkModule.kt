@@ -145,6 +145,27 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @Named("customServerAuth")
+    fun provideCustomServerAuthHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .dns(IPv4FirstDns())
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val version = BuildConfig.VERSION_NAME.ifBlank { "dev" }
+            val request = chain.request().newBuilder()
+                .header("User-Agent", "Nuvio/$version")
+                .header("Accept-Language", buildAcceptLanguageHeader())
+                .build()
+            chain.proceed(request)
+        }
+        .addInterceptor(HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+            else HttpLoggingInterceptor.Level.NONE
+        })
+        .build()
+
+    @Provides
+    @Singleton
     @Named("directDebrid")
     fun provideDirectDebridOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()

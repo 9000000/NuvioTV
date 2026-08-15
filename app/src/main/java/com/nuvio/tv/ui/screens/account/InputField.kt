@@ -43,7 +43,8 @@ internal fun InputField(
     keyboardType: KeyboardType = KeyboardType.Text,
     isPassword: Boolean = false,
     imeAction: ImeAction = ImeAction.Done,
-    onImeAction: () -> Unit = {}
+    onImeAction: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val textFieldFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -58,6 +59,7 @@ internal fun InputField(
 
     Surface(
         onClick = { isEditing = true },
+        modifier = modifier,
         colors = ClickableSurfaceDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.BackgroundCard
@@ -123,4 +125,3 @@ internal fun InputField(
         )
     }
 }
-

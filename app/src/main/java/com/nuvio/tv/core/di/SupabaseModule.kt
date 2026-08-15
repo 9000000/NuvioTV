@@ -3,6 +3,8 @@ package com.nuvio.tv.core.di
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.auth.TransientAuthRefreshException
 import com.nuvio.tv.core.auth.shouldRetryAuthRefreshResponse
+import com.nuvio.tv.data.local.ServerConfigurationStore
+import com.nuvio.tv.domain.model.ServerConfiguration
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -28,12 +30,20 @@ object SupabaseModule {
 
     @Provides
     @Singleton
+    fun provideActiveServerConfiguration(
+        configurationStore: ServerConfigurationStore
+    ): ServerConfiguration = configurationStore.loadActive()
+
+    @Provides
+    @Singleton
     @OptIn(SupabaseInternal::class)
-    fun provideSupabaseClient(): SupabaseClient = runBlocking(Dispatchers.IO) {
+    fun provideSupabaseClient(
+        serverConfiguration: ServerConfiguration
+    ): SupabaseClient = runBlocking(Dispatchers.IO) {
         val userAgent = "NuvioTV/${BuildConfig.VERSION_NAME.ifBlank { "dev" }}"
         createSupabaseClient(
-            supabaseUrl = BuildConfig.SUPABASE_URL,
-            supabaseKey = BuildConfig.SUPABASE_ANON_KEY
+            supabaseUrl = serverConfiguration.backendUrl,
+            supabaseKey = serverConfiguration.publishableKey
         ) {
             httpConfig {
                 defaultRequest {
