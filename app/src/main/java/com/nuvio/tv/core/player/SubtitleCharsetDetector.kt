@@ -25,6 +25,9 @@ object SubtitleCharsetDetector {
     private val CHARSET_WIN1250: Charset = safeCharset("windows-1250")
     private val CHARSET_WIN1253: Charset = safeCharset("windows-1253")
     private val CHARSET_WIN1252: Charset = safeCharset("windows-1252", StandardCharsets.ISO_8859_1)
+    private val CHARSET_WIN874: Charset = safeCharset("windows-874", safeCharset("TIS-620", StandardCharsets.ISO_8859_1))
+    private val CHARSET_WIN1258: Charset = safeCharset("windows-1258")
+    private val CHARSET_KOI8_R: Charset = safeCharset("KOI8-R")
     private val CHARSET_GB18030: Charset = safeCharset("GB18030")
     private val CHARSET_BIG5: Charset = safeCharset("Big5")
     private val CHARSET_SHIFT_JIS: Charset = safeCharset("Shift_JIS")
@@ -89,15 +92,23 @@ object SubtitleCharsetDetector {
     }
 
     private fun detectUniversalCharset(bytes: ByteArray, offset: Int, length: Int): Charset {
-        val sampleLength = min(length, MAX_SAMPLE_BYTES)
-        val end = offset + sampleLength
+        var startOffset = offset
+        val totalEnd = offset + length
+        while (startOffset < totalEnd && (bytes[startOffset].toInt() and 0xFF) < 0x80) {
+            startOffset++
+        }
+        if (startOffset >= totalEnd) return StandardCharsets.UTF_8
+
+        val sampleOffset = if (startOffset > offset) (startOffset - min(100, startOffset - offset)) else offset
+        val sampleLength = min(totalEnd - sampleOffset, MAX_SAMPLE_BYTES)
+        val end = sampleOffset + sampleLength
 
         var asciiLetters = 0
         var nonAscii = 0
         var consecutiveNonAscii = 0
         var maxConsecutiveNonAscii = 0
 
-        for (i in offset until end) {
+        for (i in sampleOffset until end) {
             val b = bytes[i].toInt() and 0xFF
             if ((b in 'a'.code..'z'.code) || (b in 'A'.code..'Z'.code)) {
                 asciiLetters++
@@ -115,17 +126,17 @@ object SubtitleCharsetDetector {
 
         if (nonAscii == 0) return StandardCharsets.UTF_8
 
-        if (countBlockMatches(bytes, offset, sampleLength, CHARSET_SHIFT_JIS, Character.UnicodeBlock.HIRAGANA, Character.UnicodeBlock.KATAKANA) >= 3) {
+        if (countBlockMatches(bytes, sampleOffset, sampleLength, CHARSET_SHIFT_JIS, Character.UnicodeBlock.HIRAGANA, Character.UnicodeBlock.KATAKANA) >= 3) {
             return CHARSET_SHIFT_JIS
         }
-        val hangulScore = countBlockMatches(bytes, offset, sampleLength, CHARSET_EUC_KR, Character.UnicodeBlock.HANGUL_SYLLABLES)
-        val gbHanziScore = countBlockMatches(bytes, offset, sampleLength, CHARSET_GB18030, Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS)
+        val hangulScore = countBlockMatches(bytes, sampleOffset, sampleLength, CHARSET_EUC_KR, Character.UnicodeBlock.HANGUL_SYLLABLES)
+        val gbHanziScore = countBlockMatches(bytes, sampleOffset, sampleLength, CHARSET_GB18030, Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS)
 
         if (hangulScore >= 4 && hangulScore >= gbHanziScore) return CHARSET_EUC_KR
 
         if (gbHanziScore >= 4 && maxConsecutiveNonAscii >= 6) {
             var big5TrailCount = 0
-            var i = offset
+            var i = sampleOffset
             while (i < end - 1) {
                 val b1 = bytes[i].toInt() and 0xFF
                 val b2 = bytes[i + 1].toInt() and 0xFF
@@ -135,7 +146,7 @@ object SubtitleCharsetDetector {
                 }
                 i++
             }
-            if (big5TrailCount >= 2 && isCjkClean(bytes, offset, sampleLength, CHARSET_BIG5)) {
+            if (big5TrailCount >= 2 && isCjkClean(bytes, sampleOffset, sampleLength, CHARSET_BIG5)) {
                 return CHARSET_BIG5
             }
             return CHARSET_GB18030
@@ -144,36 +155,49 @@ object SubtitleCharsetDetector {
         if (asciiLetters >= nonAscii || maxConsecutiveNonAscii <= 2) {
             var turkishScore = 0
             var ceScore = 0
-            for (i in offset until end) {
+            var vietnameseScore = 0
+            for (i in sampleOffset until end) {
                 val b = bytes[i].toInt() and 0xFF
+                if (b == 0xCC || b == 0xD2 || b == 0xF2 || b == 0xF5) vietnameseScore++
                 if (b == 0xF0 || b == 0xFE || b == 0xFD || b == 0xD0 || b == 0xDE || b == 0xDD) turkishScore++
-                if (b == 0xB9 || b == 0xB3 || b == 0x9C || b == 0x9F || b == 0xBF || b == 0xF8 || b == 0x9A || b == 0x9E) ceScore++
+                if (b == 0xB9 || b == 0xB3 || b == 0x9C || b == 0x9F || b == 0x9A || b == 0x9E || b == 0x8C || b == 0x8F || b == 0x8A || b == 0x8E || b == 0x8D || b == 0x9D || b == 0xCF || b == 0xEF || b == 0xBE || b == 0xBA || b == 0xEC) ceScore++
             }
-            if (turkishScore > 0) return CHARSET_WIN1254
-            if (ceScore > 0) return CHARSET_WIN1250
+            if (turkishScore > ceScore && turkishScore > 0) return CHARSET_WIN1254
+            if (ceScore > 0 && ceScore >= vietnameseScore) return CHARSET_WIN1250
+            if (vietnameseScore >= 2) return CHARSET_WIN1258
             return CHARSET_WIN1252
         }
 
+        var thaiConsonants = 0
         var hebrewLetters = 0
         var arabicAlCount = 0
         var russianVowels = 0
+        var koi8Vowels = 0
         var greekVowels = 0
         var bytes0xC0to0xDF = 0
 
-        for (i in offset until end) {
+        for (i in sampleOffset until end) {
             val b = bytes[i].toInt() and 0xFF
+            if (b in 0xA1..0xBF) thaiConsonants++
             if (b in 0xE0..0xFA) hebrewLetters++
             if (b in 0xC0..0xDF) bytes0xC0to0xDF++
-            if (b == 0xEE || b == 0xE0 || b == 0xE5 || b == 0xE8 || b == 0xFF) russianVowels++
-            if (b == 0xE1 || b == 0xEF || b == 0xE5 || b == 0xE7) greekVowels++
+            if (b == 0xEE || b == 0xE0 || b == 0xE5 || b == 0xE8 || b == 0xFF || b == 0xFB) russianVowels++
+            if (b == 0xCF || b == 0xC1 || b == 0xC5 || b == 0xC9 || b == 0xD5 || b == 0xDF) koi8Vowels++
+            if (b == 0xE1 || b == 0xEF || b == 0xE5 || b == 0xE7 || b == 0xFD || b == 0xFE) greekVowels++
             if (i < end - 1 && b == 0xC7 && (bytes[i + 1].toInt() and 0xFF) == 0xE1) arabicAlCount++
         }
 
+        if (thaiConsonants * 5 >= nonAscii && thaiConsonants >= 4) {
+            return CHARSET_WIN874
+        }
         if (hebrewLetters == nonAscii && hebrewLetters >= 4 && bytes0xC0to0xDF == 0) {
             return CHARSET_WIN1255
         }
         if (arabicAlCount > 0) {
             return CHARSET_WIN1256
+        }
+        if (koi8Vowels > russianVowels && koi8Vowels >= 3) {
+            return CHARSET_KOI8_R
         }
         if (russianVowels > greekVowels && russianVowels >= 3) {
             return CHARSET_WIN1251
