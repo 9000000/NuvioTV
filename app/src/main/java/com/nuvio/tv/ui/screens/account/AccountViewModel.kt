@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.R
-import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.auth.diagnostics.AuthDiagnosticsSession
 import com.nuvio.tv.core.logging.bodySnippetForLog
@@ -33,6 +32,7 @@ import com.nuvio.tv.data.repository.AuthDiagnosticReportRepository
 import com.nuvio.tv.data.repository.LibraryRepositoryImpl
 import com.nuvio.tv.data.repository.WatchProgressRepositoryImpl
 import com.nuvio.tv.domain.model.AuthState
+import com.nuvio.tv.domain.model.ServerConfiguration
 import com.nuvio.tv.domain.repository.SyncRepository
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.serialization.SerialName
@@ -81,6 +81,7 @@ class AccountViewModel @Inject constructor(
     private val postgrest: Postgrest,
     private val profileManager: ProfileManager,
     private val authDiagnosticReportRepository: AuthDiagnosticReportRepository,
+    private val serverConfiguration: ServerConfiguration,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -91,6 +92,9 @@ class AccountViewModel @Inject constructor(
     private var activeQrLoginDiagnostics: AuthDiagnosticsSession? = null
     private var qrLoginPollAttempt: Int = 0
     private var qrLoginExchangeInFlight: Boolean = false
+
+    val usesEmailPasswordLogin: Boolean
+        get() = serverConfiguration.isCustom && serverConfiguration.capabilities.emailPasswordAuth
 
     init {
         observeAuthState()
@@ -273,7 +277,12 @@ class AccountViewModel @Inject constructor(
             finishActiveQrDiagnostics(status = "cancelled", reason = "qr_login_replaced")
             cancelQrLoginPolling()
             activeQrLoginTraceId = traceId
-            val diagnostics = AuthDiagnosticsSession(authDiagnosticReportRepository, "qr_login", qrTraceId = traceId)
+            val diagnostics = AuthDiagnosticsSession(
+                authDiagnosticReportRepository,
+                "qr_login",
+                qrTraceId = traceId,
+                serverConfiguration = serverConfiguration
+            )
             activeQrLoginDiagnostics = diagnostics
             qrLoginPollAttempt = 0
             qrLoginExchangeInFlight = false
@@ -283,15 +292,15 @@ class AccountViewModel @Inject constructor(
                 mapOf(
                     "authState" to _uiState.value.authState.nameForLog(),
                     "deviceModel" to Build.MODEL,
-                    "redirectBaseUrl" to BuildConfig.TV_LOGIN_WEB_BASE_URL,
-                    "supabaseUrl" to BuildConfig.SUPABASE_URL,
-                    "anonKeyConfigured" to BuildConfig.SUPABASE_ANON_KEY.isNotBlank().toString(),
+                    "redirectBaseUrl" to serverConfiguration.tvLoginWebBaseUrl,
+                    "supabaseUrl" to serverConfiguration.backendUrl,
+                    "anonKeyConfigured" to serverConfiguration.publishableKey.isNotBlank().toString(),
                     "nonce" to nonce
                 )
             )
             Log.d(
                 TAG,
-                "QR_LOGIN[$traceId] start requested auth=${_uiState.value.authState.nameForLog()} model=${Build.MODEL.bodySnippetForLog()} redirect=${BuildConfig.TV_LOGIN_WEB_BASE_URL.urlForLog()} supabase=${BuildConfig.SUPABASE_URL.urlForLog()} anonKeyConfigured=${BuildConfig.SUPABASE_ANON_KEY.isNotBlank()} nonce=${nonce.rawForLog()}"
+                "QR_LOGIN[$traceId] start requested auth=${_uiState.value.authState.nameForLog()} model=${Build.MODEL.bodySnippetForLog()} redirect=${serverConfiguration.tvLoginWebBaseUrl.urlForLog()} supabase=${serverConfiguration.backendUrl.urlForLog()} anonKeyConfigured=${serverConfiguration.publishableKey.isNotBlank()} nonce=${nonce.rawForLog()}"
             )
             _uiState.update {
                 it.copy(
@@ -309,7 +318,7 @@ class AccountViewModel @Inject constructor(
             authManager.startTvLoginSession(
                 deviceNonce = nonce,
                 deviceName = Build.MODEL,
-                redirectBaseUrl = BuildConfig.TV_LOGIN_WEB_BASE_URL,
+                redirectBaseUrl = serverConfiguration.tvLoginWebBaseUrl.orEmpty(),
                 traceId = traceId,
                 diagnostics = diagnostics
             ).fold(
