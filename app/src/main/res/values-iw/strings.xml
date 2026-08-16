@@ -700,7 +700,6 @@
     <string name="audio_decoder_prefer_app">העדף מפענחי אפליקציה (FFmpeg)</string>
     <string name="audio_decoder_priority">איך לנגן את הקול</string>
     <string name="audio_enable_downmix_title">הפעל downmix</string>
-    <string name="audio_enable_downmix_subtitle">משתמש בנתיב ה-downmix של FFmpeg. כשמושבת, השמע פועל לפי נתיב האנדרואיד/המכשיר הקודם.</string>
     <string name="audio_tunneled">הפעלה ממונרת</string>
     <string name="audio_tunneled_sub">מסייע לסנכרן בין הקול לתמונה. נסה אם יש חוסר סנכרון בחלק מהמכשירים.</string>
     <string name="audio_force_optical_passthrough_sub">ממיר פורמטים רב-ערוציים (TrueHD, DTS, AAC וכו׳) ל-Dolby Digital 5.1 בזמן אמת עבור חיבורי Optical/SPDIF.</string>
