@@ -46,7 +46,6 @@ import com.nuvio.tv.domain.repository.StreamRepository
 import com.nuvio.tv.domain.repository.WatchProgressRepository
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,8 +92,6 @@ class PlayerRuntimeController(
     savedStateHandle: SavedStateHandle,
     internal val scope: CoroutineScope
 ) {
-
-    internal val watchedWriteDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     companion object {
         internal const val TAG = "PlayerViewModel"
