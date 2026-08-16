@@ -811,6 +811,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                     val selectedAddonSubtitle = _uiState.value.selectedAddonSubtitle
                     selectedAddonSubtitle != null && PlayerSubtitleUtils.mimeTypeFromUrl(selectedAddonSubtitle.url) == MimeTypes.TEXT_VTT
                 },
+                shouldStripSdhProvider = {
+                    currentPlayerSettingsForReport.subtitleStyle.stripSdh
+                },
                 isBuiltInSubtitleProvider = {
                     _uiState.value.selectedAddonSubtitle == null
                 },
@@ -2003,6 +2006,7 @@ private class SubtitleOffsetRenderersFactory(
     private val subtitleDelayUsProvider: () -> Long,
     private val audioDelayUsProvider: () -> Long,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
+    private val shouldStripSdhProvider: () -> Boolean,
     private val isBuiltInSubtitleProvider: () -> Boolean,
     private val isSidecarAddonSubtitleActiveProvider: () -> Boolean = { false },
     private val videoBoundsFractionProvider: () -> RectF?,
@@ -2131,7 +2135,7 @@ private class SubtitleOffsetRenderersFactory(
         out: ArrayList<Renderer>
     ) {
         val normalizingOutput = CueNormalizingTextOutput(
-            delegate = output,
+            delegate = SdhFilteringTextOutput(output, shouldStripSdhProvider),
             shouldNormalizeCuePositionProvider = shouldNormalizeCuePositionProvider,
             isBuiltInSubtitleProvider = isBuiltInSubtitleProvider,
             isSidecarAddonSubtitleActiveProvider = isSidecarAddonSubtitleActiveProvider,
