@@ -352,7 +352,7 @@ fun ClassicHomeContent(
             val rows = latestVisibleHomeRows.value
             // Offset for hero + CW sections that precede homeRows in LazyColumn
             val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
-            val cwOffset = if (uiState.continueWatchingItems.isNotEmpty()) 1 else 0
+            val cwOffset = if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) 1 else 0
             val rowsOffset = heroOffset + cwOffset
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAhead)) {
                 val rowIdx = idx - rowsOffset
@@ -470,7 +470,7 @@ fun ClassicHomeContent(
             }
         }
 
-        if (uiState.continueWatchingItems.isNotEmpty()) {
+        if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) {
             item(key = "continue_watching", contentType = "continue_watching") {
                 val firstRowKey = visibleHomeRows.firstOrNull()?.let { row ->
                     when (row) {
@@ -545,7 +545,7 @@ fun ClassicHomeContent(
             }
         }
 
-        if (uiState.upcomingItems.isNotEmpty()) {
+        if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
             item(key = "upcoming_section", contentType = "upcoming_section") {
                 val firstRowKey = visibleHomeRows.firstOrNull()?.let { row ->
                     when (row) {
@@ -638,7 +638,7 @@ fun ClassicHomeContent(
                     val shouldInitialFocusFirstCatalogRow =
                         shouldRequestInitialFocus &&
                             !heroVisible &&
-                            uiState.continueWatchingItems.isEmpty() &&
+                            (!uiState.continueWatchingEnabled || uiState.continueWatchingItems.isEmpty()) &&
                             index == 0
                     val focusedItemIndex = when {
                         shouldRestoreFocus -> focusState.focusedItemIndex

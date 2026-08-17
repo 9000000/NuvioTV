@@ -914,6 +914,8 @@
     <string name="layout_section_streams_desc">Display settings for stream results and player source panels.</string>
     <string name="layout_section_continue_watching">Continue Watching</string>
     <string name="layout_section_continue_watching_desc">Settings for the Continue Watching section.</string>
+    <string name="layout_cw_enabled">Show Continue Watching</string>
+    <string name="layout_cw_enabled_sub">Show the Continue Watching row on the home screen.</string>
     <string name="layout_use_episode_thumbnails_cw">Use Episode Thumbnails in Continue Watching</string>
     <string name="layout_use_episode_thumbnails_cw_sub">Use episode thumbnails as default image. When disabled, uses backdrop.</string>
     <string name="layout_blur_unwatched">Blur Unwatched Episodes</string>
