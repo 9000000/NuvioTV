@@ -124,17 +124,16 @@ internal fun StreamSourcesSidePanel(
             } else {
                 null
             }
+            val localizedEpisodeTitle = uiState.currentEpisodeTitle
+                ?.takeIf { it.isNotBlank() }
+                ?.localizeEpisodeTitle(context)
+            val contentInfoText = when {
+                seasonEpisodeCode != null && localizedEpisodeTitle != null -> "$seasonEpisodeCode • $localizedEpisodeTitle"
+                seasonEpisodeCode != null -> seasonEpisodeCode
+                else -> uiState.title
+            }
             Text(
-                text = buildString {
-                    if (seasonEpisodeCode != null) {
-                        append(seasonEpisodeCode)
-                        if (!uiState.currentEpisodeTitle.isNullOrBlank()) {
-                            append(" • ${uiState.currentEpisodeTitle.localizeEpisodeTitle(context)}")
-                        }
-                    } else {
-                        append(uiState.title)
-                    }
-                },
+                text = contentInfoText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = NuvioTheme.extendedColors.textSecondary,
                 maxLines = 1,
