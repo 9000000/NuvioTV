@@ -356,7 +356,8 @@ internal fun HomeViewModel.requestTrailerPreviewPipeline(
     if (trailerPreviewUrlsState.containsKey(itemId)) return
     if (!trailerPreviewLoadingIds.add(itemId)) return
 
-    viewModelScope.launch(Dispatchers.IO) {
+    trailerPreviewJob?.cancel()
+    trailerPreviewJob = viewModelScope.launch(Dispatchers.IO) {
         try {
             // Debounce: wait for focus to settle before hitting network
             delay(180)
