@@ -32,9 +32,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import java.security.MessageDigest
@@ -54,6 +56,11 @@ class StreamRepositoryImpl @Inject constructor(
     private val localDebridAvailabilityService: LocalDebridAvailabilityService
 ) : StreamRepository {
     private val streamSearchSessions = StreamSearchSessionCache()
+    private val localPluginSearchPaused = MutableStateFlow(false)
+
+    override fun setLocalPluginSearchPaused(paused: Boolean) {
+        localPluginSearchPaused.value = paused
+    }
 
     private enum class StreamFailureKind {
         MISSING,
@@ -145,6 +152,7 @@ class StreamRepositoryImpl @Inject constructor(
         }
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun fetchStreamsFromAllSources(
         type: String,
         videoId: String,
@@ -249,14 +257,21 @@ class StreamRepositoryImpl @Inject constructor(
                             season = season,
                             episode = episode
                         )
-                        streamLocalPlugins(
-                            pluginId = pluginRequest.id,
-                            mediaType = pluginRequest.mediaType,
-                            pluginSource = pluginRequest.source,
-                            season = pluginSeason,
-                            episode = pluginEpisode,
-                            resultChannel = resultChannel
-                        )
+                        localPluginSearchPaused
+                            .transformLatest { paused ->
+                                if (!paused) {
+                                    streamLocalPlugins(
+                                        pluginId = pluginRequest.id,
+                                        mediaType = pluginRequest.mediaType,
+                                        pluginSource = pluginRequest.source,
+                                        season = pluginSeason,
+                                        episode = pluginEpisode,
+                                        resultChannel = resultChannel
+                                    )
+                                    emit(Unit)
+                                }
+                            }
+                            .first()
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         Log.e(TAG, "Plugin execution failed: ${e.message}")

@@ -296,6 +296,9 @@ class StreamScreenViewModel @Inject constructor(
             StreamScreenEvent.OnBackPress -> { /* Handle in screen */ }
             StreamScreenEvent.OnResume -> {
                 hostInForeground.value = true
+                if (!externalPlaybackTracker.isTracking) {
+                    streamRepository.setLocalPluginSearchPaused(false)
+                }
                 // Reattach to the repository-owned session if playback stopped
                 // this screen's collector before every source finished.
                 if (!streamLoadCompleted && streamLoadJob == null) {
@@ -322,6 +325,7 @@ class StreamScreenViewModel @Inject constructor(
     }
 
     private fun loadStreams(forceRefresh: Boolean = false) {
+        streamRepository.setLocalPluginSearchPaused(false)
         streamLoadScope?.cancel()
         streamLoadScope = null
         streamLoadJob = null
@@ -1202,6 +1206,7 @@ class StreamScreenViewModel @Inject constructor(
     }
 
     fun onInternalPlayerLaunching() {
+        streamRepository.setLocalPluginSearchPaused(true)
         updateUiStateIfChanged {
             it.copy(showDirectAutoPlayOverlay = false, directAutoPlayMessage = null)
         }
@@ -1258,6 +1263,7 @@ class StreamScreenViewModel @Inject constructor(
         } else {
             externalPlaybackTracker.stopTracking()
         }
+        streamRepository.setLocalPluginSearchPaused(false)
         updateUiStateIfChanged {
             it.copy(
                 showDirectAutoPlayOverlay = false,
@@ -1403,6 +1409,7 @@ class StreamScreenViewModel @Inject constructor(
         autoLaunch: Boolean = false,
         context: android.content.Context
     ) {
+        streamRepository.setLocalPluginSearchPaused(true)
         externalOverlayHideJob?.cancel()
         // Preserve the current message; blanking it made the card's Crossfade flash
         // empty before the subtitle/skip fetch set the next one.
@@ -1542,6 +1549,7 @@ class StreamScreenViewModel @Inject constructor(
                     )
                 }
                 externalPlaybackTracker.releaseAutoNextOverlay(forceRelease = true)
+                streamRepository.setLocalPluginSearchPaused(false)
                 return
             } finally {
                 call?.cancel()
@@ -1615,6 +1623,7 @@ class StreamScreenViewModel @Inject constructor(
             context = context
         )
         if (!launched) {
+            streamRepository.setLocalPluginSearchPaused(false)
             externalPlayerLaunched = false
             externalPlayerLaunchTimeMs = 0L
             updateUiStateIfChanged {

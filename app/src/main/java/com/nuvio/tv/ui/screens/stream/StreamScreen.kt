@@ -708,7 +708,7 @@ private fun RightStreamSection(
     var firstStreamFocusRequestId by remember { mutableStateOf(0) }
     var listHasFocus by remember { mutableStateOf(false) }
     var userMovedFromFirstResult by remember { mutableStateOf(shouldRestoreFocusedStream) }
-    var lastObservedFirstStreamKey by remember { mutableStateOf<String?>(null) }
+    var firstResultFocusAssigned by remember { mutableStateOf(shouldRestoreFocusedStream) }
     val scope = rememberCoroutineScope()
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val orderedAddonNames = remember(availableAddons, sourceChips) {
@@ -751,13 +751,10 @@ private fun RightStreamSection(
             userMovedFromFirstResult = true
         }
     }
-    LaunchedEffect(isLoading, firstStreamKey, userMovedFromFirstResult) {
-        if (!isLoading && firstStreamKey != null) {
-            val firstResultChanged = lastObservedFirstStreamKey != firstStreamKey
-            lastObservedFirstStreamKey = firstStreamKey
-            if (!userMovedFromFirstResult && firstResultChanged) {
-                firstStreamFocusRequestId += 1
-            }
+    LaunchedEffect(isLoading, firstStreamKey, userMovedFromFirstResult, firstResultFocusAssigned) {
+        if (!isLoading && firstStreamKey != null && !userMovedFromFirstResult && !firstResultFocusAssigned) {
+            firstResultFocusAssigned = true
+            firstStreamFocusRequestId += 1
         }
     }
     fun requestChipFocus(index: Int) {
@@ -789,7 +786,7 @@ private fun RightStreamSection(
                     selectedAddon = selectedAddonFilter,
                     onRefresh = {
                         userMovedFromFirstResult = false
-                        lastObservedFirstStreamKey = null
+                        firstResultFocusAssigned = false
                         onRefresh()
                     },
                     onAddonSelected = { onAddonFilterSelectedGuarded(it) },
@@ -874,6 +871,7 @@ private fun AddonFilterChips(
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val chipMap = sourceChips.associateBy { it.name }
     var chipRowHasFocus by remember { mutableStateOf(false) }
+    var refreshHasFocus by remember { mutableStateOf(false) }
     // Track the focused chip index to handle duplicate addon names correctly.
     // indexOf(selectedAddon) would always return the first duplicate.
     var focusedChipIndex by remember { mutableStateOf(
@@ -946,6 +944,7 @@ private fun AddonFilterChips(
         item {
             RefreshFilterChip(
                 onClick = onRefresh,
+                onFocusChanged = { refreshHasFocus = it },
                 modifier = Modifier
                     .focusRequester(focusRequesters[0])
                     .focusProperties { canFocus = focusedChipIndex == 0 }
@@ -955,7 +954,7 @@ private fun AddonFilterChips(
         item {
             SourceStatusFilterChip(
                 name = stringResource(R.string.stream_filter_all),
-                isSelected = selectedAddon == null,
+                isSelected = selectedAddon == null && !refreshHasFocus,
                 status = SourceChipStatus.SUCCESS,
                 isSelectable = true,
                 onClick = { onAddonSelected(null) },
@@ -984,6 +983,7 @@ private fun AddonFilterChips(
 @Composable
 private fun RefreshFilterChip(
     onClick: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -996,7 +996,10 @@ private fun RefreshFilterChip(
     FilterChip(
         selected = false,
         onClick = onClick,
-        modifier = modifier.onFocusChanged { isFocused = it.isFocused },
+        modifier = modifier.onFocusChanged {
+            isFocused = it.isFocused
+            onFocusChanged(it.isFocused)
+        },
         colors = FilterChipDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,
