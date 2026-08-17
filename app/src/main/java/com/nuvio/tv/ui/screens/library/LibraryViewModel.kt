@@ -7,9 +7,13 @@ import com.nuvio.tv.core.cloud.CloudLibraryFile
 import com.nuvio.tv.core.cloud.CloudLibraryItem
 import com.nuvio.tv.core.cloud.CloudLibraryItemType
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackInfo
+import com.nuvio.tv.core.cloud.CloudLibraryPlaybackContext
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackResult
+import com.nuvio.tv.core.cloud.CloudLibraryPlaybackSessionStore
 import com.nuvio.tv.core.cloud.CloudLibraryRepository
 import com.nuvio.tv.core.cloud.CloudLibraryUiState
+import com.nuvio.tv.core.player.ExternalPlaybackMetadata
+import com.nuvio.tv.core.player.ExternalPlaybackTracker
 import com.nuvio.tv.core.debrid.DebridProviderCapability
 import com.nuvio.tv.core.debrid.DebridProviders
 import com.nuvio.tv.core.debrid.supports
@@ -18,6 +22,8 @@ import com.nuvio.tv.core.tracking.providerId
 import com.nuvio.tv.data.local.DebridSettingsDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.LibraryPreferences
+import com.nuvio.tv.data.local.PlayerPreference
+import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.data.repository.TraktLibraryService
 import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.domain.model.LibraryEntry
@@ -146,6 +152,9 @@ data class LibraryUiState(
 class LibraryViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val cloudLibraryRepository: CloudLibraryRepository,
+    private val cloudPlaybackSessionStore: CloudLibraryPlaybackSessionStore,
+    private val externalPlaybackTracker: ExternalPlaybackTracker,
+    private val playerSettingsDataStore: PlayerSettingsDataStore,
     private val metaRepository: com.nuvio.tv.domain.repository.MetaRepository,
     private val debridSettingsDataStore: DebridSettingsDataStore,
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
@@ -340,13 +349,21 @@ class LibraryViewModel @Inject constructor(
             _uiState.update { it.copy(resolvingCloudFileKey = null) }
             when (result) {
                 is CloudLibraryPlaybackResult.Success -> {
+                    val playbackContext = CloudLibraryPlaybackContext.create(item, file)
+                    if (playbackContext == null) {
+                        setError(context.getString(R.string.cloud_library_play_failed))
+                        return@launch
+                    }
+                    val sessionToken = cloudPlaybackSessionStore.create(playbackContext)
                     onResolved(
                         CloudLibraryPlaybackInfo(
                             item = item,
                             file = file,
                             url = result.url,
                             filename = result.filename ?: file.name.takeIf { it.isNotBlank() },
-                            videoSizeBytes = result.videoSizeBytes ?: file.sizeBytes
+                            videoSizeBytes = result.videoSizeBytes ?: file.sizeBytes,
+                            sessionToken = sessionToken,
+                            sequenceIndex = playbackContext.currentIndex
                         )
                     )
                 }
@@ -362,6 +379,41 @@ class LibraryViewModel @Inject constructor(
             }
         }
     }
+
+    suspend fun launchCloudPlaybackExternally(
+        info: CloudLibraryPlaybackInfo,
+        activityContext: Context
+    ): Boolean {
+        val filename = info.filename ?: info.file.name
+        val metadata = ExternalPlaybackMetadata(
+            contentId = info.item.stableKey,
+            contentType = "cloud",
+            contentName = info.item.name,
+            poster = null,
+            backdrop = null,
+            logo = null,
+            videoId = "${info.item.stableKey}:${info.file.stableKey}",
+            season = 1,
+            episode = info.sequenceIndex + 1,
+            episodeTitle = filename,
+            year = null
+        )
+        val launched = runCatching {
+            externalPlaybackTracker.launchPlayer(
+                metadata = metadata,
+                url = info.url,
+                title = filename,
+                headers = null,
+                cloudSessionToken = info.sessionToken,
+                context = activityContext
+            )
+        }.getOrDefault(false)
+        if (!launched) setError(context.getString(R.string.cloud_library_play_failed))
+        return launched
+    }
+
+    suspend fun getPlayerPreference(): PlayerPreference =
+        playerSettingsDataStore.playerSettings.first().playerPreference
 
     fun onRefresh() {
         if (_uiState.value.isSyncing) return

@@ -1408,7 +1408,7 @@ private fun StreamCard(
 }
 
 @Composable
-private fun PlayerChoiceDialog(
+internal fun PlayerChoiceDialog(
     onInternalSelected: () -> Unit,
     onExternalSelected: () -> Unit,
     onDismiss: () -> Unit
