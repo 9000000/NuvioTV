@@ -45,6 +45,8 @@ import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
+import com.nuvio.tv.ui.util.localizeEpisodeTitle
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 internal fun StreamSourcesSidePanel(
@@ -112,6 +114,7 @@ internal fun StreamSourcesSidePanel(
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             // Current content info
+            val context = LocalContext.current
             val seasonEpisodeCode = if (uiState.currentSeason != null && uiState.currentEpisode != null) {
                 stringResource(
                     R.string.season_episode_format,
@@ -126,7 +129,7 @@ internal fun StreamSourcesSidePanel(
                     if (seasonEpisodeCode != null) {
                         append(seasonEpisodeCode)
                         if (!uiState.currentEpisodeTitle.isNullOrBlank()) {
-                            append(" • ${uiState.currentEpisodeTitle}")
+                            append(" • ${uiState.currentEpisodeTitle.localizeEpisodeTitle(context)}")
                         }
                     } else {
                         append(uiState.title)
