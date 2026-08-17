@@ -3,6 +3,7 @@ package com.nuvio.tv.core.player
 import android.content.Context
 import android.util.Log
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackResult
+import com.nuvio.tv.core.cloud.CloudLibraryPlaybackProgressStore
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackSessionStore
 import com.nuvio.tv.core.cloud.CloudLibraryRepository
 import com.nuvio.tv.core.network.NetworkResult
@@ -173,6 +174,7 @@ class ExternalPlaybackTracker @Inject constructor(
     private val playerSettingsDataStore: PlayerSettingsDataStore,
     private val skipIntroRepository: SkipIntroRepository,
     private val cloudLibraryRepository: CloudLibraryRepository,
+    private val cloudPlaybackProgressStore: CloudLibraryPlaybackProgressStore,
     private val cloudPlaybackSessionStore: CloudLibraryPlaybackSessionStore
 ) {
     companion object {
@@ -608,19 +610,32 @@ class ExternalPlaybackTracker @Inject constructor(
             return
         }
 
-        if (isPlaybackCompleted(result)) {
+        val completed = isPlaybackCompleted(result)
+        val cloudSessionToken = pendingCloudSessionToken ?: loadPersistedCloudSessionToken()
+        if (metadata.contentType.equals("cloud", ignoreCase = true) && cloudSessionToken != null) {
+            saveCloudProgress(
+                metadata = metadata,
+                sessionToken = cloudSessionToken,
+                positionMs = result.positionMs,
+                durationMs = result.durationMs,
+                completed = completed
+            )
+            clearPersistedMetadata()
+            stopTracking()
+            if (completed) {
+                maybeTriggerCloudAutoNext(metadata, cloudSessionToken)
+            } else {
+                _autoNextOverlay.value = null
+            }
+            return
+        }
+
+        if (completed) {
             // Mark watched even when the player returns no position/duration (e.g. Just
             // Player sends only end_by=playback_completion). An explicit 100% forces
             // WatchProgress.isCompleted(), which makes the repository flag the item watched
             // (and sync it) regardless of the reported position/duration.
             saveProgress(metadata, result.positionMs, result.durationMs, explicitPercent = 100f)
-            val cloudSessionToken = pendingCloudSessionToken ?: loadPersistedCloudSessionToken()
-            if (metadata.contentType.equals("cloud", ignoreCase = true) && cloudSessionToken != null) {
-                clearPersistedMetadata()
-                stopTracking()
-                maybeTriggerCloudAutoNext(metadata, cloudSessionToken)
-                return
-            }
             // Try to auto-advance to the next episode.
             maybeTriggerAutoNextEpisode(metadata)
         } else {
@@ -1273,7 +1288,12 @@ class ExternalPlaybackTracker @Inject constructor(
     }
 
     private suspend fun getResumePosition(metadata: ExternalPlaybackMetadata): Long {
-        if (metadata.contentType.equals("cloud", ignoreCase = true)) return 0L
+        if (metadata.contentType.equals("cloud", ignoreCase = true)) {
+            val sessionToken = pendingCloudSessionToken ?: loadPersistedCloudSessionToken()
+            val playbackContext = cloudPlaybackSessionStore.load(sessionToken) ?: return 0L
+            val file = playbackContext.fileForVideoId(metadata.videoId) ?: return 0L
+            return cloudPlaybackProgressStore.load(playbackContext.item, file)?.resumePositionMs ?: 0L
+        }
         val flow = if (metadata.season != null && metadata.episode != null) {
             watchProgressRepository.getEpisodeProgress(metadata.contentId, metadata.season, metadata.episode)
         } else {
@@ -1342,6 +1362,25 @@ class ExternalPlaybackTracker @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun saveCloudProgress(
+        metadata: ExternalPlaybackMetadata,
+        sessionToken: String,
+        positionMs: Long,
+        durationMs: Long?,
+        completed: Boolean
+    ) {
+        if (!completed && positionMs < 1_000L) return
+        val playbackContext = cloudPlaybackSessionStore.load(sessionToken) ?: return
+        val file = playbackContext.fileForVideoId(metadata.videoId) ?: return
+        cloudPlaybackProgressStore.save(
+            item = playbackContext.item,
+            file = file,
+            positionMs = positionMs,
+            durationMs = durationMs ?: 0L,
+            completed = completed
+        )
     }
 
     private fun buildScrobbleItem(metadata: ExternalPlaybackMetadata): TrackingMediaReference? =

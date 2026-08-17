@@ -106,6 +106,11 @@ data class CloudLibraryPlaybackContext(
 
     fun videoId(file: CloudLibraryFile): String = "${item.stableKey}:${file.stableKey}"
 
+    fun fileForVideoId(videoId: String?): CloudLibraryFile? =
+        videoId?.let { requestedId ->
+            item.playableFiles.firstOrNull { file -> videoId(file) == requestedId }
+        } ?: currentFile
+
     fun episodeNumber(file: CloudLibraryFile): Int? =
         item.playableFiles.indexOfFirst { it.stableKey == file.stableKey }
             .takeIf { it >= 0 }
