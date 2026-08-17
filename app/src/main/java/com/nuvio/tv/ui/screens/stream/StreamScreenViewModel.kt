@@ -442,7 +442,7 @@ class StreamScreenViewModel @Inject constructor(
 
             updateUiStateIfChanged {
                 it.copy(
-                    isLoading = true,
+                    isLoading = forceRefresh || it.allStreams.isEmpty(),
                     error = null,
                     showDirectAutoPlayOverlay = if (directFlowActive) true else it.showDirectAutoPlayOverlay
                 )
@@ -723,7 +723,7 @@ class StreamScreenViewModel @Inject constructor(
                         NetworkResult.Loading -> {
                             updateUiStateIfChanged {
                                 it.copy(
-                                    isLoading = true,
+                                    isLoading = forceRefresh || it.allStreams.isEmpty(),
                                     showDirectAutoPlayOverlay = if (directAutoPlayFlowEnabledForSession) {
                                         true
                                     } else {
