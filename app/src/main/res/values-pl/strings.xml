@@ -1902,6 +1902,10 @@
     <string name="folder_detail_not_found">Nie znaleziono folderu</string>
     <string name="library_error_list_name_required">Nazwa listy jest wymagana</string>
     <string name="library_watchlist">Lista do obejrzenia</string>
+    <string name="library_status_watching">Oglądane</string>
+    <string name="library_status_on_hold">Wstrzymane</string>
+    <string name="library_status_completed">Ukończone</string>
+    <string name="library_status_dropped">Porzucone</string>
     <string name="nav_movies">Filmy</string>
     <string name="nav_series">Seriale</string>
     <string name="playback_auto_skip_segments">Automatyczne pomijanie</string>

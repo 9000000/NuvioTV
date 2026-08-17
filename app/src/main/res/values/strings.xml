@@ -1802,6 +1802,10 @@
     <string name="library_source_saved">Saved</string>
     <string name="library_source_cloud">Cloud</string>
     <string name="library_watchlist">Watchlist</string>
+    <string name="library_status_watching">Watching</string>
+    <string name="library_status_on_hold">On Hold</string>
+    <string name="library_status_completed">Completed</string>
+    <string name="library_status_dropped">Dropped</string>
     <string name="library_syncing_library">Syncing library\u2026</string>
     <string name="library_type_all">All</string>
     <string name="library_type_items">items</string>
