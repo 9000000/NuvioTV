@@ -75,6 +75,12 @@ enum class LibrarySortOption(
     }
 }
 
+enum class LibraryWatchedFilter(val key: String, val labelResId: Int) {
+    ALL("all", R.string.library_watched_filter_all),
+    WATCHED("watched", R.string.library_watched_filter_watched),
+    UNWATCHED("unwatched", R.string.library_watched_filter_unwatched);
+}
+
 data class FilterOption(
     val key: String,
     val label: String,
@@ -119,6 +125,9 @@ data class LibraryUiState(
     val availableYears: List<FilterOption> = emptyList(),
     val selectedGenre: String? = null,
     val selectedYear: String? = null,
+    val selectedWatchedFilter: LibraryWatchedFilter = LibraryWatchedFilter.ALL,
+    val watchedMovieIds: Set<String> = emptySet(),
+    val watchedSeriesIds: Set<String> = emptySet(),
     val isNuvioAccount: Boolean = false,
     val isTrackingAuthenticated: Boolean = false,
     val posterCardWidthDp: Int = 126,
@@ -166,7 +175,20 @@ class LibraryViewModel @Inject constructor(
         observeCloudLibrarySettings()
         viewModelScope.launch {
             watchProgressRepository.observeWatchedMovieIds()
-                .collect { ids -> _watchedMovieIds.value = ids }
+                .collect { ids ->
+                    _watchedMovieIds.value = ids
+                    _uiState.update { current ->
+                        current.copy(watchedMovieIds = ids).withVisibleItems()
+                    }
+                }
+        }
+        viewModelScope.launch {
+            watchedSeriesStateHolder.fullyWatchedSeriesIds
+                .collect { ids ->
+                    _uiState.update { current ->
+                        current.copy(watchedSeriesIds = ids).withVisibleItems()
+                    }
+                }
         }
     }
 
@@ -222,6 +244,13 @@ class LibraryViewModel @Inject constructor(
     fun onSelectYear(key: String?) {
         _uiState.update { current ->
             val updated = current.copy(selectedYear = key)
+            updated.withVisibleItems()
+        }
+    }
+
+    fun onSelectWatchedFilter(filter: LibraryWatchedFilter) {
+        _uiState.update { current ->
+            val updated = current.copy(selectedWatchedFilter = filter)
             updated.withVisibleItems()
         }
     }
@@ -798,6 +827,21 @@ class LibraryViewModel @Inject constructor(
             genreFiltered
         }
 
+        // Step 5: Watched status filter
+        val watchedFiltered = when (selectedWatchedFilter) {
+            LibraryWatchedFilter.ALL -> yearFiltered
+            LibraryWatchedFilter.WATCHED -> yearFiltered.filter { entry ->
+                val isMovie = entry.type.equals("movie", ignoreCase = true)
+                if (isMovie) watchedMovieIds.contains(entry.id)
+                else watchedSeriesIds.contains(entry.id)
+            }
+            LibraryWatchedFilter.UNWATCHED -> yearFiltered.filter { entry ->
+                val isMovie = entry.type.equals("movie", ignoreCase = true)
+                if (isMovie) !watchedMovieIds.contains(entry.id)
+                else !watchedSeriesIds.contains(entry.id)
+            }
+        }
+
         // Faceted counts — each filter counts items matching all OTHER active filters
 
         // Genre counts: from typeFiltered (after list+type), applying year filter but NOT genre filter
@@ -843,33 +887,33 @@ class LibraryViewModel @Inject constructor(
             genreMatch && yearMatch
         }
 
-        // Step 5: Sort
+        // Step 6: Sort
         val sorted = when (selectedSortOption) {
             LibrarySortOption.DEFAULT -> if (sourceMode.providerId != null) {
-                yearFiltered.sortedWith(
+                watchedFiltered.sortedWith(
                     compareBy<LibraryEntry> { it.traktRank ?: Int.MAX_VALUE }
                         .thenByDescending { it.listedAt }
                         .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name.ifBlank { it.id } }
                         .thenBy { it.id }
                 )
             } else {
-                yearFiltered
+                watchedFiltered
             }
-            LibrarySortOption.ADDED_DESC -> yearFiltered.sortedWith(
+            LibrarySortOption.ADDED_DESC -> watchedFiltered.sortedWith(
                 compareByDescending<LibraryEntry> { it.listedAt }
                     .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name.ifBlank { it.id } }
                     .thenBy { it.id }
             )
-            LibrarySortOption.ADDED_ASC -> yearFiltered.sortedWith(
+            LibrarySortOption.ADDED_ASC -> watchedFiltered.sortedWith(
                 compareBy<LibraryEntry> { it.listedAt }
                     .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name.ifBlank { it.id } }
                     .thenBy { it.id }
             )
-            LibrarySortOption.TITLE_ASC -> yearFiltered.sortedWith(
+            LibrarySortOption.TITLE_ASC -> watchedFiltered.sortedWith(
                 compareBy<LibraryEntry> { titleSortKey(it.name.ifBlank { it.id }) }
                     .thenBy { it.id }
             )
-            LibrarySortOption.TITLE_DESC -> yearFiltered.sortedWith(
+            LibrarySortOption.TITLE_DESC -> watchedFiltered.sortedWith(
                 compareByDescending<LibraryEntry> { titleSortKey(it.name.ifBlank { it.id }) }
                     .thenBy { it.id }
             )

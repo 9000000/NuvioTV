@@ -1290,6 +1290,10 @@
     <string name="detail_more_like_this_powered_by_trakt">Na podstawie danych Trakt</string>
     <string name="library_filter_genre">Gatunek</string>
     <string name="library_filter_year">Rok</string>
+    <string name="library_filter_watched">Obejrzane</string>
+    <string name="library_watched_filter_all">Wszystko</string>
+    <string name="library_watched_filter_watched">Obejrzane</string>
+    <string name="library_watched_filter_unwatched">Nieobejrzane</string>
     <string name="library_source_nuvio">NUVIO</string>
     <string name="library_source_trakt">TRAKT</string>
     <string name="library_syncing_library">Synchronizacja biblioteki\u2026</string>
