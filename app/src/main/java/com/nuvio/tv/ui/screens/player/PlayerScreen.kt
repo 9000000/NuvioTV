@@ -1836,9 +1836,10 @@ private fun PlayerControlsOverlay(
                             uiState.currentSeason,
                             uiState.currentEpisode
                         )
+                        val appContext = LocalContext.current
                         val localizedEpisodeTitle = uiState.currentEpisodeTitle
                             ?.takeIf { it.isNotBlank() }
-                            ?.localizeEpisodeTitle(context)
+                            ?.localizeEpisodeTitle(appContext)
                         val episodeInfo = if (localizedEpisodeTitle != null) {
                             "$seasonEpisodeCode • $localizedEpisodeTitle"
                         } else {
