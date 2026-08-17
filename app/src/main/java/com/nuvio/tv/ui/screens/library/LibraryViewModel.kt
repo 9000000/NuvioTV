@@ -779,7 +779,7 @@ class LibraryViewModel @Inject constructor(
         val typeFiltered = listFiltered.filter { entry ->
             selectedTypeKey == null ||
                 selectedTypeKey == LibraryTypeTab.ALL_KEY ||
-                entry.type.trim().lowercase(Locale.ROOT) == selectedTypeKey
+                (entry.mediaCategory ?: entry.type).trim().lowercase(Locale.ROOT) == selectedTypeKey
         }
 
         // Step 3: Genre filter
@@ -947,14 +947,16 @@ class LibraryViewModel @Inject constructor(
     ): List<LibraryTypeTab> {
         val byKey = linkedMapOf<String, String>()
         allTypeItems.forEach { entry ->
-            val key = entry.type.trim().ifBlank { "unknown" }.lowercase(Locale.ROOT)
+            // Use mediaCategory (e.g. "anime") as the display type when present,
+            // so anime shows as a separate filter from movies/series.
+            val key = (entry.mediaCategory ?: entry.type).trim().ifBlank { "unknown" }.lowercase(Locale.ROOT)
             if (!byKey.containsKey(key)) {
                 byKey[key] = prettifyTypeLabel(key)
             }
         }
         val countByType = mutableMapOf<String, Int>()
         filteredItems.forEach { entry ->
-            val key = entry.type.trim().ifBlank { "unknown" }.lowercase(Locale.ROOT)
+            val key = (entry.mediaCategory ?: entry.type).trim().ifBlank { "unknown" }.lowercase(Locale.ROOT)
             countByType[key] = (countByType[key] ?: 0) + 1
         }
         val allCount = filteredItems.size

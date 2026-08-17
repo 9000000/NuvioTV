@@ -688,7 +688,7 @@ internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, d
         progressPercent = fallbackPercent
     )
 
-    scope.launch(kotlinx.coroutines.NonCancellable + watchedWriteDispatcher) {
+    scope.launch(kotlinx.coroutines.NonCancellable) {
         val effectiveContentId = watchProgressRepository.normalizeParentContentId(
             parentContentId = progress.contentId,
             videoId = progress.videoId

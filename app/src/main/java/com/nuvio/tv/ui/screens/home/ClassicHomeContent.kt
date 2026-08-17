@@ -338,7 +338,7 @@ fun ClassicHomeContent(
     val latestOnRequestLazyCatalogLoad = rememberUpdatedState(onRequestLazyCatalogLoad)
     val latestVisibleHomeRows = rememberUpdatedState(visibleHomeRows)
     LaunchedEffect(columnListState) {
-        val prefetchAhead = 3
+        val prefetchAhead = 1
         snapshotFlow {
             val info = columnListState.layoutInfo
             val firstVisible = info.visibleItemsInfo.firstOrNull()?.index ?: -1
@@ -347,8 +347,8 @@ fun ClassicHomeContent(
         }.collectLatest { (firstVisible, lastVisible) ->
             if (lastVisible < 0) return@collectLatest
             // Debounce: restarts on every new emission during rapid scroll.
-            // Only fires when visible indices stabilize for 120ms.
-            delay(120)
+            // Only fires when visible indices stabilize for 240ms.
+            delay(240)
             val rows = latestVisibleHomeRows.value
             // Offset for hero + CW sections that precede homeRows in LazyColumn
             val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
