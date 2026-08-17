@@ -1112,12 +1112,11 @@ class FolderDetailViewModel @Inject constructor(
 
             // Background-prefetch meta from addons so detail screen opens instantly.
             if (backgroundMetaPrefetchedIds.add(item.id)) {
-                launch {
+                viewModelScope.launch {
                     metaRepository.getMetaFromAllAddons(
                         type = item.apiType,
-                        id = item.id,
-                        sourceAddonBaseUrl = item.sourceAddonBaseUrl
-                    ).first { it is com.nuvio.tv.core.network.NetworkResult.Success || it is com.nuvio.tv.core.network.NetworkResult.Error }
+                        id = item.id
+                    ).first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
                 }
             }
 
