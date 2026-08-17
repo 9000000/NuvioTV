@@ -111,11 +111,12 @@ private fun localizedTypeLabel(key: String): String = when (key.lowercase()) {
 @Composable
 private fun LibraryListTab.localizedTitle(): String {
     return when {
-        type == LibraryListTab.Type.WATCHLIST -> stringResource(R.string.library_watchlist)
         key == "simkl:status:watching" -> stringResource(R.string.library_status_watching)
+        key == "simkl:status:plantowatch" -> stringResource(R.string.library_status_plan_to_watch)
         key == "simkl:status:hold" -> stringResource(R.string.library_status_on_hold)
         key == "simkl:status:completed" -> stringResource(R.string.library_status_completed)
         key == "simkl:status:dropped" -> stringResource(R.string.library_status_dropped)
+        type == LibraryListTab.Type.WATCHLIST -> stringResource(R.string.library_watchlist)
         else -> title
     }
 }
