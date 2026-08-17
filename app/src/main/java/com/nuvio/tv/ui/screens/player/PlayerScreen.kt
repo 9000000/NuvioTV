@@ -275,7 +275,7 @@ fun PlayerScreen(
             if (skipButtonActuallyVisible) {
                 runCatching { skipIntroFocusRequester.requestFocus() }
             }
-        } else if (uiState.activeSkipInterval != null && !uiState.skipIntervalDismissed && !uiState.showControls) {
+        } else if (skipButtonActuallyVisible && !uiState.showControls) {
             viewModel.onEvent(PlayerEvent.OnDismissSkipIntro)
         } else if (uiState.postPlayMode is PostPlayMode.StillWatching) {
             viewModel.onEvent(PlayerEvent.OnDismissStillWatchingPrompt)
