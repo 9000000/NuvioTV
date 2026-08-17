@@ -2226,11 +2226,9 @@ private class CueNormalizingTextOutput(
                 modifiedList?.add(original)
             }
         }
-        if (modifiedList != null) {
-            delegate.onCues(CueGroup(modifiedList, cueGroup.presentationTimeUs))
-        } else {
-            delegate.onCues(cueGroup)
-        }
+        val processedCues = modifiedList ?: cues
+        val mergedCues = PlayerSubtitleUtils.mergeOverlappingCues(processedCues)
+        delegate.onCues(CueGroup(mergedCues, cueGroup.presentationTimeUs))
     }
 
     @Deprecated("Uses the deprecated Media3 callback for text outputs.")
@@ -2259,7 +2257,9 @@ private class CueNormalizingTextOutput(
                 modifiedList?.add(original)
             }
         }
-        delegate.onCues(modifiedList ?: cues)
+        val processedCues = modifiedList ?: cues
+        val mergedCues = PlayerSubtitleUtils.mergeOverlappingCues(processedCues)
+        delegate.onCues(mergedCues)
     }
 
     private fun processCue(cue: Cue): Cue {
