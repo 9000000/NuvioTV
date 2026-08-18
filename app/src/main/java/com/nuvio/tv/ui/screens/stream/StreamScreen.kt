@@ -7,7 +7,12 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -799,6 +804,7 @@ private fun RightStreamSection(
                     addons = availableAddons,
                     sourceChips = sourceChips,
                     selectedAddon = selectedAddonFilter,
+                    isStillFetching = sourceChips.any { it.status == SourceChipStatus.LOADING },
                     onRefresh = {
                         userMovedFromFirstResult = false
                         firstResultFocusAssigned = false
@@ -878,6 +884,7 @@ private fun AddonFilterChips(
     addons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddon: String?,
+    isStillFetching: Boolean = false,
     onRefresh: () -> Unit,
     onAddonSelected: (String?) -> Unit,
     focusRequesters: List<FocusRequester>,
@@ -959,6 +966,7 @@ private fun AddonFilterChips(
         item {
             RefreshFilterChip(
                 onClick = onRefresh,
+                isLoading = isStillFetching,
                 onFocusChanged = { refreshHasFocus = it },
                 modifier = Modifier
                     .focusRequester(focusRequesters[0])
@@ -998,6 +1006,7 @@ private fun AddonFilterChips(
 @Composable
 private fun RefreshFilterChip(
     onClick: () -> Unit,
+    isLoading: Boolean = false,
     onFocusChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -1007,6 +1016,17 @@ private fun RefreshFilterChip(
     } else {
         NuvioTheme.colors.TextSecondary
     }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "refresh_spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "refresh_rotation"
+    )
 
     FilterChip(
         selected = false,
@@ -1036,7 +1056,9 @@ private fun RefreshFilterChip(
         Icon(
             imageVector = Icons.Rounded.Refresh,
             contentDescription = stringResource(R.string.cd_refresh),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                .size(20.dp)
+                .then(if (isLoading) Modifier.graphicsLayer { rotationZ = rotation } else Modifier),
             tint = contentColor
         )
     }
