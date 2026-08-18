@@ -1297,9 +1297,6 @@ private fun ModernCarouselCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                    }
                     .clip(cardShape)
                     .nuvioCardDepth(
                         shape = cardShape,
