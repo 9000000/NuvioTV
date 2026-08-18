@@ -7,12 +7,9 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1017,16 +1014,36 @@ private fun RefreshFilterChip(
         NuvioTheme.colors.TextSecondary
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "refresh_spin")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "refresh_rotation"
-    )
+    val rotationAnimatable = remember { Animatable(0f) }
+    LaunchedEffect(isLoading) {
+        if (isLoading) {
+            // Spin continuously while loading
+            while (true) {
+                val remaining = 360f - rotationAnimatable.value
+                rotationAnimatable.animateTo(
+                    targetValue = 360f,
+                    animationSpec = tween(
+                        durationMillis = (remaining / 360f * 1000).toInt(),
+                        easing = LinearEasing
+                    )
+                )
+                rotationAnimatable.snapTo(0f)
+            }
+        } else {
+            // Complete current rotation then stop
+            if (rotationAnimatable.value > 0f) {
+                val remaining = 360f - rotationAnimatable.value
+                rotationAnimatable.animateTo(
+                    targetValue = 360f,
+                    animationSpec = tween(
+                        durationMillis = (remaining / 360f * 1000).toInt(),
+                        easing = LinearEasing
+                    )
+                )
+                rotationAnimatable.snapTo(0f)
+            }
+        }
+    }
 
     FilterChip(
         selected = false,
@@ -1058,7 +1075,7 @@ private fun RefreshFilterChip(
             contentDescription = stringResource(R.string.cd_refresh),
             modifier = Modifier
                 .size(20.dp)
-                .then(if (isLoading) Modifier.graphicsLayer { rotationZ = rotation } else Modifier),
+                .graphicsLayer { rotationZ = rotationAnimatable.value },
             tint = contentColor
         )
     }
