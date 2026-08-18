@@ -7,6 +7,8 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -799,6 +801,7 @@ private fun RightStreamSection(
                     addons = availableAddons,
                     sourceChips = sourceChips,
                     selectedAddon = selectedAddonFilter,
+                    isStillFetching = sourceChips.any { it.status == SourceChipStatus.LOADING },
                     onRefresh = {
                         userMovedFromFirstResult = false
                         firstResultFocusAssigned = false
@@ -878,6 +881,7 @@ private fun AddonFilterChips(
     addons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddon: String?,
+    isStillFetching: Boolean = false,
     onRefresh: () -> Unit,
     onAddonSelected: (String?) -> Unit,
     focusRequesters: List<FocusRequester>,
@@ -959,6 +963,7 @@ private fun AddonFilterChips(
         item {
             RefreshFilterChip(
                 onClick = onRefresh,
+                isLoading = isStillFetching,
                 onFocusChanged = { refreshHasFocus = it },
                 modifier = Modifier
                     .focusRequester(focusRequesters[0])
@@ -998,6 +1003,7 @@ private fun AddonFilterChips(
 @Composable
 private fun RefreshFilterChip(
     onClick: () -> Unit,
+    isLoading: Boolean = false,
     onFocusChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -1006,6 +1012,42 @@ private fun RefreshFilterChip(
         NuvioTheme.colors.OnSecondary
     } else {
         NuvioTheme.colors.TextSecondary
+    }
+
+    val rotationAnimatable = remember { Animatable(0f) }
+    var hasCompletedFullRotation by remember { mutableStateOf(false) }
+    LaunchedEffect(isLoading) {
+        if (isLoading) {
+            // Spin continuously while loading
+            coroutineDelay(100)
+            hasCompletedFullRotation = false
+            while (true) {
+                val remaining = 360f - rotationAnimatable.value
+                rotationAnimatable.animateTo(
+                    targetValue = 360f,
+                    animationSpec = tween(
+                        durationMillis = (remaining / 360f * 1000).toInt(),
+                        easing = LinearEasing
+                    )
+                )
+                hasCompletedFullRotation = true
+                rotationAnimatable.snapTo(0f)
+            }
+        } else {
+            // Complete current rotation then stop
+            if (hasCompletedFullRotation && rotationAnimatable.value > 0f) {
+                val remaining = 360f - rotationAnimatable.value
+                rotationAnimatable.animateTo(
+                    targetValue = 360f,
+                    animationSpec = tween(
+                        durationMillis = (remaining / 360f * 1000).toInt(),
+                        easing = LinearEasing
+                    )
+                )
+            }
+            rotationAnimatable.snapTo(0f)
+            hasCompletedFullRotation = false
+        }
     }
 
     FilterChip(
@@ -1036,7 +1078,9 @@ private fun RefreshFilterChip(
         Icon(
             imageVector = Icons.Rounded.Refresh,
             contentDescription = stringResource(R.string.cd_refresh),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                .size(20.dp)
+                .graphicsLayer { rotationZ = rotationAnimatable.value },
             tint = contentColor
         )
     }
