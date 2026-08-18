@@ -1015,9 +1015,12 @@ private fun RefreshFilterChip(
     }
 
     val rotationAnimatable = remember { Animatable(0f) }
+    var hasCompletedFullRotation by remember { mutableStateOf(false) }
     LaunchedEffect(isLoading) {
         if (isLoading) {
             // Spin continuously while loading
+            coroutineDelay(100)
+            hasCompletedFullRotation = false
             while (true) {
                 val remaining = 360f - rotationAnimatable.value
                 rotationAnimatable.animateTo(
@@ -1027,11 +1030,12 @@ private fun RefreshFilterChip(
                         easing = LinearEasing
                     )
                 )
+                hasCompletedFullRotation = true
                 rotationAnimatable.snapTo(0f)
             }
         } else {
             // Complete current rotation then stop
-            if (rotationAnimatable.value > 0f) {
+            if (hasCompletedFullRotation && rotationAnimatable.value > 0f) {
                 val remaining = 360f - rotationAnimatable.value
                 rotationAnimatable.animateTo(
                     targetValue = 360f,
@@ -1040,8 +1044,9 @@ private fun RefreshFilterChip(
                         easing = LinearEasing
                     )
                 )
-                rotationAnimatable.snapTo(0f)
             }
+            rotationAnimatable.snapTo(0f)
+            hasCompletedFullRotation = false
         }
     }
 
