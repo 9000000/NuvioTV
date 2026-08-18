@@ -5,11 +5,32 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
+import com.nuvio.tv.data.local.AudioOutputChannels
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Debounce window so flapping add/remove events coalesce into one route decision. */
-private const val AUDIO_ROUTE_CHANGE_DEBOUNCE_MS = 350L
+private const val AUDIO_ROUTE_CHANGE_DEBOUNCE_MS = 700L
+
+internal enum class BluetoothRoutePlaybackAction {
+    NONE,
+    UPDATE_SINK_IN_PLACE,
+}
+
+/**
+ * Bluetooth connect/disconnect must never rebuild ExoPlayer: that restarts video from a
+ * seek point and shows the loading overlay. Update the PCM/passthrough sink policy in place.
+ */
+internal fun decideBluetoothRoutePlaybackAction(
+    wasBluetooth: Boolean,
+    isBluetooth: Boolean,
+    usingMpv: Boolean
+): BluetoothRoutePlaybackAction {
+    if (usingMpv || wasBluetooth == isBluetooth) {
+        return BluetoothRoutePlaybackAction.NONE
+    }
+    return BluetoothRoutePlaybackAction.UPDATE_SINK_IN_PLACE
+}
 
 internal suspend fun PlayerRuntimeController.applyStoredAudioDelayForCurrentRouteIfEnabled() {
     if (!rememberAudioDelayPerDeviceEnabled) return
@@ -82,7 +103,8 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
         "Audio device $reason (count=${devices.size}); scheduling route re-probe"
     )
 
-    scope.launch {
+    audioRouteChangeJob?.cancel()
+    audioRouteChangeJob = scope.launch {
         delay(AUDIO_ROUTE_CHANGE_DEBOUNCE_MS)
         if (isReleasingPlayer) return@launch
 
@@ -96,30 +118,70 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
             applyStoredAudioDelayForCurrentRouteIfEnabled()
         }
 
-        // Bluetooth ↔ non-Bluetooth requires a different sink capability policy
-        // (PCM-only vs passthrough). Rebuild Exo so AudioCapabilities pin + decoder path match.
-        if (isUsingMpvEngine()) {
-            // MPV uses its own audio device path; only refresh delay/route metadata above.
-            return@launch
-        }
-        if (_exoPlayer == null) return@launch
-
         val wasBluetooth = oldRoute?.isBluetooth == true
         val isBluetooth = (newRoute ?: currentAudioOutputRoute)?.isBluetooth == true
-        if (wasBluetooth == isBluetooth) {
-            Log.d(
-                PlayerRuntimeController.TAG,
-                "Audio route Bluetooth state unchanged ($isBluetooth) after device $reason"
+        when (
+            decideBluetoothRoutePlaybackAction(
+                wasBluetooth = wasBluetooth,
+                isBluetooth = isBluetooth,
+                usingMpv = isUsingMpvEngine()
             )
-            return@launch
+        ) {
+            BluetoothRoutePlaybackAction.NONE -> {
+                Log.d(
+                    PlayerRuntimeController.TAG,
+                    "Audio route after device $reason: bluetooth=$isBluetooth (was=$wasBluetooth); player stays running"
+                )
+            }
+            BluetoothRoutePlaybackAction.UPDATE_SINK_IN_PLACE -> {
+                if (_exoPlayer == null) return@launch
+                Log.i(
+                    PlayerRuntimeController.TAG,
+                    "Bluetooth media route changed $wasBluetooth → $isBluetooth after device $reason; " +
+                        "updating PCM policy in place (player stays running)"
+                )
+                applyBluetoothAudioRouteInPlace(isBluetooth)
+            }
         }
+    }
+}
 
-        val positionMs = _exoPlayer?.currentPosition?.coerceAtLeast(0L) ?: 0L
-        Log.i(
+internal fun PlayerRuntimeController.applyBluetoothAudioRouteInPlace(isBluetooth: Boolean) {
+    val sink = playbackSpeedAwareAudioSink
+    if (sink != null && sink.isBluetoothForcePcm() == isBluetooth) {
+        Log.d(
             PlayerRuntimeController.TAG,
-            "Bluetooth media route changed $wasBluetooth → $isBluetooth after device $reason; " +
-                "reinitializing player for PCM/passthrough policy (pos=${positionMs}ms)"
+            "Bluetooth PCM policy already $isBluetooth; leaving player running"
         )
-        scheduleDeferredPlayerReinitialize(fromPositionMs = positionMs)
+        return
+    }
+
+    sink?.setBluetoothForcePcm(isBluetooth)
+
+    val settings = currentPlayerSettingsForReport
+    val forceOptical = !isBluetooth &&
+        settings.forceOpticalPassthrough &&
+        settings.decoderPriority != 0
+    val downmixEnabled = settings.effectiveDownmixEnabled || isBluetooth
+    val outputChannels = if (isBluetooth) {
+        AudioOutputChannels.CHANNELS_2_0
+    } else {
+        settings.audioOutputChannels
+    }
+    ffmpegAudioRenderer?.setForceOpticalPassthrough(forceOptical)
+    if (downmixEnabled) {
+        ffmpegAudioRenderer?.setAudioOutputChannels(
+            outputChannels.ffmpegLayoutName,
+            outputChannels.channelCount
+        )
+        ffmpegAudioRenderer?.setDownmixNormalizationEnabled(!settings.maintainOriginalAudioOnDownmix)
+    } else {
+        ffmpegAudioRenderer?.setAudioOutputChannels(null, 0)
+        ffmpegAudioRenderer?.setDownmixNormalizationEnabled(false)
+    }
+
+    sink?.notifyAudioProcessingRequirementChanged()
+    _exoPlayer?.let { player ->
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().build()
     }
 }
