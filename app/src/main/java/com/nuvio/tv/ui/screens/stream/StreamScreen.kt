@@ -757,6 +757,21 @@ private fun RightStreamSection(
             firstStreamFocusRequestId += 1
         }
     }
+    // When on "All" tab and new results arrive above the focused stream, move focus to the new first item.
+    var trackedFirstStreamKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(firstStreamKey, selectedAddonFilter, listHasFocus) {
+        if (selectedAddonFilter != null) {
+            trackedFirstStreamKey = firstStreamKey
+            return@LaunchedEffect
+        }
+        if (firstStreamKey != null && trackedFirstStreamKey != null &&
+            firstStreamKey != trackedFirstStreamKey &&
+            listHasFocus && !userMovedFromFirstResult
+        ) {
+            firstStreamFocusRequestId += 1
+        }
+        trackedFirstStreamKey = firstStreamKey
+    }
     fun requestChipFocus(index: Int) {
         if (index !in chipFocusRequesters.indices) return
         userMovedFromFirstResult = true
