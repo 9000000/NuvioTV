@@ -15,21 +15,49 @@ private const val AUDIO_ROUTE_CHANGE_DEBOUNCE_MS = 700L
 internal enum class BluetoothRoutePlaybackAction {
     NONE,
     UPDATE_SINK_IN_PLACE,
+    UPDATE_MPV_IN_PLACE,
 }
 
 /**
- * Bluetooth connect/disconnect must never rebuild ExoPlayer: that restarts video from a
- * seek point and shows the loading overlay. Update the PCM/passthrough sink policy in place.
+ * Bluetooth connect/disconnect must never rebuild the player: that restarts video from a
+ * seek point and shows the loading overlay. Update PCM/passthrough (Exo) or stereo/delay
+ * (MPV) on the live engine instead.
  */
 internal fun decideBluetoothRoutePlaybackAction(
     wasBluetooth: Boolean,
     isBluetooth: Boolean,
-    usingMpv: Boolean
+    usingMpv: Boolean,
+    oldRouteKey: String? = null,
+    newRouteKey: String? = null
 ): BluetoothRoutePlaybackAction {
-    if (usingMpv || wasBluetooth == isBluetooth) {
+    val bluetoothStateChanged = wasBluetooth != isBluetooth
+    val bluetoothDeviceChanged = isBluetooth &&
+        !oldRouteKey.isNullOrBlank() &&
+        !newRouteKey.isNullOrBlank() &&
+        oldRouteKey != newRouteKey
+    if (!bluetoothStateChanged && !bluetoothDeviceChanged) {
         return BluetoothRoutePlaybackAction.NONE
     }
-    return BluetoothRoutePlaybackAction.UPDATE_SINK_IN_PLACE
+    return if (usingMpv) {
+        BluetoothRoutePlaybackAction.UPDATE_MPV_IN_PLACE
+    } else {
+        BluetoothRoutePlaybackAction.UPDATE_SINK_IN_PLACE
+    }
+}
+
+internal object MpvBluetoothAudioPolicy {
+    const val STEREO_CHANNELS = "stereo"
+    const val AUTO_CHANNELS = "auto"
+
+    fun audioChannels(isBluetooth: Boolean): String {
+        return if (isBluetooth) STEREO_CHANNELS else AUTO_CHANNELS
+    }
+
+    fun shouldClearAudioSpdif(isBluetooth: Boolean): Boolean = isBluetooth
+}
+
+internal fun audioDelayMsToSeconds(delayMs: Int): Double {
+    return delayMs.coerceIn(AUDIO_DELAY_MIN_MS, AUDIO_DELAY_MAX_MS) / 1000.0
 }
 
 internal suspend fun PlayerRuntimeController.applyStoredAudioDelayForCurrentRouteIfEnabled() {
@@ -124,7 +152,9 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
             decideBluetoothRoutePlaybackAction(
                 wasBluetooth = wasBluetooth,
                 isBluetooth = isBluetooth,
-                usingMpv = isUsingMpvEngine()
+                usingMpv = isUsingMpvEngine(),
+                oldRouteKey = oldRoute?.key,
+                newRouteKey = (newRoute ?: currentAudioOutputRoute)?.key
             )
         ) {
             BluetoothRoutePlaybackAction.NONE -> {
@@ -141,6 +171,14 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
                         "updating PCM policy in place (player stays running)"
                 )
                 applyBluetoothAudioRouteInPlace(isBluetooth)
+            }
+            BluetoothRoutePlaybackAction.UPDATE_MPV_IN_PLACE -> {
+                Log.i(
+                    PlayerRuntimeController.TAG,
+                    "Bluetooth media route changed $wasBluetooth → $isBluetooth after device $reason; " +
+                        "updating MPV stereo/delay in place (player stays running)"
+                )
+                applyMpvBluetoothAudioRouteInPlace(isBluetooth)
             }
         }
     }
@@ -184,4 +222,12 @@ internal fun PlayerRuntimeController.applyBluetoothAudioRouteInPlace(isBluetooth
     _exoPlayer?.let { player ->
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().build()
     }
+}
+
+internal fun PlayerRuntimeController.applyMpvBluetoothAudioRouteInPlace(isBluetooth: Boolean) {
+    val view = mpvView ?: return
+    view.applyBluetoothAudioRoute(isBluetooth, reloadOutput = true)
+    // ao-reload can drop live properties; re-pin the current per-route delay.
+    view.setAudioDelayMs(_uiState.value.audioDelayMs)
+    view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb)
 }

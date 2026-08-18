@@ -106,13 +106,65 @@ class BluetoothAudioRoutePolicyTest {
             )
         )
         assertEquals(
-            BluetoothRoutePlaybackAction.NONE,
+            BluetoothRoutePlaybackAction.UPDATE_MPV_IN_PLACE,
+            decideBluetoothRoutePlaybackAction(
+                wasBluetooth = false,
+                isBluetooth = true,
+                usingMpv = true
+            )
+        )
+        assertEquals(
+            BluetoothRoutePlaybackAction.UPDATE_MPV_IN_PLACE,
             decideBluetoothRoutePlaybackAction(
                 wasBluetooth = true,
                 isBluetooth = false,
                 usingMpv = true
             )
         )
+        assertEquals(
+            BluetoothRoutePlaybackAction.NONE,
+            decideBluetoothRoutePlaybackAction(
+                wasBluetooth = true,
+                isBluetooth = true,
+                usingMpv = true
+            )
+        )
+        assertEquals(
+            BluetoothRoutePlaybackAction.UPDATE_MPV_IN_PLACE,
+            decideBluetoothRoutePlaybackAction(
+                wasBluetooth = true,
+                isBluetooth = true,
+                usingMpv = true,
+                oldRouteKey = "type:bluetooth_a2dp|name:speaker_a",
+                newRouteKey = "type:bluetooth_a2dp|name:speaker_b"
+            )
+        )
+        assertEquals(
+            BluetoothRoutePlaybackAction.UPDATE_SINK_IN_PLACE,
+            decideBluetoothRoutePlaybackAction(
+                wasBluetooth = true,
+                isBluetooth = true,
+                usingMpv = false,
+                oldRouteKey = "type:bluetooth_a2dp|name:speaker_a",
+                newRouteKey = "type:bluetooth_a2dp|name:speaker_b"
+            )
+        )
+    }
+
+    @Test
+    fun `mpv bluetooth forces stereo and clears encoded passthrough`() {
+        assertEquals(MpvBluetoothAudioPolicy.STEREO_CHANNELS, MpvBluetoothAudioPolicy.audioChannels(true))
+        assertEquals(MpvBluetoothAudioPolicy.AUTO_CHANNELS, MpvBluetoothAudioPolicy.audioChannels(false))
+        assertTrue(MpvBluetoothAudioPolicy.shouldClearAudioSpdif(true))
+        assertFalse(MpvBluetoothAudioPolicy.shouldClearAudioSpdif(false))
+    }
+
+    @Test
+    fun `audio delay milliseconds map to mpv seconds and clamp`() {
+        assertEquals(0.200, audioDelayMsToSeconds(200), 0.0001)
+        assertEquals(-0.250, audioDelayMsToSeconds(-250), 0.0001)
+        assertEquals(AUDIO_DELAY_MAX_MS / 1000.0, audioDelayMsToSeconds(99_999), 0.0001)
+        assertEquals(AUDIO_DELAY_MIN_MS / 1000.0, audioDelayMsToSeconds(-99_999), 0.0001)
     }
 
     @Test
