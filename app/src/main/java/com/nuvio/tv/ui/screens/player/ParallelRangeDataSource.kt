@@ -94,6 +94,225 @@ internal class ParallelRangeDataSource(
             }
         }
 
+        // ── Session-owned chunk downloads ───────────────────────────────────
+        // ExoPlayer creates a new instance of this class for every seek,
+        // closing the old one. Previously each close cancelled all in-flight
+        // chunk downloads and each open re-probed the URL and re-downloaded
+        // data. On scatter-read files (poorly interleaved, moov-at-end MP4s
+        // whose track layout forces several distant concurrent read cursors)
+        // this measured as ~66% of transfer discarded — the same 32 MB chunks
+        // restarting up to 30 times inside two minutes (192 chunk starts /
+        // 66 completions), presenting as constant rebuffering.
+        // Downloads therefore belong to a companion-level session: futures
+        // (completed AND in-flight) survive the close→open boundary, run to
+        // completion regardless of instance lifetime, and instances are thin
+        // readers over the shared session. Eviction is touch-LRU under a
+        // memory-tiered cap; teardown happens on stream change, idle TTL, or
+        // player shutdown.
+        private const val RETAINED_SESSION_TTL_MS = 45_000L
+        // Earned prefetch: sequential bytes an open must serve before
+        // lookahead prefetch is granted.
+        private const val EARNED_PREFETCH_BYTES = 1L * 1024L * 1024L
+        // Never evict a chunk touched in the last 2 s: closes the narrow race
+        // where an overlapping old instance is still copying from the buffer.
+        private const val EVICTION_TOUCH_GUARD_MS = 2_000L
+        // A conforming DataSource blocks rather than returning 0 for a
+        // positive-length read; tolerate a few zero-progress reads, then fail
+        // the chunk instead of spinning forever.
+        private const val MAX_CONSECUTIVE_ZERO_READS = 3
+
+        private class ChunkSession(
+            val requestUri: Uri,
+            val requestHeaders: Map<String, String>,
+            val chunkSize: Long,
+            val chunkCap: Int,
+            // Size of the live prefetch window (maxAhead in scheduleChunks).
+            // Chunks in reader+1..reader+prefetchWindow are imminent and are
+            // excluded from eviction so the reader never re-downloads them.
+            val prefetchWindow: Int
+        ) {
+            @Volatile var resolvedUri: Uri? = null
+            @Volatile var totalLength: Long = -1L
+            val futures = ConcurrentHashMap<Long, CompletableFuture<DownloadedChunk>>()
+            val lastTouch = ConcurrentHashMap<Long, Long>()
+            val abandoned = AtomicBoolean(false)
+            val activeSources: MutableSet<DataSource> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+            @Volatile var lastUsedAtMs: Long = SystemClock.uptimeMillis()
+
+            fun touch(chunkIndex: Long) {
+                val now = SystemClock.uptimeMillis()
+                lastTouch[chunkIndex] = now
+                lastUsedAtMs = now
+            }
+
+            // Chunk index most recently SERVED to a reader. Creation-time
+            // touches in ensureChunkScheduled deliberately do not update this;
+            // only the read paths do, so eviction can distinguish "behind the
+            // cursor" from "prefetched ahead". Last-write-wins on purpose: a
+            // transient side-cursor read may move it for one read and the main
+            // cursor restores it immediately after; the 2 s touch guard covers
+            // that window.
+            @Volatile var lastReadChunkIndex: Long = -1L
+
+            fun noteRead(chunkIndex: Long) {
+                touch(chunkIndex)
+                lastReadChunkIndex = chunkIndex
+            }
+        }
+
+        private val sessionLock = Any()
+        private var currentChunkSession: ChunkSession? = null
+
+        /** Release one session buffer: recycle to the pool, or free directly on teardown. */
+        private fun releaseSessionBuffer(buffer: PooledBuffer, chunkSz: Long, poolCap: Int) {
+            if (poolCap > 0) {
+                val pool = globalBufferPool.computeIfAbsent(chunkSz) { ConcurrentLinkedDeque() }
+                if (pool.size < poolCap) {
+                    pool.offerLast(buffer)
+                    return
+                }
+            }
+            if (buffer.allocation != null) {
+                androidx.media3.exoplayer.upstream.DefaultAllocatorNative.freeAllocation(buffer.allocation)
+            } else if (buffer.byteBuffer.isDirect) {
+                freeDirectBuffer(buffer.byteBuffer)
+            }
+        }
+
+        /**
+         * Evict one future from a session. Handles the complete-vs-cancel race:
+         * if cancel() loses because the download just completed, the buffer is
+         * released via the completed value; if cancel() wins, the download
+         * loop's cancellation checks release the buffer on its own thread.
+         */
+        private fun evictFuture(
+            session: ChunkSession,
+            chunkIndex: Long,
+            poolCap: Int
+        ) {
+            val future = session.futures.remove(chunkIndex) ?: return
+            session.lastTouch.remove(chunkIndex)
+            if (!future.cancel(true) && future.isDone && !future.isCancelled) {
+                try {
+                    releaseSessionBuffer(future.get().buffer, session.chunkSize, poolCap)
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        private fun teardownSessionLocked(session: ChunkSession, poolCap: Int) {
+            session.abandoned.set(true)
+            session.activeSources.forEach { ds ->
+                try { ds.close() } catch (_: Exception) {}
+            }
+            session.activeSources.clear()
+            val indices = session.futures.keys.toList()
+            for (index in indices) {
+                evictFuture(session, index, poolCap)
+            }
+            session.futures.clear()
+            session.lastTouch.clear()
+        }
+
+        /**
+         * Get the shared session for this request URI, creating (and tearing
+         * down any stale/mismatched predecessor) as needed.
+         */
+        private fun obtainSession(
+            requestUri: Uri,
+            requestHeaders: Map<String, String>,
+            chunkSz: Long,
+            chunkCap: Int,
+            poolCap: Int,
+            prefetchWindow: Int
+        ): ChunkSession {
+            synchronized(sessionLock) {
+                val existing = currentChunkSession
+                if (existing != null) {
+                    val fresh = SystemClock.uptimeMillis() - existing.lastUsedAtMs <= RETAINED_SESSION_TTL_MS
+                    if (fresh && !existing.abandoned.get() &&
+                        existing.requestUri == requestUri && existing.chunkSize == chunkSz &&
+                        existing.requestHeaders == requestHeaders
+                    ) {
+                        existing.lastUsedAtMs = SystemClock.uptimeMillis()
+                        return existing
+                    }
+                    teardownSessionLocked(existing, poolCap)
+                }
+                val created = ChunkSession(requestUri, requestHeaders, chunkSz, chunkCap, prefetchWindow)
+                currentChunkSession = created
+                return created
+            }
+        }
+
+        /**
+         * Explicit teardown, wired into PlayerMediaSourceFactory.shutdown() so
+         * chunk buffers and downloads never outlive the player. Buffers are
+         * freed directly (poolCap = 0) — playback is over.
+         */
+        internal fun releaseRetainedSession() {
+            synchronized(sessionLock) {
+                currentChunkSession?.let { teardownSessionLocked(it, poolCap = 0) }
+                currentChunkSession = null
+            }
+        }
+
+        /**
+         * Enforce the session's chunk cap with touch-LRU eviction. Never
+         * evicts [protectIndex] (the chunk being read) or anything touched in
+         * the last EVICTION_TOUCH_GUARD_MS.
+         */
+        private fun enforceSessionCap(session: ChunkSession, protectIndex: Long, poolCap: Int) {
+            if (session.futures.size <= session.chunkCap) return
+            synchronized(session) {
+                while (session.futures.size > session.chunkCap) {
+                    val now = SystemClock.uptimeMillis()
+                    // The 2 s touch guard makes the cap soft — when every
+                    // candidate is recently touched the loop bails and an
+                    // active file can hold ~cap+2–3 chunks. Beyond cap+2 the
+                    // ceiling is hard: evict the oldest-touched candidate
+                    // regardless of the guard.
+                    val hardOver = session.futures.size > session.chunkCap + 2
+                    // Position-aware victim selection. Touch-LRU alone
+                    // systematically evicted PREFETCHED chunks: ahead-of-reader
+                    // entries are touched only at creation, so once the reader
+                    // is a few chunks past that moment they are always the
+                    // oldest-touched entries — evicted seconds before the
+                    // reader arrives, then re-downloaded in full (measured on a
+                    // scatter-read remux: 118 of 133 chunks fetched twice, ~47%
+                    // of session bandwidth). Prefer chunks BEHIND the read
+                    // cursor (touch-LRU among them); only when none are
+                    // eligible fall back to the FARTHEST-ahead chunk, which is
+                    // needed latest. Soft-cap bail, the 2 s guard and the
+                    // cap+2 hard ceiling are unchanged.
+                    val readerIdx = session.lastReadChunkIndex
+                    val eligible = session.futures.keys
+                        .filter { it != protectIndex }
+                        .filter { hardOver || now - (session.lastTouch[it] ?: 0L) >= EVICTION_TOUCH_GUARD_MS }
+                    // The entire in-flight prefetch window reader+1..reader+
+                    // prefetchWindow is about to be read within seconds, so it
+                    // is excluded from eviction: when only in-window chunks
+                    // remain, bail (as the soft-cap does) and let the pool sit
+                    // transiently at cap+2 rather than evict-then-refetch.
+                    // Behind and beyond-window chunks stay evictable (hardOver
+                    // drops the touch guard for them), so the pool stays
+                    // bounded; beyond-window chunks (stale prefetch after a
+                    // backward seek) are the farthest-ahead evictable and go
+                    // first.
+                    val nearAheadFloor = if (readerIdx >= 0L) readerIdx else Long.MIN_VALUE
+                    val nearAheadCeil = if (readerIdx >= 0L) readerIdx + session.prefetchWindow else Long.MIN_VALUE
+                    val evictable = eligible.filter { it < nearAheadFloor || it > nearAheadCeil }
+                    val victim = evictable
+                        .filter { readerIdx >= 0L && it < readerIdx }
+                        .minByOrNull { session.lastTouch[it] ?: 0L }
+                        ?: evictable.maxOrNull()
+                        ?: return
+                    evictFuture(session, victim, poolCap)
+                }
+            }
+        }
+        // ── end session ─────────────────────────────────────────────────────
+
         private fun clearGlobalPool() {
             globalBufferPool.values.forEach { pool ->
                 while (true) {
@@ -143,9 +362,6 @@ internal class ParallelRangeDataSource(
     private var bytesRemaining: Long = C.LENGTH_UNSET.toLong()
     private val closed = AtomicBoolean(false)
 
-    // Chunk download state
-    private val chunks = ConcurrentHashMap<Long, CompletableFuture<DownloadedChunk>>()
-
     // Buffer pool limit
     private val maxPoolSize = parallelConnections + 2
 
@@ -157,7 +373,6 @@ internal class ParallelRangeDataSource(
     private var bootstrapChunk: DownloadedChunk? = null
     private var bootstrapStartPosition: Long = C.TIME_UNSET
     private var continuationSource: OkHttpDataSource? = null
-    private val activeDataSources = java.util.concurrent.ConcurrentHashMap.newKeySet<DataSource>()
     private var continuationEndPositionExclusive: Long = C.TIME_UNSET
 
     private val transferListeners = mutableListOf<TransferListener>()
@@ -165,11 +380,22 @@ internal class ParallelRangeDataSource(
     // Fallback: if parallel mode fails, use a single upstream DataSource
     private var fallbackSource: OkHttpDataSource? = null
 
+    // Shared download session (null on subtitle/fallback paths).
+    private var session: ChunkSession? = null
+    // Earned prefetch: lookahead is granted only after this open has
+    // demonstrated sequential consumption, so side-cursor opens (tiny reads,
+    // then reopen) never trigger the connections+1 chunk prefetch fan-out.
+    private var bytesServedThisOpen: Long = 0L
+    // Memory-tiered chunk cap: low-RAM devices keep the pre-existing
+    // ceiling (connections + 2); high-RAM gets two extra chunks of headroom.
+    private val sessionChunkCap: Int = parallelConnections +
+        if (com.nuvio.tv.ui.screens.settings.MemoryBudget.isLowRamTier) 2 else 4
+
     override fun open(dataSpec: DataSpec): Long {
         val isSubtitle = dataSpec.uri.getQueryParameter("nuvio_type") == "subtitle"
         if (isSubtitle) {
             closed.set(false)
-            cancelAllChunks()
+            resetLocalReadState()
             
             // Clean the custom query parameter from the subtitle URL before requesting
             val cleanedUri = dataSpec.uri.buildUpon().clearQuery().let { builder ->
@@ -199,6 +425,7 @@ internal class ParallelRangeDataSource(
 
         val wasClosed = closed.get()
         val isReopen = !wasClosed && 
+                       fallbackSource == null &&
                        originalDataSpec != null && 
                        originalDataSpec?.uri == dataSpec.uri && 
                        position == dataSpec.position &&
@@ -222,8 +449,45 @@ internal class ParallelRangeDataSource(
         continuationSource?.close()
         continuationSource = null
         continuationEndPositionExclusive = C.TIME_UNSET
+        // A fresh open must not inherit fallback/length state from a previous
+        // open on this instance; every path below re-establishes both fields.
+        fallbackSource?.close()
+        fallbackSource = null
+        totalFileLength = C.LENGTH_UNSET.toLong()
+        bytesRemaining = C.LENGTH_UNSET.toLong()
 
-        cancelAllChunks()
+        resetLocalReadState()
+        bytesServedThisOpen = 0L
+
+        // Attach to the shared download session for this URI. Downloads
+        // (done AND in-flight) belong to the session and survive the
+        // close→open cycle ExoPlayer performs on every seek. When the session
+        // is warm (length + resolved URI known) the probe request is skipped.
+        // If an adopted CDN URL has expired, chunk downloads fail, ExoPlayer
+        // re-opens, the failed futures are gone, and downloads retry against
+        // the session's URI — with the full probe as the eventual fallback via
+        // session teardown on TTL.
+        val attachedSession = obtainSession(dataSpec.uri, dataSpec.httpRequestHeaders, chunkSize, sessionChunkCap, maxPoolSize, parallelConnections + 1)
+        session = attachedSession
+        val warmLength = attachedSession.totalLength
+        if (warmLength > 0L && dataSpec.position in 0 until warmLength) {
+            resolvedUri = attachedSession.resolvedUri
+            onResolvedUri(resolvedUri)
+            totalFileLength = warmLength
+            val remaining = (totalFileLength - position).coerceAtLeast(0L)
+            bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
+                minOf(dataSpec.length, remaining)
+            } else {
+                remaining
+            }
+            bootstrapPrefetchDeferred = true
+            Log.d(
+                TAG,
+                "Attached to warm session for reopen at $position, " +
+                    "file=${totalFileLength / 1024 / 1024}MB, held=${attachedSession.futures.size} chunk(s) (probe skipped)"
+            )
+            return bytesRemaining
+        }
 
         consumeBootstrapCache(dataSpec)?.let { cached ->
             resolvedUri = cached.resolvedUri
@@ -233,6 +497,9 @@ internal class ParallelRangeDataSource(
             bootstrapChunk = DownloadedChunk(PooledBuffer(null, ByteBuffer.wrap(cached.bootstrapData)), cached.bootstrapSize)
             bootstrapStartPosition = cached.startPosition
             bootstrapPrefetchDeferred = true
+            // Publish to the session so the next reopen is warm.
+            attachedSession.resolvedUri = resolvedUri
+            attachedSession.totalLength = totalFileLength
             Log.d(
                 TAG,
                 "Reusing bootstrap window for immediate reopen at ${cached.startPosition}, " +
@@ -266,11 +533,23 @@ internal class ParallelRangeDataSource(
             // Can't determine length or server doesn't support ranges — reuse probe as single connection
             Log.w(TAG, "Falling back to single connection (length=${openLength}, acceptsRanges=$acceptsRanges)")
             fallbackSource = probeSource
+            // Keep state consistent with the subtitle fallback path (position is
+            // already set above): known length gives a real total, unknown stays unset.
+            totalFileLength = if (openLength != C.LENGTH_UNSET.toLong()) {
+                position + openLength
+            } else {
+                C.LENGTH_UNSET.toLong()
+            }
+            bytesRemaining = openLength
             return openLength
         }
 
         totalFileLength = position + openLength
         bytesRemaining = openLength
+
+        // Publish to the session so every subsequent reopen is warm.
+        attachedSession.resolvedUri = resolvedUri
+        attachedSession.totalLength = totalFileLength
 
         Log.d(TAG, "Parallel mode: ${parallelConnections} connections, ${chunkSize / 1024 / 1024}MB chunks, " +
                 "file=${totalFileLength / 1024 / 1024}MB, resolved=${resolvedUri?.host}")
@@ -371,19 +650,38 @@ internal class ParallelRangeDataSource(
 
         // Load the chunk for the current position
         if (currentChunkIndex != chunkIndex || currentChunk == null) {
+            val activeSession = session ?: return C.RESULT_END_OF_INPUT
             ensureChunkScheduled(chunkIndex)
-            val future = chunks[chunkIndex] ?: return C.RESULT_END_OF_INPUT
+            val future = activeSession.futures[chunkIndex] ?: return C.RESULT_END_OF_INPUT
+            activeSession.noteRead(chunkIndex)
             try {
                 currentChunk = future.get(60, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (closed.get()) return C.RESULT_END_OF_INPUT
+                // A failed download is not retryable by waiting — drop
+                // the future so the next attempt schedules a fresh one.
+                // Cancel before dropping: an orphaned in-flight download
+                // otherwise completes into a pooled native buffer nothing will
+                // ever release. Ownership-gated on the two-arg remove so a
+                // future already evicted by another thread is never
+                // double-released.
+                if (activeSession.futures.remove(chunkIndex, future)) {
+                    activeSession.lastTouch.remove(chunkIndex)
+                    if (!future.cancel(true) && future.isDone && !future.isCancelled) {
+                        try {
+                            releaseSessionBuffer(future.get().buffer, activeSession.chunkSize, maxPoolSize)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
                 throw IOException("Failed to download chunk $chunkIndex", e)
             }
             currentChunkIndex = chunkIndex
             currentChunkReadOffset = (position % chunkSize).toInt()
 
-            // Clean up old chunks (returns buffers to pool) and schedule new ones
-            cleanupOldChunks(chunkIndex)
+            // LRU cap enforcement lives in ensureChunkScheduled; behind-
+            // chunks are not eagerly released (they serve the backward
+            // cursors on scatter-read files).
             scheduleChunks()
         }
 
@@ -400,12 +698,17 @@ internal class ParallelRangeDataSource(
         }
 
         val readSize = minOf(toRead, available)
-        val readBuf = chunk.buffer.byteBuffer
+        // Session chunks are shared across instances — mutating the shared
+        // buffer's position races concurrent readers of the same chunk. Read
+        // through a duplicate, as the ByteBuffer read path does.
+        val readBuf = chunk.buffer.byteBuffer.duplicate()
         readBuf.position(currentChunkReadOffset)
         readBuf.get(buffer, offset, readSize)
         currentChunkReadOffset += readSize
         position += readSize
         bytesRemaining -= readSize
+        bytesServedThisOpen += readSize
+        session?.noteRead(chunkIndex)
 
         return readSize
     }
@@ -418,7 +721,11 @@ internal class ParallelRangeDataSource(
             } else {
                 position / chunkSize
             }
-        val maxAhead = parallelConnections + 1
+        // Earned prefetch: lookahead only after this open has served a
+        // meaningful sequential run. Side cursors (a few bytes per open on
+        // scatter-read files) fetch only the chunk they actually need, instead
+        // of fanning out connections+1 chunks of dead prefetch per visit.
+        val maxAhead = if (bytesServedThisOpen >= EARNED_PREFETCH_BYTES) parallelConnections + 1 else 1
 
         for (i in 0 until maxAhead) {
             val ci = currentChunkIdx + i
@@ -428,16 +735,24 @@ internal class ParallelRangeDataSource(
     }
 
     private fun ensureChunkScheduled(chunkIndex: Long) {
-        chunks.computeIfAbsent(chunkIndex) {
+        val activeSession = session ?: return
+        // Make room under the memory-tiered cap before growing the map.
+        enforceSessionCap(activeSession, protectIndex = chunkIndex, poolCap = maxPoolSize)
+        activeSession.futures.computeIfAbsent(chunkIndex) {
             val future = CompletableFuture<DownloadedChunk>()
+            activeSession.touch(chunkIndex)
             Log.d(TAG, "Scheduling chunk $chunkIndex")
             sharedExecutor.execute {
                 try {
-                    if (!future.isCancelled) {
-                        val result = downloadChunk(chunkIndex, future)
+                    if (!future.isCancelled && !activeSession.abandoned.get()) {
+                        val result = downloadChunk(activeSession, chunkIndex, future)
                         if (!future.complete(result)) {
                             releaseBuffer(result.buffer)
                         }
+                    } else if (future.isCancelled) {
+                        // no-op: never started
+                    } else {
+                        future.completeExceptionally(IOException("Session abandoned"))
                     }
                 } catch (e: Exception) {
                     future.completeExceptionally(e)
@@ -447,14 +762,16 @@ internal class ParallelRangeDataSource(
         }
     }
 
-    private fun downloadChunk(chunkIndex: Long, future: CompletableFuture<*>): DownloadedChunk {
+    private fun downloadChunk(activeSession: ChunkSession, chunkIndex: Long, future: CompletableFuture<*>): DownloadedChunk {
         var lastException: Exception? = null
         for (attempt in 0..1) {
-            if (future.isCancelled) throw IOException("Cancelled")
+            if (future.isCancelled || activeSession.abandoned.get()) throw IOException("Cancelled")
             try {
-                return downloadChunkOnce(chunkIndex, future)
+                return downloadChunkOnce(activeSession, chunkIndex, future)
             } catch (e: Exception) {
-                if (closed.get() || future.isCancelled) throw IOException("DataSource closed or cancelled")
+                // Downloads belong to the session, not the instance —
+                // only future cancellation or session teardown aborts them.
+                if (activeSession.abandoned.get() || future.isCancelled) throw IOException("Session abandoned or cancelled")
                 lastException = e
                 if (attempt == 0) {
                     if (e.isTransientInterruption()) {
@@ -472,33 +789,38 @@ internal class ParallelRangeDataSource(
         throw IOException("Failed to download chunk $chunkIndex after 2 attempts", lastException)
     }
 
-    private fun downloadChunkOnce(chunkIndex: Long, future: CompletableFuture<*>): DownloadedChunk {
+    private fun downloadChunkOnce(activeSession: ChunkSession, chunkIndex: Long, future: CompletableFuture<*>): DownloadedChunk {
+        val sessionLength = activeSession.totalLength
         val start = chunkIndex * chunkSize
-        val end = if (totalFileLength != C.LENGTH_UNSET.toLong()) {
-            minOf(start + chunkSize, totalFileLength)
+        val end = if (sessionLength > 0L) {
+            minOf(start + chunkSize, sessionLength)
         } else {
             start + chunkSize
         }
 
         val ds = upstreamFactory.createDataSource()
         transferListeners.forEach { ds.addTransferListener(it) }
-        activeDataSources.add(ds)
+        activeSession.activeSources.add(ds)
         try {
-            val uri = resolvedUri ?: originalDataSpec?.uri ?: throw IOException("No URI available")
+            val uri = activeSession.resolvedUri ?: activeSession.requestUri
             val spec = DataSpec.Builder()
                 .setUri(uri)
                 .setPosition(start)
                 .setLength(end - start)
                 .build()
 
-            if (future.isCancelled) throw IOException("Cancelled")
+            if (future.isCancelled || activeSession.abandoned.get()) throw IOException("Cancelled")
             Log.d(TAG, "Starting chunk download: idx=$chunkIndex, range=$start-$end")
             ds.open(spec)
-            val chunk = readIntoChunk(ds, future)
+            // With a known session length the requested range is exact — a
+            // chunk that comes back short must fail (and retry) rather than be
+            // cached as if complete.
+            val expectedBytes = if (sessionLength > 0L) end - start else -1L
+            val chunk = readIntoChunk(activeSession, ds, future, expectedBytes)
             Log.d(TAG, "Successfully downloaded chunk $chunkIndex, size=${chunk.size} bytes")
             return chunk
         } finally {
-            activeDataSources.remove(ds)
+            activeSession.activeSources.remove(ds)
             try { ds.close() } catch (_: Exception) {}
         }
     }
@@ -510,10 +832,16 @@ internal class ParallelRangeDataSource(
     }
 
     /** Read from an already-opened DataSource into a pooled chunk buffer. */
-    private fun readIntoChunk(ds: DataSource, future: CompletableFuture<*>): DownloadedChunk {
+    private fun readIntoChunk(
+        activeSession: ChunkSession,
+        ds: DataSource,
+        future: CompletableFuture<*>,
+        expectedBytes: Long
+    ): DownloadedChunk {
         val buffer = acquireBuffer()
         val tempArray = readBufferLocal.get()!!
         var totalRead = 0
+        var consecutiveZeroReads = 0
         try {
             val byteBufferReader = if (useNativeMemory && ds is androidx.media3.common.ByteBufferDataReader && ds.supportsByteBufferRead()) {
                 ds
@@ -521,7 +849,10 @@ internal class ParallelRangeDataSource(
                 null
             }
 
-            while (!closed.get()) {
+            // The loop does not watch the instance's closed flag —
+            // downloads run to completion across ExoPlayer's seek reopens and
+            // abort only on future cancellation or session teardown.
+            while (!activeSession.abandoned.get()) {
                 if (future.isCancelled) {
                     throw IOException("Chunk download cancelled")
                 }
@@ -541,16 +872,35 @@ internal class ParallelRangeDataSource(
                 }
 
                 if (read == C.RESULT_END_OF_INPUT) break
+                // A positive-length read returning 0 violates the DataSource
+                // contract; bail after a few rather than busy-spinning until
+                // cancellation.
+                if (read == 0) {
+                    if (++consecutiveZeroReads >= MAX_CONSECUTIVE_ZERO_READS) {
+                        throw IOException(
+                            "No read progress after $MAX_CONSECUTIVE_ZERO_READS attempts " +
+                                "(read $totalRead of $expectedBytes bytes)"
+                        )
+                    }
+                } else {
+                    consecutiveZeroReads = 0
+                }
                 totalRead += read
+            }
+            // A premature EOF inside a known range must not produce a cached
+            // "complete" chunk — a short non-final chunk otherwise dead-ends
+            // both read paths at the phantom chunk boundary.
+            if (expectedBytes > 0L && totalRead < expectedBytes && !activeSession.abandoned.get()) {
+                throw IOException("Short chunk: read $totalRead of $expectedBytes bytes")
             }
         } catch (e: Exception) {
             releaseBuffer(buffer)
-            if (closed.get()) throw IOException("DataSource closed")
+            if (activeSession.abandoned.get()) throw IOException("Session abandoned")
             throw e
         }
-        if (closed.get()) {
+        if (activeSession.abandoned.get()) {
             releaseBuffer(buffer)
-            throw IOException("DataSource closed")
+            throw IOException("Session abandoned")
         }
         buffer.byteBuffer.flip()
         return DownloadedChunk(buffer, totalRead)
@@ -616,54 +966,18 @@ internal class ParallelRangeDataSource(
         }
     }
 
-    private fun cleanupOldChunks(currentChunkIndex: Long) {
-        val iter = chunks.entries.iterator()
-        while (iter.hasNext()) {
-            val entry = iter.next()
-            if (entry.key < currentChunkIndex) {
-                val future = entry.value
-                if (future.isDone && !future.isCancelled) {
-                    try { releaseBuffer(future.get().buffer) } catch (_: Exception) {}
-                }
-                future.cancel(true)
-                iter.remove()
-            }
-        }
-    }
-
-    /** Cancel and clean up all in-flight chunks, returning buffers to the pool. */
-    private fun cancelAllChunks() {
-        val releasedBuffers = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<PooledBuffer, Boolean>())
-
-        currentChunk?.let {
-            if (it !== bootstrapChunk) {
-                if (releasedBuffers.add(it.buffer)) {
-                    releaseBuffer(it.buffer)
-                }
-            }
-        }
+    /**
+     * Detach instance-local read state. Session chunks (and in-flight
+     * downloads) are untouched — they belong to the shared session and their
+     * buffers are owned by the session's futures. Releasing anything here
+     * would double-free; eviction and teardown are the session's job.
+     */
+    private fun resetLocalReadState() {
         currentChunk = null
         currentChunkIndex = -1
+        currentChunkReadOffset = 0
         bootstrapChunk = null
         bootstrapStartPosition = C.TIME_UNSET
-
-        activeDataSources.forEach { ds ->
-            try { ds.close() } catch (_: Exception) {}
-        }
-        activeDataSources.clear()
-
-        chunks.values.forEach { future ->
-            if (future.isDone && !future.isCancelled) {
-                try {
-                    val chunk = future.get()
-                    if (releasedBuffers.add(chunk.buffer)) {
-                        releaseBuffer(chunk.buffer)
-                    }
-                } catch (_: Exception) {}
-            }
-            future.cancel(true)
-        }
-        chunks.clear()
     }
 
     override fun close() {
@@ -674,7 +988,9 @@ internal class ParallelRangeDataSource(
             continuationSource = null
             continuationEndPositionExclusive = C.TIME_UNSET
 
-            cancelAllChunks()
+            // Downloads survive this close — detach references only.
+            resetLocalReadState()
+            session = null
 
             val active = activeInstances.decrementAndGet()
             if (active <= 0) {
@@ -760,18 +1076,30 @@ internal class ParallelRangeDataSource(
         }
 
         if (currentChunkIndex != chunkIndex || currentChunk == null) {
+            val activeSession = session ?: return C.RESULT_END_OF_INPUT
             ensureChunkScheduled(chunkIndex)
-            val future = chunks[chunkIndex] ?: return C.RESULT_END_OF_INPUT
+            val future = activeSession.futures[chunkIndex] ?: return C.RESULT_END_OF_INPUT
+            activeSession.noteRead(chunkIndex)
             try {
                 currentChunk = future.get(60, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (closed.get()) return C.RESULT_END_OF_INPUT
+                // Mirror of the byte-array path: cancel before dropping,
+                // ownership-gated release if the download won the race.
+                if (activeSession.futures.remove(chunkIndex, future)) {
+                    activeSession.lastTouch.remove(chunkIndex)
+                    if (!future.cancel(true) && future.isDone && !future.isCancelled) {
+                        try {
+                            releaseSessionBuffer(future.get().buffer, activeSession.chunkSize, maxPoolSize)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
                 throw IOException("Failed to download chunk $chunkIndex", e)
             }
             currentChunkIndex = chunkIndex
             currentChunkReadOffset = (position % chunkSize).toInt()
 
-            cleanupOldChunks(chunkIndex)
             scheduleChunks()
         }
 
@@ -795,6 +1123,8 @@ internal class ParallelRangeDataSource(
         currentChunkReadOffset += readSize
         position += readSize
         bytesRemaining -= readSize
+        bytesServedThisOpen += readSize
+        session?.noteRead(chunkIndex)
 
         return readSize
     }
