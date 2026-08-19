@@ -7,8 +7,8 @@ import androidx.media3.exoplayer.text.TextOutput
 internal object SubtitleSdhFilter {
     private val squareBrackets = Regex("\\[[^]]*][ \\t]*")
     private val parentheses = Regex(
-        "(?:\\((?=[A-Za-z0-9 '#.,\\\"\\\\\\-\\r\\n]*\\))(?=[^)]*[A-Za-z])[^)]*\\)|" +
-            "\uFF08(?=[A-Za-z0-9 '#.,\\\"\\\\\\-\\r\\n]*\uFF09)(?=[^\uFF09]*[A-Za-z])[^\uFF09]*\uFF09)[ \\t]*"
+        "(?:\\((?=[A-Za-z0-9 '#.,\\\"\\\\\\-\\r\\n]*\\))(?![0-9]*\\))[^)]*\\)|" +
+            "\uFF08(?=[A-Za-z0-9 '#.,\\\"\\\\\\-\\r\\n]*\uFF09)(?![0-9]*\uFF09)[^\uFF09]*\uFF09)[ \\t]*"
     )
     private val speakerLabel = Regex(
         "(?m)^([ \\t]*-[ \\t]*)?(?:[A-Za-z0-9 ()'#.,]+|\\[[^]\\r\\n]*]):(?=\\s|$)[ \\t]*"
