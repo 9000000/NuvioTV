@@ -233,11 +233,12 @@ fun ContentCard(
         } else {
             item.poster
         }
-        val imageModel = remember(imageUrl, requestWidthPx, requestHeightPx) {
+        val revalidationKey = com.nuvio.tv.core.image.rememberImageRevalidationKey(imageUrl)
+        val imageModel = remember(imageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
             ImageRequest.Builder(context)
                 .data(imageUrl)
-                .crossfade(true)
-                .memoryCacheKey("${imageUrl}_${requestWidthPx}x${requestHeightPx}")
+                .crossfade(revalidationKey == 0)
+                .memoryCacheKey("${imageUrl}_${requestWidthPx}x${requestHeightPx}_v$revalidationKey")
                 .size(width = requestWidthPx, height = requestHeightPx)
                 .build()
         }
