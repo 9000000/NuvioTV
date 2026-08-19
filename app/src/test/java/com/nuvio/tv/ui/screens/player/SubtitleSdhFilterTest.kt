@@ -18,15 +18,22 @@ class SubtitleSdhFilterTest {
         assertEquals("Where are you?", SubtitleSdhFilter.filterPlainText("JOHN: Where are you?"))
         assertEquals("- Wait!", SubtitleSdhFilter.filterPlainText("- WOMAN: Wait!"))
         assertEquals("Hello.", SubtitleSdhFilter.filterPlainText("[MAN]: Hello."))
-        assertEquals("John: Where are you?", SubtitleSdhFilter.filterPlainText("John: Where are you?"))
+        assertEquals("Where are you?", SubtitleSdhFilter.filterPlainText("John: Where are you?"))
         assertEquals("MAN:Wait!", SubtitleSdhFilter.filterPlainText("MAN:Wait!"))
     }
 
     @Test
-    fun defaultModeOnlyRemovesUppercaseParentheticalDescriptions() {
+    fun harderModeRemovesMixedCaseParentheticalDescriptions() {
         assertNull(SubtitleSdhFilter.filterPlainText("(LOUD BANG)"))
-        assertEquals("(softly) Hello.", SubtitleSdhFilter.filterPlainText("(softly) Hello."))
+        assertEquals("Hello.", SubtitleSdhFilter.filterPlainText("(softly) Hello."))
         assertEquals("(1984)", SubtitleSdhFilter.filterPlainText("(1984)"))
+    }
+
+    @Test
+    fun removesMultilineAnnotations() {
+        assertNull(SubtitleSdhFilter.filterPlainText("[ominous music\n continues]"))
+        assertNull(SubtitleSdhFilter.filterPlainText("(door closes)"))
+        assertNull(SubtitleSdhFilter.filterPlainText("[ominous music\n continues]\n(door closes)"))
     }
 
     @Test
