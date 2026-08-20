@@ -28,11 +28,4 @@ class NextUpEpisodeEligibilityTest {
     fun `a missing date is unaired rather than aired`() {
         assertTrue(isNextUpEpisodeUnaired(null, today))
     }
-
-    @Test
-    fun `availability is only refused when the addon explicitly says so`() {
-        assertTrue(isNextUpEpisodeAvailable(true))
-        assertTrue(isNextUpEpisodeAvailable(null))
-        assertFalse(isNextUpEpisodeAvailable(false))
-    }
 }

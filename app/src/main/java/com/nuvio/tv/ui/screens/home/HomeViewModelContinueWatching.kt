@@ -2218,9 +2218,6 @@ private const val CW_NEXT_UP_NEW_SEASON_UNAIRED_WINDOW_DAYS = 7
 internal fun isNextUpEpisodeUnaired(releaseDate: LocalDate?, today: LocalDate): Boolean =
     releaseDate == null || releaseDate.isAfter(today)
 
-// Addons report available=false for episodes they cannot serve, which is the same flag the details screen labels Unavailable.
-internal fun isNextUpEpisodeAvailable(available: Boolean?): Boolean = available != false
-
 private fun resolveNextUpVideoFromMeta(
     progress: WatchProgress,
     meta: CwMetaSummary,
@@ -2274,13 +2271,6 @@ private fun resolveNextUpVideoFromMeta(
     val todayLocal = LocalDate.now(ZoneId.systemDefault())
     val watchedEpisodeSeason = episodes[watchedIndex].season
     val nextVideo = episodes.drop(watchedIndex + 1).firstOrNull { video ->
-        if (!isNextUpEpisodeAvailable(video.available)) {
-            logNextUpDecision(
-                "skip contentId=${progress.contentId} name=${progress.name} reason=unavailable " +
-                    "seed=${seedSeason}x${seedEpisode} next=${video.season}x${video.episode}"
-            )
-            return@firstOrNull false
-        }
         val releaseDate = parseEpisodeReleaseDate(video.released)
         val isSeasonRollover = video.season != watchedEpisodeSeason
         if (isSeasonRollover) {
