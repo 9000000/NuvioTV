@@ -218,6 +218,15 @@ class ProgramBuilder @Inject constructor(
                 action = Intent.ACTION_VIEW
                 putExtra("contentId", progress.contentId)
                 putExtra("contentType", progress.contentType)
+                putExtra("videoId", progress.videoId)
+                putExtra("name", progress.name)
+                putExtra("poster", progress.poster)
+                putExtra("backdrop", progress.backdrop)
+                putExtra("logo", progress.logo)
+                progress.season?.let { putExtra("season", it) }
+                progress.episode?.let { putExtra("episode", it) }
+                progress.episodeTitle?.let { putExtra("episodeTitle", it) }
+                putExtra("launchMode", "stream")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }.toUri(Intent.URI_INTENT_SCHEME)
         )
