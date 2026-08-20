@@ -310,10 +310,16 @@ class AndroidTvChannelManager @Inject constructor(
             val positionMs = if (progress.position > 0) {
                 progress.position.toInt()
             } else {
-                // Trakt items may have duration (from runtime hydration) but position=0 with only progressPercent.
                 (progress.progressPercent?.let { it / 100f * progress.duration }?.toLong() ?: 0L).toInt()
             }
             builder.setLastPlaybackPositionMillis(positionMs)
+        } else if (progress.progressPercent != null && progress.progressPercent > 0f) {
+            // No real duration known (e.g. Simkl/Trakt sync), but we have a percent.
+            // Use synthetic values so the launcher can render a progress bar.
+            val syntheticDuration = 100_000
+            val syntheticPosition = (progress.progressPercent / 100f * syntheticDuration).toInt()
+            builder.setDurationMillis(syntheticDuration)
+            builder.setLastPlaybackPositionMillis(syntheticPosition)
         }
 
         if (type == TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE) {
@@ -336,7 +342,7 @@ class AndroidTvChannelManager @Inject constructor(
             }
             // Clear duration/position when unknown so stale values (e.g. previous 1hr fallback)
             // don't persist across UPDATE cycles.
-            if (progress.duration <= 0) {
+            if (progress.duration <= 0 && (progress.progressPercent == null || progress.progressPercent <= 0f)) {
                 it.putNull("duration_millis")
                 it.putNull("last_playback_position_millis")
             }

@@ -49,8 +49,18 @@ class ProgramBuilder @Inject constructor(
         }
 
         if (progress.duration > 0) {
-            builder.setLastPlaybackPositionMillis(progress.position.toInt())
+            val positionMs = if (progress.position > 0) {
+                progress.position.toInt()
+            } else {
+                (progress.progressPercent?.let { it / 100f * progress.duration }?.toLong() ?: 0L).toInt()
+            }
+            builder.setLastPlaybackPositionMillis(positionMs)
             builder.setDurationMillis(progress.duration.toInt())
+        } else if (progress.progressPercent != null && progress.progressPercent > 0f) {
+            val syntheticDuration = 100_000
+            val syntheticPosition = (progress.progressPercent / 100f * syntheticDuration).toInt()
+            builder.setDurationMillis(syntheticDuration)
+            builder.setLastPlaybackPositionMillis(syntheticPosition)
         }
 
         if (!isMovie) {
