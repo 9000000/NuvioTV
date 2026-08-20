@@ -47,10 +47,12 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.request.transformations
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.BlurTransformation
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import java.util.Locale
 
@@ -66,6 +68,7 @@ internal fun EpisodeOptionsOverlay(
     episode: Video,
     imdbRating: Double? = null,
     isWatched: Boolean,
+    blurUnwatchedEpisodes: Boolean = false,
     isPending: Boolean,
     isSeasonFullyWatched: Boolean = false,
     hasPreviousEpisodes: Boolean = false,
@@ -89,8 +92,13 @@ internal fun EpisodeOptionsOverlay(
     val primaryFocusRequester = remember { FocusRequester() }
     val title = episode.title.localizeEpisodeTitle(context)
     val description = episode.overview?.trim().orEmpty()
-    val thumbnailUrl = remember(episode.thumbnail) {
-        episodeOverlayBackdropUrl(episode.thumbnail)
+    val blurUnwatchedBackdrop = blurUnwatchedEpisodes && !isWatched
+    val thumbnailUrl = remember(episode.thumbnail, blurUnwatchedBackdrop) {
+        if (blurUnwatchedBackdrop) {
+            episode.thumbnail?.takeIf { it.isNotBlank() }
+        } else {
+            episodeOverlayBackdropUrl(episode.thumbnail)
+        }
     }
     val backdropWidthPx = remember(configuration, density) {
         with(density) { configuration.screenWidthDp.dp.roundToPx() }
@@ -98,9 +106,21 @@ internal fun EpisodeOptionsOverlay(
     val backdropHeightPx = remember(configuration, density) {
         with(density) { configuration.screenHeightDp.dp.roundToPx() }
     }
-    val thumbnailRequest = remember(context, thumbnailUrl, backdropWidthPx, backdropHeightPx) {
+    val thumbnailRequest = remember(
+        context,
+        thumbnailUrl,
+        backdropWidthPx,
+        backdropHeightPx,
+        blurUnwatchedBackdrop
+    ) {
         thumbnailUrl?.let { url ->
-            episodeOverlayBackdropRequest(context, url, backdropWidthPx, backdropHeightPx)
+            episodeOverlayBackdropRequest(
+                context,
+                url,
+                backdropWidthPx,
+                backdropHeightPx,
+                blur = blurUnwatchedBackdrop
+            )
         }
     }
     val overlayBrush = remember(isRtl) {
@@ -336,28 +356,52 @@ private fun isSelectKey(keyCode: Int): Boolean {
 }
 
 private const val TMDB_IMAGE_SIZE_PREFIX = "/t/p/"
+private const val OVERLAY_BLUR_MAX_WIDTH_PX = 480
 
 internal fun episodeOverlayBackdropUrl(thumbnail: String?): String? {
     return thumbnail?.takeIf { it.isNotBlank() }?.let(::upgradeTmdbImageUrl)
 }
 
-internal fun episodeOverlayBackdropMemoryCacheKey(url: String, widthPx: Int, heightPx: Int): String {
-    return "${url}_${widthPx}x${heightPx}"
+internal fun episodeOverlayBackdropDecodeSize(
+    screenWidthPx: Int,
+    screenHeightPx: Int,
+    blur: Boolean
+): Pair<Int, Int> {
+    val width = screenWidthPx.coerceAtLeast(1)
+    val height = screenHeightPx.coerceAtLeast(1)
+    if (!blur) return width to height
+    val blurredWidth = (width / 4).coerceIn(1, OVERLAY_BLUR_MAX_WIDTH_PX)
+    val blurredHeight = ((height.toLong() * blurredWidth) / width).toInt().coerceAtLeast(1)
+    return blurredWidth to blurredHeight
+}
+
+internal fun episodeOverlayBackdropMemoryCacheKey(
+    url: String,
+    widthPx: Int,
+    heightPx: Int,
+    blur: Boolean
+): String {
+    return "${url}_${widthPx}x${heightPx}_blur$blur"
 }
 
 internal fun episodeOverlayBackdropRequest(
     context: Context,
     url: String,
-    widthPx: Int,
-    heightPx: Int
+    screenWidthPx: Int,
+    screenHeightPx: Int,
+    blur: Boolean = false
 ): ImageRequest {
-    val cacheKey = episodeOverlayBackdropMemoryCacheKey(url, widthPx, heightPx)
+    val (widthPx, heightPx) = episodeOverlayBackdropDecodeSize(screenWidthPx, screenHeightPx, blur)
+    val cacheKey = episodeOverlayBackdropMemoryCacheKey(url, widthPx, heightPx, blur)
     return ImageRequest.Builder(context)
         .data(url)
         .memoryCacheKey(cacheKey)
         .diskCacheKey(url)
         .crossfade(true)
-        .size(width = widthPx.coerceAtLeast(1), height = heightPx.coerceAtLeast(1))
+        .size(width = widthPx, height = heightPx)
+        .apply {
+            if (blur) transformations(BlurTransformation())
+        }
         .build()
 }
 

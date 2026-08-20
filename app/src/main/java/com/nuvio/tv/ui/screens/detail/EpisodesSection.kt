@@ -419,6 +419,7 @@ fun EpisodesRow(
                 selectedEpisode.episode?.let { episode -> episodeRatings[season to episode] }
             },
             isWatched = selectedWatched,
+            blurUnwatchedEpisodes = blurUnwatchedEpisodes,
             isPending = isPending,
             isSeasonFullyWatched = isSeasonFullyWatched,
             hasPreviousEpisodes = hasPreviousEpisodes,
@@ -600,15 +601,34 @@ private fun EpisodeCard(
         with(density) { configuration.screenHeightDp.dp.roundToPx() }
     }
     val imageLoader = context.imageLoader
-    LaunchedEffect(isFocused, overlayBackdropUrl, overlayBackdropWidthPx, overlayBackdropHeightPx) {
+    val overlayPrefetchUrl = remember(episode.thumbnail, shouldBlur) {
+        if (shouldBlur) {
+            episode.thumbnail?.takeIf { it.isNotBlank() }
+        } else {
+            overlayBackdropUrl
+        }
+    }
+    LaunchedEffect(
+        isFocused,
+        overlayPrefetchUrl,
+        overlayBackdropWidthPx,
+        overlayBackdropHeightPx,
+        shouldBlur
+    ) {
         if (!isFocused) return@LaunchedEffect
-        val url = overlayBackdropUrl ?: return@LaunchedEffect
+        val url = overlayPrefetchUrl ?: return@LaunchedEffect
         if (overlayBackdropWidthPx <= 0 || overlayBackdropHeightPx <= 0) return@LaunchedEffect
         delay(EPISODE_OVERLAY_PREFETCH_DELAY_MS)
+        val (decodeWidthPx, decodeHeightPx) = episodeOverlayBackdropDecodeSize(
+            overlayBackdropWidthPx,
+            overlayBackdropHeightPx,
+            shouldBlur
+        )
         val cacheKey = episodeOverlayBackdropMemoryCacheKey(
             url,
-            overlayBackdropWidthPx,
-            overlayBackdropHeightPx
+            decodeWidthPx,
+            decodeHeightPx,
+            shouldBlur
         )
         if (imageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) return@LaunchedEffect
         imageLoader.enqueue(
@@ -616,7 +636,8 @@ private fun EpisodeCard(
                 context,
                 url,
                 overlayBackdropWidthPx,
-                overlayBackdropHeightPx
+                overlayBackdropHeightPx,
+                blur = shouldBlur
             )
         )
     }
