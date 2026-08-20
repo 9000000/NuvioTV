@@ -553,10 +553,6 @@ fun PlayerScreen(
                                 }
                             }
                             SubtitleDelayFocusTarget.RESET -> {
-                                // Reset is laid out before Sync Line, so it renders on the
-                                // leading side of the row: start-side in LTR, end-side in RTL.
-                                // The key that moves focus "toward" Sync Line therefore flips
-                                // with layout direction.
                                 val towardSyncLine = if (isRtl) {
                                     KeyEvent.KEYCODE_DPAD_LEFT
                                 } else {
@@ -590,9 +586,6 @@ fun PlayerScreen(
                                 }
                             }
                             SubtitleDelayFocusTarget.SYNC_LINE -> {
-                                // Sync Line renders on the trailing side of the row: end-side
-                                // in LTR, start-side in RTL. The key that moves focus "toward"
-                                // Reset therefore flips with layout direction.
                                 val towardReset = if (isRtl) {
                                     KeyEvent.KEYCODE_DPAD_RIGHT
                                 } else {
