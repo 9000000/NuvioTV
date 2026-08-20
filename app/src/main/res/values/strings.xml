@@ -920,6 +920,14 @@
     <string name="layout_hide_unreleased_sub">Hide movies and shows that haven\'t been released yet.</string>
     <string name="layout_section_detail">Detail Page</string>
     <string name="layout_section_detail_desc">Settings for the detail and episode screens.</string>
+    <string name="layout_overall_ratings">Overall Ratings</string>
+    <string name="layout_overall_ratings_sub_on">Standard and TMDB ratings are shown.</string>
+    <string name="layout_overall_ratings_sub_off">Standard and TMDB ratings are Hidden. MDBList provider settings take priority on detail pages.</string>
+    <string name="layout_episode_ratings">Episode Ratings</string>
+    <string name="layout_episode_ratings_sub">Choose which episode ratings are visible.</string>
+    <string name="layout_ratings_show">Show</string>
+    <string name="layout_ratings_hide">Hide</string>
+    <string name="layout_ratings_hide_unwatched">Hide Unwatched</string>
     <string name="layout_section_streams">Streams</string>
     <string name="layout_section_streams_desc">Display settings for stream results and player source panels.</string>
     <string name="layout_section_continue_watching">Continue Watching</string>
