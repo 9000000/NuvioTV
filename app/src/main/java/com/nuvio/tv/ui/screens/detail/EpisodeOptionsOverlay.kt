@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.detail
 
+import android.content.Context
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -24,11 +25,17 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -37,6 +44,9 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
@@ -73,9 +83,39 @@ internal fun EpisodeOptionsOverlay(
     onMarkPreviousEpisodesWatched: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val primaryFocusRequester = remember { FocusRequester() }
     val title = episode.title.localizeEpisodeTitle(context)
     val description = episode.overview?.trim().orEmpty()
+    val thumbnailUrl = remember(episode.thumbnail) {
+        episodeOverlayBackdropUrl(episode.thumbnail)
+    }
+    val backdropWidthPx = remember(configuration, density) {
+        with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    }
+    val backdropHeightPx = remember(configuration, density) {
+        with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    }
+    val thumbnailRequest = remember(context, thumbnailUrl, backdropWidthPx, backdropHeightPx) {
+        thumbnailUrl?.let { url ->
+            episodeOverlayBackdropRequest(context, url, backdropWidthPx, backdropHeightPx)
+        }
+    }
+    val overlayBrush = remember(isRtl) {
+        Brush.horizontalGradient(
+            colorStops = arrayOf(
+                0.00f to Color(0xF2050505),
+                0.28f to Color(0xE6050505),
+                0.48f to Color(0xB8050505),
+                0.70f to Color(0x80050505),
+                1.00f to Color(0x66050505)
+            ),
+            startX = if (isRtl) Float.POSITIVE_INFINITY else 0f,
+            endX = if (isRtl) 0f else Float.POSITIVE_INFINITY
+        )
+    }
     val ratingLabel = remember(imdbRating) {
         imdbRating?.takeIf { it > 0.0 }?.let { String.format(Locale.US, "%.1f", it) }
     }
@@ -166,15 +206,7 @@ internal fun EpisodeOptionsOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF050505),
-                            Color(0xFF090909),
-                            Color(0xFF111111)
-                        )
-                    )
-                )
+                .background(Color(0xFF050505))
                 .onPreviewKeyEvent { event ->
                     val native = event.nativeKeyEvent
                     if (isSelectKey(native.keyCode)) {
@@ -188,6 +220,21 @@ internal fun EpisodeOptionsOverlay(
                     false
                 }
         ) {
+            if (thumbnailRequest != null) {
+                AsyncImage(
+                    model = thumbnailRequest,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.Center,
+                    filterQuality = FilterQuality.High
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(overlayBrush)
+            )
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -286,4 +333,41 @@ private fun isSelectKey(keyCode: Int): Boolean {
     return keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
         keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
         keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+}
+
+private const val TMDB_IMAGE_SIZE_PREFIX = "/t/p/"
+
+internal fun episodeOverlayBackdropUrl(thumbnail: String?): String? {
+    return thumbnail?.takeIf { it.isNotBlank() }?.let(::upgradeTmdbImageUrl)
+}
+
+internal fun episodeOverlayBackdropMemoryCacheKey(url: String, widthPx: Int, heightPx: Int): String {
+    return "${url}_${widthPx}x${heightPx}"
+}
+
+internal fun episodeOverlayBackdropRequest(
+    context: Context,
+    url: String,
+    widthPx: Int,
+    heightPx: Int
+): ImageRequest {
+    val cacheKey = episodeOverlayBackdropMemoryCacheKey(url, widthPx, heightPx)
+    return ImageRequest.Builder(context)
+        .data(url)
+        .memoryCacheKey(cacheKey)
+        .diskCacheKey(url)
+        .crossfade(true)
+        .size(width = widthPx.coerceAtLeast(1), height = heightPx.coerceAtLeast(1))
+        .build()
+}
+
+internal fun upgradeTmdbImageUrl(url: String, size: String = "w1280"): String {
+    val sizeStart = url.indexOf(TMDB_IMAGE_SIZE_PREFIX, ignoreCase = true)
+        .takeIf { it >= 0 }
+        ?.plus(TMDB_IMAGE_SIZE_PREFIX.length)
+        ?: return url
+    val sizeEnd = url.indexOf('/', sizeStart).takeIf { it > sizeStart } ?: return url
+    val currentSize = url.substring(sizeStart, sizeEnd)
+    if (currentSize.equals(size, ignoreCase = true)) return url
+    return url.substring(0, sizeStart) + size + url.substring(sizeEnd)
 }
