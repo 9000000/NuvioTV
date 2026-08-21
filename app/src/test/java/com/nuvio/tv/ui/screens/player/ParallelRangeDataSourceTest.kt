@@ -47,4 +47,62 @@ class ParallelRangeDataSourceTest {
 
         assertEquals(0L, ParallelRangeRetryAfter.parseHeaderMs(header, nowEpochMs = now))
     }
+
+    @Test
+    fun `lookahead stays at current chunk until sequential run and current chunk complete`() {
+        assertEquals(
+            1,
+            ParallelRangeDataSource.lookaheadDepth(
+                bytesServedThisOpen = 0L,
+                earnedPrefetchBytes = 1L * 1024L * 1024L,
+                currentChunkComplete = false,
+                configuredDepth = 4,
+                rateLimitDepth = 4
+            )
+        )
+        assertEquals(
+            1,
+            ParallelRangeDataSource.lookaheadDepth(
+                bytesServedThisOpen = 1L * 1024L * 1024L,
+                earnedPrefetchBytes = 1L * 1024L * 1024L,
+                currentChunkComplete = false,
+                configuredDepth = 4,
+                rateLimitDepth = 4
+            )
+        )
+        assertEquals(
+            1,
+            ParallelRangeDataSource.lookaheadDepth(
+                bytesServedThisOpen = 512L * 1024L,
+                earnedPrefetchBytes = 1L * 1024L * 1024L,
+                currentChunkComplete = true,
+                configuredDepth = 4,
+                rateLimitDepth = 4
+            )
+        )
+    }
+
+    @Test
+    fun `lookahead uses configured depth after current chunk is complete`() {
+        assertEquals(
+            4,
+            ParallelRangeDataSource.lookaheadDepth(
+                bytesServedThisOpen = 1L * 1024L * 1024L,
+                earnedPrefetchBytes = 1L * 1024L * 1024L,
+                currentChunkComplete = true,
+                configuredDepth = 4,
+                rateLimitDepth = 4
+            )
+        )
+        assertEquals(
+            2,
+            ParallelRangeDataSource.lookaheadDepth(
+                bytesServedThisOpen = 1L * 1024L * 1024L,
+                earnedPrefetchBytes = 1L * 1024L * 1024L,
+                currentChunkComplete = true,
+                configuredDepth = 4,
+                rateLimitDepth = 2
+            )
+        )
+    }
 }

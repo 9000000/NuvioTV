@@ -4,7 +4,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-// HTTP Retry-After → remaining wait ms (delta-seconds or RFC 1123 date).
 internal object ParallelRangeRetryAfter {
     fun parseHeaderMs(
         header: String?,

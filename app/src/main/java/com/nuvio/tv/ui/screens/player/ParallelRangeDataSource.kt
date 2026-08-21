@@ -96,58 +96,31 @@ internal class ParallelRangeDataSource(
             }
         }
 
-        // ── Session-owned chunk downloads ───────────────────────────────────
-        // ExoPlayer creates a new instance of this class for every seek,
-        // closing the old one. Previously each close cancelled all in-flight
-        // chunk downloads and each open re-probed the URL and re-downloaded
-        // data. On scatter-read files (poorly interleaved, moov-at-end MP4s
-        // whose track layout forces several distant concurrent read cursors)
-        // this measured as ~66% of transfer discarded — the same 32 MB chunks
-        // restarting up to 30 times inside two minutes (192 chunk starts /
-        // 66 completions), presenting as constant rebuffering.
-        // Downloads therefore belong to a companion-level session: futures
-        // (completed AND in-flight) survive the close→open boundary, run to
-        // completion regardless of instance lifetime, and instances are thin
-        // readers over the shared session. Eviction is touch-LRU under a
-        // memory-tiered cap; teardown happens on stream change, idle TTL, or
-        // player shutdown.
         private const val RETAINED_SESSION_TTL_MS = 45_000L
-        // Earned prefetch: sequential bytes an open must serve before
-        // lookahead prefetch is granted.
         private const val EARNED_PREFETCH_BYTES = 1L * 1024L * 1024L
-        // Never evict a chunk touched in the last 2 s: closes the narrow race
-        // where an overlapping old instance is still copying from the buffer.
-        private const val EVICTION_TOUCH_GUARD_MS = 2_000L
 
-        // Rate-limit (HTTP 429/503) handling. A 429 is the server's explicit
-        // "slow down", so the response is shaped like congestion control:
-        // back off before retrying (honouring Retry-After when the server
-        // states one), reduce in-flight depth multiplicatively, and recover
-        // additively once the server goes quiet — so each session converges
-        // just under whatever request budget the provider actually enforces
-        // instead of oscillating between extremes. All state is per-session:
-        // providers differ, so every title probes fresh.
+        internal fun lookaheadDepth(
+            bytesServedThisOpen: Long,
+            earnedPrefetchBytes: Long,
+            currentChunkComplete: Boolean,
+            configuredDepth: Int,
+            rateLimitDepth: Int
+        ): Int {
+            if (bytesServedThisOpen < earnedPrefetchBytes) return 1
+            if (!currentChunkComplete) return 1
+            return configuredDepth.coerceAtMost(rateLimitDepth).coerceAtLeast(1)
+        }
+
+        private const val EVICTION_TOUCH_GUARD_MS = 2_000L
         private const val RATE_LIMIT_MAX_BACKOFF_RETRIES = 3
         private const val RATE_LIMIT_BACKOFF_BASE_MS = 500L
-        // Cap for GUESSED waits in a first episode. Deliberately short:
-        // playback is real-time, so long speculative sleeps on a download
-        // thread trade a maybe-429 for a certain stall.
         private const val RATE_LIMIT_BACKOFF_CYCLE_CAP_MS = 3_000L
-        // Absolute ceiling for any single wait, including a server-stated
-        // Retry-After — a broken or hostile header must never camp a
-        // real-time pipeline.
         private const val RATE_LIMIT_WAIT_HARD_CAP_MS = 15_000L
         private const val RATE_LIMIT_BACKOFF_JITTER_MS = 250L
         private const val RATE_LIMIT_SLEEP_SLICE_MS = 100L
-        // Additive-recovery probe cadence: +1 depth per quiet interval; the
-        // interval doubles on every fresh trip (gentler probing of a strict
-        // provider) and resets once the cap fully clears.
         private const val RATE_LIMIT_DEPTH_STEP_BASE_MS = 10_000L
         private const val RATE_LIMIT_DEPTH_STEP_MAX_MS = 60_000L
         private const val RATE_LIMIT_ESCALATION_MAX = 5
-        // A conforming DataSource blocks rather than returning 0 for a
-        // positive-length read; tolerate a few zero-progress reads, then fail
-        // the chunk instead of spinning forever.
         private const val MAX_CONSECUTIVE_ZERO_READS = 3
 
         private class ChunkSession(
@@ -155,9 +128,6 @@ internal class ParallelRangeDataSource(
             val requestHeaders: Map<String, String>,
             val chunkSize: Long,
             val chunkCap: Int,
-            // Size of the live prefetch window (maxAhead in scheduleChunks).
-            // Chunks in reader+1..reader+prefetchWindow are imminent and are
-            // excluded from eviction so the reader never re-downloads them.
             val prefetchWindow: Int
         ) {
             @Volatile var resolvedUri: Uri? = null
@@ -174,13 +144,6 @@ internal class ParallelRangeDataSource(
                 lastUsedAtMs = now
             }
 
-            // Chunk index most recently SERVED to a reader. Creation-time
-            // touches in ensureChunkScheduled deliberately do not update this;
-            // only the read paths do, so eviction can distinguish "behind the
-            // cursor" from "prefetched ahead". Last-write-wins on purpose: a
-            // transient side-cursor read may move it for one read and the main
-            // cursor restores it immediately after; the 2 s touch guard covers
-            // that window.
             @Volatile var lastReadChunkIndex: Long = -1L
 
             fun noteRead(chunkIndex: Long) {
@@ -188,38 +151,17 @@ internal class ParallelRangeDataSource(
                 lastReadChunkIndex = chunkIndex
             }
 
-            // --- Rate-limit (429/503) state: AIMD depth + escalating waits ---
-            // Multiplicative-decrease ceiling on prefetch depth;
-            // Int.MAX_VALUE = uncapped. Halved (never below 1) once per
-            // rate-limited episode, stepped +1 per quiet probe interval, and
-            // cleared once it climbs past the configured depth again.
             val rateLimitDepthCap = AtomicInteger(Int.MAX_VALUE)
             @Volatile var lastRateLimitAtMs: Long = 0L
             @Volatile var lastDepthHalveAtMs: Long = 0L
             @Volatile var lastDepthStepAtMs: Long = 0L
             @Volatile var depthStepIntervalMs: Long = RATE_LIMIT_DEPTH_STEP_BASE_MS
-            // Escalation persists across backoff CYCLES: the per-attempt
-            // ladder alone resets every time the outer retry machinery
-            // re-enters it, which is exactly how a hard limiter produces an
-            // indefinite fixed-period hammer. Repeated episodes therefore
-            // start from longer waits; quiet recovery walks the level back
-            // down one notch per depth step.
             val rateLimitEscalation = AtomicInteger(0)
 
-            /** Stamp an observed 429/503 so quiet time restarts. */
             fun noteRateLimitHit() {
                 lastRateLimitAtMs = SystemClock.uptimeMillis()
             }
 
-            /**
-             * Record the start of one rate-limited episode: stamp, bump the
-             * wait escalation, and apply ONE multiplicative depth decrease
-             * (guarded so a burst of concurrent 429s across download threads
-             * counts as a single congestion event, not a cascade to 1).
-             * Returns the escalation level this episode's waits should use
-             * (the pre-bump value, so a first-ever episode still starts from
-             * the short ladder).
-             */
             fun beginRateLimitEpisode(configuredDepth: Int): Int {
                 val now = SystemClock.uptimeMillis()
                 lastRateLimitAtMs = now
@@ -233,9 +175,6 @@ internal class ParallelRangeDataSource(
                     if (halved < effective) {
                         rateLimitDepthCap.set(halved)
                         lastDepthHalveAtMs = now
-                        // Gentler probing only when the provider pushes back
-                        // AGAIN during the climb: the first trip keeps the base
-                        // cadence, a re-trip doubles the interval.
                         if (alreadyCapped) {
                             depthStepIntervalMs =
                                 (depthStepIntervalMs * 2).coerceAtMost(RATE_LIMIT_DEPTH_STEP_MAX_MS)
@@ -247,13 +186,6 @@ internal class ParallelRangeDataSource(
                 return escalation
             }
 
-            /**
-             * Current allowed prefetch depth. Uncapped sessions pay nothing.
-             * A capped session steps +1 after each probe interval of quiet
-             * (no 429/503 observed) and clears the cap — resetting the probe
-             * interval and decaying the wait escalation — once it climbs past
-             * the configured depth again.
-             */
             fun currentAllowedDepth(configuredDepth: Int): Int {
                 val cap = rateLimitDepthCap.get()
                 if (cap >= configuredDepth) return configuredDepth
@@ -280,7 +212,6 @@ internal class ParallelRangeDataSource(
         private val sessionLock = Any()
         private var currentChunkSession: ChunkSession? = null
 
-        /** Release one session buffer: recycle to the pool, or free directly on teardown. */
         private fun releaseSessionBuffer(buffer: PooledBuffer, chunkSz: Long, poolCap: Int) {
             if (poolCap > 0) {
                 val pool = globalBufferPool.computeIfAbsent(chunkSz) { ConcurrentLinkedDeque() }
@@ -296,12 +227,6 @@ internal class ParallelRangeDataSource(
             }
         }
 
-        /**
-         * Evict one future from a session. Handles the complete-vs-cancel race:
-         * if cancel() loses because the download just completed, the buffer is
-         * released via the completed value; if cancel() wins, the download
-         * loop's cancellation checks release the buffer on its own thread.
-         */
         private fun evictFuture(
             session: ChunkSession,
             chunkIndex: Long,
@@ -331,10 +256,6 @@ internal class ParallelRangeDataSource(
             session.lastTouch.clear()
         }
 
-        /**
-         * Get the shared session for this request URI, creating (and tearing
-         * down any stale/mismatched predecessor) as needed.
-         */
         private fun obtainSession(
             requestUri: Uri,
             requestHeaders: Map<String, String>,
@@ -362,11 +283,6 @@ internal class ParallelRangeDataSource(
             }
         }
 
-        /**
-         * Explicit teardown, wired into PlayerMediaSourceFactory.shutdown() so
-         * chunk buffers and downloads never outlive the player. Buffers are
-         * freed directly (poolCap = 0) — playback is over.
-         */
         internal fun releaseRetainedSession() {
             synchronized(sessionLock) {
                 currentChunkSession?.let { teardownSessionLocked(it, poolCap = 0) }
@@ -374,48 +290,16 @@ internal class ParallelRangeDataSource(
             }
         }
 
-        /**
-         * Enforce the session's chunk cap with touch-LRU eviction. Never
-         * evicts [protectIndex] (the chunk being read) or anything touched in
-         * the last EVICTION_TOUCH_GUARD_MS.
-         */
         private fun enforceSessionCap(session: ChunkSession, protectIndex: Long, poolCap: Int) {
             if (session.futures.size <= session.chunkCap) return
             synchronized(session) {
                 while (session.futures.size > session.chunkCap) {
                     val now = SystemClock.uptimeMillis()
-                    // The 2 s touch guard makes the cap soft — when every
-                    // candidate is recently touched the loop bails and an
-                    // active file can hold ~cap+2–3 chunks. Beyond cap+2 the
-                    // ceiling is hard: evict the oldest-touched candidate
-                    // regardless of the guard.
                     val hardOver = session.futures.size > session.chunkCap + 2
-                    // Position-aware victim selection. Touch-LRU alone
-                    // systematically evicted PREFETCHED chunks: ahead-of-reader
-                    // entries are touched only at creation, so once the reader
-                    // is a few chunks past that moment they are always the
-                    // oldest-touched entries — evicted seconds before the
-                    // reader arrives, then re-downloaded in full (measured on a
-                    // scatter-read remux: 118 of 133 chunks fetched twice, ~47%
-                    // of session bandwidth). Prefer chunks BEHIND the read
-                    // cursor (touch-LRU among them); only when none are
-                    // eligible fall back to the FARTHEST-ahead chunk, which is
-                    // needed latest. Soft-cap bail, the 2 s guard and the
-                    // cap+2 hard ceiling are unchanged.
                     val readerIdx = session.lastReadChunkIndex
                     val eligible = session.futures.keys
                         .filter { it != protectIndex }
                         .filter { hardOver || now - (session.lastTouch[it] ?: 0L) >= EVICTION_TOUCH_GUARD_MS }
-                    // The entire in-flight prefetch window reader+1..reader+
-                    // prefetchWindow is about to be read within seconds, so it
-                    // is excluded from eviction: when only in-window chunks
-                    // remain, bail (as the soft-cap does) and let the pool sit
-                    // transiently at cap+2 rather than evict-then-refetch.
-                    // Behind and beyond-window chunks stay evictable (hardOver
-                    // drops the touch guard for them), so the pool stays
-                    // bounded; beyond-window chunks (stale prefetch after a
-                    // backward seek) are the farthest-ahead evictable and go
-                    // first.
                     val nearAheadFloor = if (readerIdx >= 0L) readerIdx else Long.MIN_VALUE
                     val nearAheadCeil = if (readerIdx >= 0L) readerIdx + session.prefetchWindow else Long.MIN_VALUE
                     val evictable = eligible.filter { it < nearAheadFloor || it > nearAheadCeil }
@@ -428,7 +312,6 @@ internal class ParallelRangeDataSource(
                 }
             }
         }
-        // ── end session ─────────────────────────────────────────────────────
 
         private fun clearGlobalPool() {
             globalBufferPool.values.forEach { pool ->
@@ -497,14 +380,8 @@ internal class ParallelRangeDataSource(
     // Fallback: if parallel mode fails, use a single upstream DataSource
     private var fallbackSource: OkHttpDataSource? = null
 
-    // Shared download session (null on subtitle/fallback paths).
     private var session: ChunkSession? = null
-    // Earned prefetch: lookahead is granted only after this open has
-    // demonstrated sequential consumption, so side-cursor opens (tiny reads,
-    // then reopen) never trigger the connections+1 chunk prefetch fan-out.
     private var bytesServedThisOpen: Long = 0L
-    // Memory-tiered chunk cap: low-RAM devices keep the pre-existing
-    // ceiling (connections + 2); high-RAM gets two extra chunks of headroom.
     private val sessionChunkCap: Int = parallelConnections +
         if (com.nuvio.tv.ui.screens.settings.MemoryBudget.isLowRamTier) 2 else 4
 
@@ -566,8 +443,6 @@ internal class ParallelRangeDataSource(
         continuationSource?.close()
         continuationSource = null
         continuationEndPositionExclusive = C.TIME_UNSET
-        // A fresh open must not inherit fallback/length state from a previous
-        // open on this instance; every path below re-establishes both fields.
         fallbackSource?.close()
         fallbackSource = null
         totalFileLength = C.LENGTH_UNSET.toLong()
@@ -576,14 +451,6 @@ internal class ParallelRangeDataSource(
         resetLocalReadState()
         bytesServedThisOpen = 0L
 
-        // Attach to the shared download session for this URI. Downloads
-        // (done AND in-flight) belong to the session and survive the
-        // close→open cycle ExoPlayer performs on every seek. When the session
-        // is warm (length + resolved URI known) the probe request is skipped.
-        // If an adopted CDN URL has expired, chunk downloads fail, ExoPlayer
-        // re-opens, the failed futures are gone, and downloads retry against
-        // the session's URI — with the full probe as the eventual fallback via
-        // session teardown on TTL.
         val attachedSession = obtainSession(dataSpec.uri, dataSpec.httpRequestHeaders, chunkSize, sessionChunkCap, maxPoolSize, parallelConnections + 1)
         session = attachedSession
         val warmLength = attachedSession.totalLength
@@ -614,7 +481,6 @@ internal class ParallelRangeDataSource(
             bootstrapChunk = DownloadedChunk(PooledBuffer(null, ByteBuffer.wrap(cached.bootstrapData)), cached.bootstrapSize)
             bootstrapStartPosition = cached.startPosition
             bootstrapPrefetchDeferred = true
-            // Publish to the session so the next reopen is warm.
             attachedSession.resolvedUri = resolvedUri
             attachedSession.totalLength = totalFileLength
             Log.d(
@@ -650,8 +516,6 @@ internal class ParallelRangeDataSource(
             // Can't determine length or server doesn't support ranges — reuse probe as single connection
             Log.w(TAG, "Falling back to single connection (length=${openLength}, acceptsRanges=$acceptsRanges)")
             fallbackSource = probeSource
-            // Keep state consistent with the subtitle fallback path (position is
-            // already set above): known length gives a real total, unknown stays unset.
             totalFileLength = if (openLength != C.LENGTH_UNSET.toLong()) {
                 position + openLength
             } else {
@@ -664,7 +528,6 @@ internal class ParallelRangeDataSource(
         totalFileLength = position + openLength
         bytesRemaining = openLength
 
-        // Publish to the session so every subsequent reopen is warm.
         attachedSession.resolvedUri = resolvedUri
         attachedSession.totalLength = totalFileLength
 
@@ -775,13 +638,6 @@ internal class ParallelRangeDataSource(
                 currentChunk = future.get(60, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (closed.get()) return C.RESULT_END_OF_INPUT
-                // A failed download is not retryable by waiting — drop
-                // the future so the next attempt schedules a fresh one.
-                // Cancel before dropping: an orphaned in-flight download
-                // otherwise completes into a pooled native buffer nothing will
-                // ever release. Ownership-gated on the two-arg remove so a
-                // future already evicted by another thread is never
-                // double-released.
                 if (activeSession.futures.remove(chunkIndex, future)) {
                     activeSession.lastTouch.remove(chunkIndex)
                     if (!future.cancel(true) && future.isDone && !future.isCancelled) {
@@ -796,9 +652,6 @@ internal class ParallelRangeDataSource(
             currentChunkIndex = chunkIndex
             currentChunkReadOffset = (position % chunkSize).toInt()
 
-            // LRU cap enforcement lives in ensureChunkScheduled; behind-
-            // chunks are not eagerly released (they serve the backward
-            // cursors on scatter-read files).
             scheduleChunks()
         }
 
@@ -815,9 +668,6 @@ internal class ParallelRangeDataSource(
         }
 
         val readSize = minOf(toRead, available)
-        // Session chunks are shared across instances — mutating the shared
-        // buffer's position races concurrent readers of the same chunk. Read
-        // through a duplicate, as the ByteBuffer read path does.
         val readBuf = chunk.buffer.byteBuffer.duplicate()
         readBuf.position(currentChunkReadOffset)
         readBuf.get(buffer, offset, readSize)
@@ -838,17 +688,17 @@ internal class ParallelRangeDataSource(
             } else {
                 position / chunkSize
             }
-        // Earned prefetch: lookahead only after this open has served a
-        // meaningful sequential run. Side cursors (a few bytes per open on
-        // scatter-read files) fetch only the chunk they actually need, instead
-        // of fanning out connections+1 chunks of dead prefetch per visit.
-        val earnedAhead = if (bytesServedThisOpen >= EARNED_PREFETCH_BYTES) parallelConnections + 1 else 1
-        // AIMD: a rate-limited session halves its depth cap and recovers +1
-        // per quiet probe interval (ChunkSession.currentAllowedDepth), so a
-        // provider that 429s converges just under its actual request budget
-        // instead of pinning the whole session to a single connection.
-        val maxAhead = session?.currentAllowedDepth(parallelConnections + 1)?.coerceAtMost(earnedAhead)
-            ?: earnedAhead
+        val configuredDepth = parallelConnections + 1
+        val currentComplete = session?.futures?.get(currentChunkIdx)?.let { future ->
+            future.isDone && !future.isCancelled && !future.isCompletedExceptionally
+        } == true
+        val maxAhead = lookaheadDepth(
+            bytesServedThisOpen = bytesServedThisOpen,
+            earnedPrefetchBytes = EARNED_PREFETCH_BYTES,
+            currentChunkComplete = currentComplete,
+            configuredDepth = configuredDepth,
+            rateLimitDepth = session?.currentAllowedDepth(configuredDepth) ?: configuredDepth
+        )
 
         for (i in 0 until maxAhead) {
             val ci = currentChunkIdx + i
@@ -859,7 +709,6 @@ internal class ParallelRangeDataSource(
 
     private fun ensureChunkScheduled(chunkIndex: Long) {
         val activeSession = session ?: return
-        // Make room under the memory-tiered cap before growing the map.
         enforceSessionCap(activeSession, protectIndex = chunkIndex, poolCap = maxPoolSize)
         activeSession.futures.computeIfAbsent(chunkIndex) {
             val future = CompletableFuture<DownloadedChunk>()
@@ -892,14 +741,7 @@ internal class ParallelRangeDataSource(
             try {
                 return downloadChunkOnce(activeSession, chunkIndex, future)
             } catch (e: Exception) {
-                // Downloads belong to the session, not the instance —
-                // only future cancellation or session teardown aborts them.
                 if (activeSession.abandoned.get() || future.isCancelled) throw IOException("Session abandoned or cancelled")
-                // HTTP 429/503 is the server rate-limiting, not a stalled
-                // download: hand the chunk to the dedicated backoff path,
-                // which waits (honouring Retry-After), reduces depth, and
-                // retries — instead of the immediate re-request below, which
-                // against a hard limiter just converts into more 429s.
                 val rlError = e.findRateLimitException()
                 if (rlError != null) {
                     return downloadChunkWithRateLimitBackoff(activeSession, chunkIndex, future, rlError)
@@ -944,9 +786,6 @@ internal class ParallelRangeDataSource(
             if (future.isCancelled || activeSession.abandoned.get()) throw IOException("Cancelled")
             Log.d(TAG, "Starting chunk download: idx=$chunkIndex, range=$start-$end")
             ds.open(spec)
-            // With a known session length the requested range is exact — a
-            // chunk that comes back short must fail (and retry) rather than be
-            // cached as if complete.
             val expectedBytes = if (sessionLength > 0L) end - start else -1L
             val chunk = readIntoChunk(activeSession, ds, future, expectedBytes)
             Log.d(TAG, "Successfully downloaded chunk $chunkIndex, size=${chunk.size} bytes")
@@ -963,7 +802,6 @@ internal class ParallelRangeDataSource(
         return cause is InterruptedIOException || cause is InterruptedException
     }
 
-    /** Walk the cause chain for an HTTP 429/503 (rate-limit) response. */
     private fun Throwable.findRateLimitException(): HttpDataSource.InvalidResponseCodeException? {
         var cause: Throwable? = this
         var depth = 0
@@ -979,15 +817,6 @@ internal class ParallelRangeDataSource(
         return null
     }
 
-    /**
-     * Dedicated handling for a rate-limited chunk. One invocation = one
-     * congestion episode: one multiplicative depth decrease and one wait
-     * escalation, then up to RATE_LIMIT_MAX_BACKOFF_RETRIES properly-spaced
-     * retries. Bounded and cancellation-aware (a stop/seek aborts any wait
-     * within a sleep slice); when the budget is spent it throws and the
-     * existing failure handling and auto-recovery take over — never worse
-     * than before.
-     */
     private fun downloadChunkWithRateLimitBackoff(
         activeSession: ChunkSession,
         chunkIndex: Long,
@@ -1011,7 +840,6 @@ internal class ParallelRangeDataSource(
             } catch (e: Exception) {
                 if (activeSession.abandoned.get() || future.isCancelled) throw IOException("Session abandoned or cancelled")
                 lastException = e
-                // A non-rate-limit error after a 429 is a different failure: surface it.
                 rl = e.findRateLimitException() ?: throw e
                 activeSession.noteRateLimitHit()
                 attempt++
@@ -1023,17 +851,6 @@ internal class ParallelRangeDataSource(
         )
     }
 
-    /**
-     * Wait before retrying a rate-limited chunk. A server-stated Retry-After
-     * (delta-seconds or HTTP-date, via ParallelRangeRetryAfter) is honoured
-     * up to a hard cap — the server knows its own limiter, but a broken or
-     * hostile header must never camp a real-time pipeline. With no usable
-     * header the wait is exponential per attempt from a base that itself
-     * escalates with repeated episodes, so a hard limiter produces
-     * progressively longer waits across cycles instead of the indefinite
-     * fixed-period retry a self-resetting ladder degenerates into. Jitter
-     * decorrelates concurrent retries.
-     */
     private fun rateLimitWaitMs(
         attempt: Int,
         escalation: Int,
@@ -1053,12 +870,6 @@ internal class ParallelRangeDataSource(
         return base.coerceIn(RATE_LIMIT_BACKOFF_BASE_MS, cycleCapMs) + jitter
     }
 
-    /**
-     * Sleep in short slices so a stop/seek aborts the backoff promptly.
-     * Watches future cancellation and session teardown only — not the
-     * instance closed flag — to stay consistent with the session-owned
-     * download model. Returns false if the wait should abort.
-     */
     private fun sleepInterruptibly(
         totalMs: Long,
         future: CompletableFuture<*>,
@@ -1096,9 +907,6 @@ internal class ParallelRangeDataSource(
                 null
             }
 
-            // The loop does not watch the instance's closed flag —
-            // downloads run to completion across ExoPlayer's seek reopens and
-            // abort only on future cancellation or session teardown.
             while (!activeSession.abandoned.get()) {
                 if (future.isCancelled) {
                     throw IOException("Chunk download cancelled")
@@ -1119,9 +927,6 @@ internal class ParallelRangeDataSource(
                 }
 
                 if (read == C.RESULT_END_OF_INPUT) break
-                // A positive-length read returning 0 violates the DataSource
-                // contract; bail after a few rather than busy-spinning until
-                // cancellation.
                 if (read == 0) {
                     if (++consecutiveZeroReads >= MAX_CONSECUTIVE_ZERO_READS) {
                         throw IOException(
@@ -1134,9 +939,6 @@ internal class ParallelRangeDataSource(
                 }
                 totalRead += read
             }
-            // A premature EOF inside a known range must not produce a cached
-            // "complete" chunk — a short non-final chunk otherwise dead-ends
-            // both read paths at the phantom chunk boundary.
             if (expectedBytes > 0L && totalRead < expectedBytes && !activeSession.abandoned.get()) {
                 throw IOException("Short chunk: read $totalRead of $expectedBytes bytes")
             }
@@ -1213,12 +1015,6 @@ internal class ParallelRangeDataSource(
         }
     }
 
-    /**
-     * Detach instance-local read state. Session chunks (and in-flight
-     * downloads) are untouched — they belong to the shared session and their
-     * buffers are owned by the session's futures. Releasing anything here
-     * would double-free; eviction and teardown are the session's job.
-     */
     private fun resetLocalReadState() {
         currentChunk = null
         currentChunkIndex = -1
@@ -1235,7 +1031,6 @@ internal class ParallelRangeDataSource(
             continuationSource = null
             continuationEndPositionExclusive = C.TIME_UNSET
 
-            // Downloads survive this close — detach references only.
             resetLocalReadState()
             session = null
 
@@ -1331,8 +1126,6 @@ internal class ParallelRangeDataSource(
                 currentChunk = future.get(60, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (closed.get()) return C.RESULT_END_OF_INPUT
-                // Mirror of the byte-array path: cancel before dropping,
-                // ownership-gated release if the download won the race.
                 if (activeSession.futures.remove(chunkIndex, future)) {
                     activeSession.lastTouch.remove(chunkIndex)
                     if (!future.cancel(true) && future.isDone && !future.isCancelled) {

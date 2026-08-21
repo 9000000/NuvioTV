@@ -112,17 +112,6 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
 
         val mediaItem = mediaItemBuilder.build()
 
-        // 1. Chunk-session source: parallel connections (opt-in), or MP4 session
-        // mode. Non-faststart / poorly interleaved MP4s force scatter reads, and
-        // ExoPlayer recreates the data source on every seek; the session-owned
-        // chunks in ParallelRangeDataSource are what survive that boundary. That
-        // fix used to be reachable only behind the parallel-connections opt-in,
-        // so progressive MP4 now engages the session source even with parallel
-        // off — pinned to a single connection and an 8 MB chunk, which holds
-        // request concurrency and retained memory at plain-path levels (earned
-        // prefetch caps lookahead at two chunks; side cursors fetch only the
-        // chunk they touch). HLS/DASH, non-MP4 progressive, and parallel-on
-        // behaviour are unchanged.
         val mp4SessionMode = !useParallelConnections && !isHls && !isDash &&
             resolvedMimeType == MimeTypes.VIDEO_MP4
         val useChunkSessionSource = (useParallelConnections || mp4SessionMode) && !isHls && !isDash
@@ -145,7 +134,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 if (mp4SessionMode) 1 else parallelConnectionCount,
                 if (mp4SessionMode) MP4_SESSION_CHUNK_BYTES else parallelChunkSizeKb.toLong() * 1024L,
                 useNativeMemory = nuvioPerformanceModeEnabled,
-                shouldAllowBackgroundPrefetch = { true },
+                shouldAllowBackgroundPrefetch = { parallelStartupPrefetchUnlocked.get() },
                 onResolvedUri = { resolved -> currentVodCacheResolvedUrl = resolved?.toString() }
             )
         } else {
@@ -210,8 +199,6 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
     }
 
     fun shutdown() {
-        // Free any chunk buffers retained across seek reopens so native
-        // allocations never outlive the player.
         ParallelRangeDataSource.releaseRetainedSession()
     }
 
@@ -260,10 +247,6 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
 
     companion object {
         private const val MIME_VIDEO_QUICK_TIME = "video/quicktime"
-        // MP4 session mode: fixed 8 MB chunk, independent of the user's parallel
-        // chunk-size setting — small enough that scatter-read side cursors waste
-        // little per touch, and the retained set (session cap 3 chunks on the
-        // low-RAM tier, 5 otherwise) stays a few tens of MB.
         private const val MP4_SESSION_CHUNK_BYTES = 8L * 1024L * 1024L
         private const val ENABLE_VOD_CACHE = true
         private const val VOD_CACHE_FREE_SPACE_RESERVE_BYTES = 1024L * 1024L * 1024L
