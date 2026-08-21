@@ -1343,6 +1343,15 @@ class MetaDetailsViewModel @Inject constructor(
                 )
             }
 
+            // Ratings the addon supplied on meta.videos[].rating. The repository below
+            // still wins wherever it has an entry.
+            val addonRatings: Map<Pair<Int, Int>, Double> = meta.videos.mapNotNull { video ->
+                val season = video.season ?: return@mapNotNull null
+                val episode = video.episode ?: return@mapNotNull null
+                val rating = video.rating ?: return@mapNotNull null
+                (season to episode) to rating
+            }.toMap()
+
             try {
                 val tmdbContentType = resolveTmdbContentType(meta)
                 if (tmdbContentType !in listOf(ContentType.SERIES, ContentType.TV)) {
@@ -1368,9 +1377,13 @@ class MetaDetailsViewModel @Inject constructor(
                             state
                         } else {
                             state.copy(
-                                episodeImdbRatings = emptyMap(),
+                                episodeImdbRatings = addonRatings,
                                 isEpisodeRatingsLoading = false,
-                                episodeRatingsError = localizedContext.getString(R.string.ratings_unavailable)
+                                episodeRatingsError = if (addonRatings.isEmpty()) {
+                                    localizedContext.getString(R.string.ratings_unavailable)
+                                } else {
+                                    null
+                                }
                             )
                         }
                     }
@@ -1387,7 +1400,7 @@ class MetaDetailsViewModel @Inject constructor(
                         state
                     } else {
                         state.copy(
-                            episodeImdbRatings = ratings,
+                            episodeImdbRatings = addonRatings + ratings,
                             isEpisodeRatingsLoading = false,
                             episodeRatingsError = null
                         )
