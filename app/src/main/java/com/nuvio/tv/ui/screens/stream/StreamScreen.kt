@@ -899,6 +899,8 @@ private fun AddonFilterChips(
     ) }
     LaunchedEffect(selectedAddon, orderedNames) {
         if (refreshHasFocus || focusedChipIndex == 0) return@LaunchedEffect
+        val currentAddonAtFocus = if (focusedChipIndex == 1) null else orderedNames.getOrNull(focusedChipIndex - 2)
+        if (currentAddonAtFocus == selectedAddon) return@LaunchedEffect
         val idx = if (selectedAddon == null) 1 else (orderedNames.indexOf(selectedAddon) + 2).coerceAtLeast(1)
         focusedChipIndex = idx
     }

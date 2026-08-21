@@ -82,17 +82,8 @@ internal fun StreamSourcesSidePanel(
             uiState.sourceChips.forEach { if (it.name !in this) add(it.name) }
         }
     }
-    val refreshFocusRequester = remember { FocusRequester() }
-    val allFocusRequester = remember { FocusRequester() }
-    val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
-    val chipFocusRequesters = remember(orderedAddonNames) {
-        buildList {
-            add(refreshFocusRequester)
-            add(allFocusRequester)
-            orderedAddonNames.forEach { addon ->
-                add(addonFocusRequesters.getOrPut(addon) { FocusRequester() })
-            }
-        }
+    val chipFocusRequesters = remember(orderedAddonNames.size) {
+        List(orderedAddonNames.size + 2) { FocusRequester() }
     }
 
     val streamKeys = remember(uiState.sourceFilteredStreams) {
