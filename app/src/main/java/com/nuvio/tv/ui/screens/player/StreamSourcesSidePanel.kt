@@ -140,21 +140,9 @@ internal fun StreamSourcesSidePanel(
     fun onAddonFilterSelectedGuarded(addon: String?) {
         userMovedFromFirstResult = true
         onAddonFilterSelected(addon)
-        focusJob?.cancel()
-        focusJob = scope.coroutineLaunch {
-            repeat(20) {
-                withFrameNanos { }
-                val key = streamKeys.firstOrNull()
-                if (key != null && streamFocusRequesters.containsKey(key)) {
-                    val success = runCatching { streamFocusRequesters.getValue(key).requestFocus() }.isSuccess
-                    if (success) return@coroutineLaunch
-                }
-            }
-            // Fallback to active chip if list has 0 streams
-            val activeChipIdx = if (addon == null) 1
-                else (orderedAddonNames.indexOf(addon) + 2).coerceAtLeast(1)
-            requestChipFocus(activeChipIdx)
-        }
+        val activeChipIdx = if (addon == null) 1
+            else (orderedAddonNames.indexOf(addon) + 2).coerceAtLeast(1)
+        requestChipFocus(activeChipIdx)
     }
 
     // Reset scroll position to top when addon filter changes
@@ -232,8 +220,7 @@ internal fun StreamSourcesSidePanel(
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             AnimatedVisibility(
-                visible = uiState.sourceChips.isNotEmpty() ||
-                    (!uiState.isLoadingSourceStreams && uiState.sourceAvailableAddons.isNotEmpty()),
+                visible = uiState.sourceChips.isNotEmpty() || uiState.sourceAvailableAddons.isNotEmpty(),
                 enter = fadeIn(animationSpec = tween(200)),
                 exit = fadeOut(animationSpec = tween(120))
             ) {
