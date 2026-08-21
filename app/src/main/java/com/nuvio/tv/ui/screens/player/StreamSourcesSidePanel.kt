@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch as coroutineLaunch
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import android.view.KeyEvent
 import androidx.compose.ui.input.key.Key
@@ -72,6 +73,7 @@ internal fun StreamSourcesSidePanel(
     var userMovedFromFirstResult by remember { mutableStateOf(false) }
     var firstResultFocusAssigned by remember { mutableStateOf(false) }
     var firstStreamFocusRequestId by remember { mutableStateOf(0) }
+    var shouldRefocusFirstStreamOnFilterChange by remember { mutableStateOf(false) }
     var listHasFocus by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -136,7 +138,33 @@ internal fun StreamSourcesSidePanel(
 
     fun onAddonFilterSelectedGuarded(addon: String?) {
         userMovedFromFirstResult = true
+        shouldRefocusFirstStreamOnFilterChange = true
         onAddonFilterSelected(addon)
+    }
+
+    // Refocus the first stream (or fallback to the chip) when switching tabs from within the stream list
+    LaunchedEffect(uiState.sourceSelectedAddonFilter, uiState.sourceFilteredStreams.size, uiState.isLoadingSourceStreams) {
+        if (!shouldRefocusFirstStreamOnFilterChange) return@LaunchedEffect
+        if (uiState.isLoadingSourceStreams) return@LaunchedEffect
+
+        val key = firstStreamKey
+        if (uiState.sourceFilteredStreams.isNotEmpty() && key != null) {
+            streamListState.scrollToItem(0)
+            repeat(30) {
+                withFrameNanos { }
+                if (firstCardHasFocus) {
+                    shouldRefocusFirstStreamOnFilterChange = false
+                    return@LaunchedEffect
+                }
+                runCatching { streamFocusRequesters.getValue(key).requestFocus() }
+            }
+        } else {
+            // If the filtered addon has 0 streams (or error/empty), safely redirect focus to its chip!
+            shouldRefocusFirstStreamOnFilterChange = false
+            val activeChipIdx = if (uiState.sourceSelectedAddonFilter == null) 1
+                else (orderedAddonNames.indexOf(uiState.sourceSelectedAddonFilter) + 2).coerceAtLeast(1)
+            requestChipFocus(activeChipIdx)
+        }
     }
 
     // Reset scroll position to top when addon filter changes
@@ -150,6 +178,7 @@ internal fun StreamSourcesSidePanel(
             .width(520.dp)
             .clip(RoundedCornerShape(topStart = NuvioTheme.spacing.lg, bottomStart = NuvioTheme.spacing.lg))
             .background(NuvioTheme.colors.BackgroundElevated)
+            .focusRestorer()
     ) {
         Column(modifier = Modifier.padding(NuvioTheme.spacing.xl)) {
             Row(
@@ -297,7 +326,10 @@ internal fun StreamSourcesSidePanel(
                                             if (currentIdx < allOptions.lastIndex) {
                                                 onAddonFilterSelectedGuarded(allOptions[currentIdx + 1])
                                                 true
-                                            } else false
+                                            } else {
+                                                // Boundary hit on rightmost tab in RTL
+                                                true
+                                            }
                                         } else {
                                             if (currentIdx > 0) {
                                                 onAddonFilterSelectedGuarded(allOptions[currentIdx - 1])
@@ -321,7 +353,10 @@ internal fun StreamSourcesSidePanel(
                                             if (currentIdx < allOptions.lastIndex) {
                                                 onAddonFilterSelectedGuarded(allOptions[currentIdx + 1])
                                                 true
-                                            } else false
+                                            } else {
+                                                // Boundary hit on rightmost tab in LTR: consume so focus doesn't escape overlay
+                                                true
+                                            }
                                         }
                                     }
                                     else -> false

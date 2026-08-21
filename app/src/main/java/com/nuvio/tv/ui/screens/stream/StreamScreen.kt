@@ -1209,7 +1209,9 @@ private fun StreamsList(
                             if (currentIdx < allOptions.lastIndex) {
                                 onAddonFilterSelected(allOptions[currentIdx + 1])
                                 true
-                            } else false
+                            } else {
+                                true
+                            }
                         } else {
                             if (currentIdx > 0) {
                                 onAddonFilterSelected(allOptions[currentIdx - 1])
@@ -1233,7 +1235,9 @@ private fun StreamsList(
                             if (currentIdx < allOptions.lastIndex) {
                                 onAddonFilterSelected(allOptions[currentIdx + 1])
                                 true
-                            } else false
+                            } else {
+                                true
+                            }
                         }
                     }
                     else -> false
