@@ -253,9 +253,17 @@ internal fun AddonFilterChips(
         }
     }
     val hasRefresh = onRefresh != null
-    val totalRequesterCount = if (hasRefresh) orderedNames.size + 2 else orderedNames.size + 1
-    val focusRequesters = externalFocusRequesters ?: remember(totalRequesterCount) {
-        List(totalRequesterCount) { FocusRequester() }
+    val refreshFocusRequester = remember { FocusRequester() }
+    val allFocusRequester = remember { FocusRequester() }
+    val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val focusRequesters = externalFocusRequesters ?: remember(orderedNames) {
+        buildList {
+            if (hasRefresh) add(refreshFocusRequester)
+            add(allFocusRequester)
+            orderedNames.forEach { addon ->
+                add(addonFocusRequesters.getOrPut(addon) { FocusRequester() })
+            }
+        }
     }
 
     var chipRowHasFocus by remember { mutableStateOf(false) }
@@ -281,6 +289,14 @@ internal fun AddonFilterChips(
             if (selectedAddon == null) 0 else (orderedNames.indexOf(selectedAddon) + 1).coerceAtLeast(0)
         }
         focusedChipIndex = idx
+    }
+
+    // Preserve chip focus when loading completes or new addons are discovered while focused
+    LaunchedEffect(isStillFetching, orderedNames) {
+        if (chipRowHasFocus) {
+            withFrameNanos {}
+            runCatching { focusRequesters.getOrNull(focusedChipIndex)?.requestFocus() }
+        }
     }
     val scope = rememberCoroutineScope()
     val lastKeyRepeatDispatchRef = remember { java.util.concurrent.atomic.AtomicLong(0L) }
