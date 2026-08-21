@@ -35,7 +35,12 @@ object SubtitleCharsetDetector {
 
     private const val MAX_SAMPLE_BYTES = 4096
 
-    fun decode(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset): String {
+    fun decode(
+        bytes: ByteArray,
+        offset: Int = 0,
+        length: Int = bytes.size - offset,
+        languageHint: String? = null
+    ): String {
         if (length <= 0) return ""
 
         if (length >= 3 && (bytes[offset].toInt() and 0xFF) == 0xEF &&
@@ -59,17 +64,67 @@ object SubtitleCharsetDetector {
             return String(bytes, offset, length, StandardCharsets.UTF_8)
         }
 
-        val charset = detectUniversalCharset(bytes, offset, length)
+        val hintedCharset = resolveCharsetFromLanguageHint(bytes, offset, length, languageHint)
+        val charset = hintedCharset ?: detectUniversalCharset(bytes, offset, length)
         return String(bytes, offset, length, charset)
     }
 
-    fun normalizeToUtf8(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset): ByteArray {
+    fun normalizeToUtf8(
+        bytes: ByteArray,
+        offset: Int = 0,
+        length: Int = bytes.size - offset,
+        languageHint: String? = null
+    ): ByteArray {
         if (length <= 0) return ByteArray(0)
         if (isFastValidUtf8(bytes, offset, length)) {
             return if (offset == 0 && length == bytes.size) bytes else bytes.copyOfRange(offset, offset + length)
         }
-        val charset = detectUniversalCharset(bytes, offset, length)
+        val hintedCharset = resolveCharsetFromLanguageHint(bytes, offset, length, languageHint)
+        val charset = hintedCharset ?: detectUniversalCharset(bytes, offset, length)
         return String(bytes, offset, length, charset).toByteArray(StandardCharsets.UTF_8)
+    }
+
+    private fun resolveCharsetFromLanguageHint(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+        languageHint: String?
+    ): Charset? {
+        if (languageHint.isNullOrBlank()) return null
+        val normalized = languageHint.trim().lowercase()
+        val lang = normalized.substringBefore('-').substringBefore('_')
+
+        return when (lang) {
+            "heb", "he", "iw" -> CHARSET_WIN1255
+            "ara", "ar" -> CHARSET_WIN1256
+            "ell", "el", "gre" -> CHARSET_WIN1253
+            "tur", "tr" -> CHARSET_WIN1254
+            "rus", "ru", "ukr", "uk", "bel", "be", "bul", "bg", "mkd", "mk", "srp", "sr" -> {
+                if (hasKoi8Vowels(bytes, offset, length)) CHARSET_KOI8_R else CHARSET_WIN1251
+            }
+            "tha", "th" -> CHARSET_WIN874
+            "vie", "vi" -> CHARSET_WIN1258
+            "pol", "pl", "ces", "cs", "cze", "hun", "hu", "slv", "sl", "hrv", "hr", "ron", "ro", "rum", "slk", "sk" -> CHARSET_WIN1250
+            "zho", "zh", "chi" -> {
+                if (isCjkClean(bytes, offset, length, CHARSET_BIG5)) CHARSET_BIG5 else CHARSET_GB18030
+            }
+            "jpn", "ja" -> CHARSET_SHIFT_JIS
+            "kor", "ko" -> CHARSET_EUC_KR
+            else -> null
+        }
+    }
+
+    private fun hasKoi8Vowels(bytes: ByteArray, offset: Int, length: Int): Boolean {
+        val sampleLength = min(length, MAX_SAMPLE_BYTES)
+        val end = offset + sampleLength
+        var russianVowels = 0
+        var koi8Vowels = 0
+        for (i in offset until end) {
+            val b = bytes[i].toInt() and 0xFF
+            if (b == 0xEE || b == 0xE0 || b == 0xE5 || b == 0xE8 || b == 0xFF || b == 0xFB) russianVowels++
+            if (b == 0xCF || b == 0xC1 || b == 0xC5 || b == 0xC9 || b == 0xD5 || b == 0xDF) koi8Vowels++
+        }
+        return koi8Vowels > russianVowels && koi8Vowels >= 3
     }
 
     private fun isFastValidUtf8(bytes: ByteArray, offset: Int, length: Int): Boolean {
@@ -103,17 +158,13 @@ object SubtitleCharsetDetector {
         val sampleLength = min(totalEnd - sampleOffset, MAX_SAMPLE_BYTES)
         val end = sampleOffset + sampleLength
 
-        var asciiLetters = 0
         var nonAscii = 0
         var consecutiveNonAscii = 0
         var maxConsecutiveNonAscii = 0
 
         for (i in sampleOffset until end) {
             val b = bytes[i].toInt() and 0xFF
-            if ((b in 'a'.code..'z'.code) || (b in 'A'.code..'Z'.code)) {
-                asciiLetters++
-                consecutiveNonAscii = 0
-            } else if (b >= 0x80) {
+            if (b >= 0x80) {
                 nonAscii++
                 consecutiveNonAscii++
                 if (consecutiveNonAscii > maxConsecutiveNonAscii) {
@@ -126,6 +177,7 @@ object SubtitleCharsetDetector {
 
         if (nonAscii == 0) return StandardCharsets.UTF_8
 
+        // CJK detection
         if (countBlockMatches(bytes, sampleOffset, sampleLength, CHARSET_SHIFT_JIS, Character.UnicodeBlock.HIRAGANA, Character.UnicodeBlock.KATAKANA) >= 3) {
             return CHARSET_SHIFT_JIS
         }
@@ -152,61 +204,67 @@ object SubtitleCharsetDetector {
             return CHARSET_GB18030
         }
 
-        if (asciiLetters >= nonAscii || maxConsecutiveNonAscii <= 2) {
-            var turkishScore = 0
-            var ceScore = 0
-            var vietnameseScore = 0
-            for (i in sampleOffset until end) {
-                val b = bytes[i].toInt() and 0xFF
-                if (b == 0xCC || b == 0xD2 || b == 0xF2 || b == 0xF5) vietnameseScore++
-                if (b == 0xF0 || b == 0xFE || b == 0xFD || b == 0xD0 || b == 0xDE || b == 0xDD) turkishScore++
-                if (b == 0xB9 || b == 0xB3 || b == 0x9C || b == 0x9F || b == 0x9A || b == 0x9E || b == 0x8C || b == 0x8F || b == 0x8A || b == 0x8E || b == 0x8D || b == 0x9D || b == 0xCF || b == 0xEF || b == 0xBE || b == 0xBA || b == 0xEC) ceScore++
-            }
-            if (turkishScore > ceScore && turkishScore > 0) return CHARSET_WIN1254
-            if (ceScore > 0 && ceScore >= vietnameseScore) return CHARSET_WIN1250
-            if (vietnameseScore >= 2) return CHARSET_WIN1258
-            return CHARSET_WIN1252
-        }
-
+        // Statistical evaluation for non-Latin single-byte alphabets
         var thaiConsonants = 0
         var hebrewLetters = 0
         var arabicAlCount = 0
         var russianVowels = 0
         var koi8Vowels = 0
         var greekVowels = 0
-        var bytes0xC0to0xDF = 0
 
         for (i in sampleOffset until end) {
             val b = bytes[i].toInt() and 0xFF
             if (b in 0xA1..0xBF) thaiConsonants++
             if (b in 0xE0..0xFA) hebrewLetters++
-            if (b in 0xC0..0xDF) bytes0xC0to0xDF++
             if (b == 0xEE || b == 0xE0 || b == 0xE5 || b == 0xE8 || b == 0xFF || b == 0xFB) russianVowels++
             if (b == 0xCF || b == 0xC1 || b == 0xC5 || b == 0xC9 || b == 0xD5 || b == 0xDF) koi8Vowels++
             if (b == 0xE1 || b == 0xEF || b == 0xE5 || b == 0xE7 || b == 0xFD || b == 0xFE) greekVowels++
             if (i < end - 1 && b == 0xC7 && (bytes[i + 1].toInt() and 0xFF) == 0xE1) arabicAlCount++
         }
 
-        if (thaiConsonants * 5 >= nonAscii && thaiConsonants >= 4) {
-            return CHARSET_WIN874
-        }
-        if (hebrewLetters == nonAscii && hebrewLetters >= 4 && bytes0xC0to0xDF == 0) {
+        // Hebrew check: consonants (0xE0..0xFA) make up >= 50% of non-ASCII bytes
+        if (hebrewLetters >= 4 && (hebrewLetters * 2 >= nonAscii)) {
             return CHARSET_WIN1255
         }
+
+        // Thai check
+        if (thaiConsonants * 4 >= nonAscii && thaiConsonants >= 4) {
+            return CHARSET_WIN874
+        }
+
+        // Arabic check
         if (arabicAlCount > 0) {
             return CHARSET_WIN1256
         }
+
+        // Cyrillic check
         if (koi8Vowels > russianVowels && koi8Vowels >= 3) {
             return CHARSET_KOI8_R
         }
-        if (russianVowels > greekVowels && russianVowels >= 3) {
+        if (russianVowels > greekVowels && russianVowels >= 4 && (russianVowels * 2 >= nonAscii)) {
             return CHARSET_WIN1251
         }
-        if (greekVowels > russianVowels && greekVowels >= 3) {
+
+        // Greek check
+        if (greekVowels > russianVowels && greekVowels >= 4 && (greekVowels * 2 >= nonAscii)) {
             return CHARSET_WIN1253
         }
 
-        return CHARSET_WIN1254
+        // Turkish / Central European / Vietnamese / Western European
+        var turkishScore = 0
+        var ceScore = 0
+        var vietnameseScore = 0
+        for (i in sampleOffset until end) {
+            val b = bytes[i].toInt() and 0xFF
+            if (b == 0xCC || b == 0xD2 || b == 0xF2 || b == 0xF5) vietnameseScore++
+            if (b == 0xF0 || b == 0xFE || b == 0xFD || b == 0xD0 || b == 0xDE || b == 0xDD) turkishScore++
+            if (b == 0xB9 || b == 0xB3 || b == 0x9C || b == 0x9F || b == 0x9A || b == 0x9E || b == 0x8C || b == 0x8F || b == 0x8A || b == 0x8E || b == 0x8D || b == 0x9D || b == 0xCF || b == 0xEF || b == 0xBE || b == 0xBA || b == 0xEC) ceScore++
+        }
+        if (turkishScore > ceScore && turkishScore > 0) return CHARSET_WIN1254
+        if (ceScore > 0 && ceScore >= vietnameseScore) return CHARSET_WIN1250
+        if (vietnameseScore >= 2) return CHARSET_WIN1258
+
+        return CHARSET_WIN1252
     }
 
     private fun isCjkClean(bytes: ByteArray, offset: Int, length: Int, cs: Charset): Boolean {
