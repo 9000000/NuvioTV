@@ -43,7 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch as coroutineLaunch
-import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import android.view.KeyEvent
 import androidx.compose.ui.input.key.Key
@@ -73,10 +73,10 @@ internal fun StreamSourcesSidePanel(
     var userMovedFromFirstResult by remember { mutableStateOf(false) }
     var firstResultFocusAssigned by remember { mutableStateOf(false) }
     var firstStreamFocusRequestId by remember { mutableStateOf(0) }
-    var shouldRefocusFirstStreamOnFilterChange by remember { mutableStateOf(false) }
     var listHasFocus by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val closeButtonFocusRequester = remember { FocusRequester() }
 
     val orderedAddonNames = remember(uiState.sourceAvailableAddons, uiState.sourceChips) {
         buildList {
@@ -136,33 +136,23 @@ internal fun StreamSourcesSidePanel(
         }
     }
 
+    // Called when navigating tabs horizontally from within the stream list
     fun onAddonFilterSelectedGuarded(addon: String?) {
         userMovedFromFirstResult = true
-        shouldRefocusFirstStreamOnFilterChange = true
         onAddonFilterSelected(addon)
-    }
-
-    // Refocus the first stream (or fallback to the chip) when switching tabs from within the stream list
-    LaunchedEffect(uiState.sourceSelectedAddonFilter, uiState.sourceFilteredStreams.size, uiState.isLoadingSourceStreams) {
-        if (!shouldRefocusFirstStreamOnFilterChange) return@LaunchedEffect
-        if (uiState.isLoadingSourceStreams) return@LaunchedEffect
-
-        val key = firstStreamKey
-        if (uiState.sourceFilteredStreams.isNotEmpty() && key != null) {
-            streamListState.scrollToItem(0)
-            repeat(30) {
+        focusJob?.cancel()
+        focusJob = scope.coroutineLaunch {
+            repeat(20) {
                 withFrameNanos { }
-                if (firstCardHasFocus) {
-                    shouldRefocusFirstStreamOnFilterChange = false
-                    return@LaunchedEffect
+                val key = streamKeys.firstOrNull()
+                if (key != null && streamFocusRequesters.containsKey(key)) {
+                    val success = runCatching { streamFocusRequesters.getValue(key).requestFocus() }.isSuccess
+                    if (success) return@coroutineLaunch
                 }
-                runCatching { streamFocusRequesters.getValue(key).requestFocus() }
             }
-        } else {
-            // If the filtered addon has 0 streams (or error/empty), safely redirect focus to its chip!
-            shouldRefocusFirstStreamOnFilterChange = false
-            val activeChipIdx = if (uiState.sourceSelectedAddonFilter == null) 1
-                else (orderedAddonNames.indexOf(uiState.sourceSelectedAddonFilter) + 2).coerceAtLeast(1)
+            // Fallback to active chip if list has 0 streams
+            val activeChipIdx = if (addon == null) 1
+                else (orderedAddonNames.indexOf(addon) + 2).coerceAtLeast(1)
             requestChipFocus(activeChipIdx)
         }
     }
@@ -178,7 +168,6 @@ internal fun StreamSourcesSidePanel(
             .width(520.dp)
             .clip(RoundedCornerShape(topStart = NuvioTheme.spacing.lg, bottomStart = NuvioTheme.spacing.lg))
             .background(NuvioTheme.colors.BackgroundElevated)
-            .focusRestorer()
     ) {
         Column(modifier = Modifier.padding(NuvioTheme.spacing.xl)) {
             Row(
@@ -195,7 +184,19 @@ internal fun StreamSourcesSidePanel(
                 DialogButton(
                     text = stringResource(R.string.sources_close),
                     onClick = onClose,
-                    isPrimary = false
+                    isPrimary = false,
+                    modifier = Modifier
+                        .focusRequester(closeButtonFocusRequester)
+                        .onKeyEvent { event ->
+                            if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                event.key == Key.DirectionDown
+                            ) {
+                                val activeIdx = if (uiState.sourceSelectedAddonFilter == null) 1
+                                    else (orderedAddonNames.indexOf(uiState.sourceSelectedAddonFilter) + 2).coerceAtLeast(1)
+                                requestChipFocus(activeIdx)
+                                true
+                            } else false
+                        }
                 )
             }
 
@@ -247,9 +248,12 @@ internal fun StreamSourcesSidePanel(
                         firstResultFocusAssigned = false
                         onReload()
                     },
-                    onAddonSelected = { onAddonFilterSelectedGuarded(it) },
+                    onAddonSelected = { onAddonFilterSelected(it) },
                     externalFocusRequesters = chipFocusRequesters,
-                    externalOrderedNames = orderedAddonNames
+                    externalOrderedNames = orderedAddonNames,
+                    onUpKey = {
+                        try { closeButtonFocusRequester.requestFocus() } catch (_: Exception) {}
+                    }
                 )
             }
 

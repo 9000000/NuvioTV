@@ -241,7 +241,8 @@ internal fun AddonFilterChips(
     onRefresh: (() -> Unit)? = null,
     onAddonSelected: (String?) -> Unit,
     externalFocusRequesters: List<FocusRequester>? = null,
-    externalOrderedNames: List<String>? = null
+    externalOrderedNames: List<String>? = null,
+    onUpKey: (() -> Unit)? = null
 ) {
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val chipMap = sourceChips.associateBy { it.name }
@@ -330,6 +331,11 @@ internal fun AddonFilterChips(
                     val now = android.os.SystemClock.uptimeMillis()
                     if (now - lastKeyRepeatDispatchRef.get() < 112L) return@onKeyEvent true
                     lastKeyRepeatDispatchRef.set(now)
+                }
+
+                if (event.key == androidx.compose.ui.input.key.Key.DirectionUp && onUpKey != null) {
+                    onUpKey()
+                    return@onKeyEvent true
                 }
 
                 val lastIndex = if (hasRefresh) orderedNames.size + 1 else orderedNames.size
