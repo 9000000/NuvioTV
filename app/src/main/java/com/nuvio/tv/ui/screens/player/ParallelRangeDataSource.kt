@@ -111,7 +111,48 @@ internal class ParallelRangeDataSource(
             return configuredDepth.coerceAtMost(rateLimitDepth).coerceAtLeast(1)
         }
 
-        private const val EVICTION_TOUCH_GUARD_MS = 2_000L
+        private const val TAIL_CHUNK_COUNT = 4L
+
+        internal fun isTailChunk(chunkIndex: Long, totalChunks: Long): Boolean {
+            return totalChunks > 0L && chunkIndex >= totalChunks - TAIL_CHUNK_COUNT
+        }
+
+        internal fun shouldMoveMainCursor(
+            lastReadChunkIndex: Long,
+            chunkIndex: Long,
+            prefetchWindow: Int,
+            sequentialOpen: Boolean,
+            currentChunkComplete: Boolean,
+            totalChunks: Long
+        ): Boolean {
+            if (isTailChunk(chunkIndex, totalChunks)) {
+                if (lastReadChunkIndex < 0L) return false
+                val delta = chunkIndex - lastReadChunkIndex
+                val distance = if (delta >= 0L) delta else -delta
+                return distance <= prefetchWindow.toLong()
+            }
+            if (lastReadChunkIndex < 0L) return true
+            val delta = chunkIndex - lastReadChunkIndex
+            val distance = if (delta >= 0L) delta else -delta
+            if (distance <= prefetchWindow.toLong()) return true
+            return sequentialOpen && currentChunkComplete
+        }
+
+        private const val EVICTION_TOUCH_GUARD_MS = 15_000L
+        private const val PLAYHEAD_BACK_CHUNKS = 2L
+        private const val MAX_PINNED_SIDE_CHUNKS = 2
+
+        internal fun isInPlayheadWindow(
+            readerIdx: Long,
+            chunkIndex: Long,
+            prefetchWindow: Int,
+            backChunks: Long = PLAYHEAD_BACK_CHUNKS
+        ): Boolean {
+            if (readerIdx < 0L) return false
+            val floor = (readerIdx - backChunks).coerceAtLeast(0L)
+            val ceil = readerIdx + prefetchWindow.toLong()
+            return chunkIndex in floor..ceil
+        }
         private const val RATE_LIMIT_MAX_BACKOFF_RETRIES = 3
         private const val RATE_LIMIT_BACKOFF_BASE_MS = 500L
         private const val RATE_LIMIT_BACKOFF_CYCLE_CAP_MS = 3_000L
@@ -145,10 +186,37 @@ internal class ParallelRangeDataSource(
             }
 
             @Volatile var lastReadChunkIndex: Long = -1L
+            val pinnedSideChunks: MutableSet<Long> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
-            fun noteRead(chunkIndex: Long) {
+            fun noteRead(
+                chunkIndex: Long,
+                sequentialOpen: Boolean,
+                currentChunkComplete: Boolean,
+                totalChunks: Long
+            ) {
                 touch(chunkIndex)
-                lastReadChunkIndex = chunkIndex
+                if (shouldMoveMainCursor(
+                        lastReadChunkIndex,
+                        chunkIndex,
+                        prefetchWindow,
+                        sequentialOpen,
+                        currentChunkComplete,
+                        totalChunks
+                    )
+                ) {
+                    lastReadChunkIndex = chunkIndex
+                    pinnedSideChunks.remove(chunkIndex)
+                } else {
+                    pinSideChunk(chunkIndex)
+                }
+            }
+
+            fun pinSideChunk(chunkIndex: Long) {
+                pinnedSideChunks.add(chunkIndex)
+                while (pinnedSideChunks.size > MAX_PINNED_SIDE_CHUNKS) {
+                    val drop = pinnedSideChunks.minByOrNull { lastTouch[it] ?: 0L } ?: break
+                    if (!pinnedSideChunks.remove(drop)) break
+                }
             }
 
             val rateLimitDepthCap = AtomicInteger(Int.MAX_VALUE)
@@ -234,6 +302,7 @@ internal class ParallelRangeDataSource(
         ) {
             val future = session.futures.remove(chunkIndex) ?: return
             session.lastTouch.remove(chunkIndex)
+            session.pinnedSideChunks.remove(chunkIndex)
             if (!future.cancel(true) && future.isDone && !future.isCancelled) {
                 try {
                     releaseSessionBuffer(future.get().buffer, session.chunkSize, poolCap)
@@ -254,6 +323,7 @@ internal class ParallelRangeDataSource(
             }
             session.futures.clear()
             session.lastTouch.clear()
+            session.pinnedSideChunks.clear()
         }
 
         private fun obtainSession(
@@ -295,18 +365,40 @@ internal class ParallelRangeDataSource(
             synchronized(session) {
                 while (session.futures.size > session.chunkCap) {
                     val now = SystemClock.uptimeMillis()
-                    val hardOver = session.futures.size > session.chunkCap + 2
                     val readerIdx = session.lastReadChunkIndex
-                    val eligible = session.futures.keys
+                    val totalChunks = if (session.totalLength > 0L && session.chunkSize > 0L) {
+                        (session.totalLength + session.chunkSize - 1L) / session.chunkSize
+                    } else {
+                        0L
+                    }
+                    val evictable = session.futures.keys
                         .filter { it != protectIndex }
-                        .filter { hardOver || now - (session.lastTouch[it] ?: 0L) >= EVICTION_TOUCH_GUARD_MS }
-                    val nearAheadFloor = if (readerIdx >= 0L) readerIdx else Long.MIN_VALUE
-                    val nearAheadCeil = if (readerIdx >= 0L) readerIdx + session.prefetchWindow else Long.MIN_VALUE
-                    val evictable = eligible.filter { it < nearAheadFloor || it > nearAheadCeil }
+                        .filter { it != readerIdx }
+                        .filter { now - (session.lastTouch[it] ?: 0L) >= EVICTION_TOUCH_GUARD_MS }
+                        .filter { !isInPlayheadWindow(readerIdx, it, session.prefetchWindow) }
+                        .filter { !isTailChunk(it, totalChunks) }
+                        .filter { !session.pinnedSideChunks.contains(it) }
+                        .filter { index ->
+                            val future = session.futures[index]
+                            future == null || (future.isDone && !future.isCancelled)
+                        }
                     val victim = evictable
                         .filter { readerIdx >= 0L && it < readerIdx }
                         .minByOrNull { session.lastTouch[it] ?: 0L }
                         ?: evictable.maxOrNull()
+                        ?: if (session.futures.size > session.chunkCap + 8) {
+                            session.futures.keys
+                                .filter { it != protectIndex && it != readerIdx }
+                                .filter { !isInPlayheadWindow(readerIdx, it, session.prefetchWindow) }
+                                .filter { !isTailChunk(it, totalChunks) }
+                                .filter { index ->
+                                    val future = session.futures[index]
+                                    future != null && future.isDone && !future.isCancelled
+                                }
+                                .minByOrNull { session.lastTouch[it] ?: 0L }
+                        } else {
+                            null
+                        }
                         ?: return
                     evictFuture(session, victim, poolCap)
                 }
@@ -633,13 +725,14 @@ internal class ParallelRangeDataSource(
             val activeSession = session ?: return C.RESULT_END_OF_INPUT
             ensureChunkScheduled(chunkIndex)
             val future = activeSession.futures[chunkIndex] ?: return C.RESULT_END_OF_INPUT
-            activeSession.noteRead(chunkIndex)
+            noteSessionRead(activeSession, chunkIndex)
             try {
                 currentChunk = future.get(60, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (closed.get()) return C.RESULT_END_OF_INPUT
                 if (activeSession.futures.remove(chunkIndex, future)) {
                     activeSession.lastTouch.remove(chunkIndex)
+                    activeSession.pinnedSideChunks.remove(chunkIndex)
                     if (!future.cancel(true) && future.isDone && !future.isCancelled) {
                         try {
                             releaseSessionBuffer(future.get().buffer, activeSession.chunkSize, maxPoolSize)
@@ -675,9 +768,26 @@ internal class ParallelRangeDataSource(
         position += readSize
         bytesRemaining -= readSize
         bytesServedThisOpen += readSize
-        session?.noteRead(chunkIndex)
+        noteSessionRead(session, chunkIndex)
 
         return readSize
+    }
+
+    private fun noteSessionRead(activeSession: ChunkSession?, chunkIndex: Long) {
+        val currentComplete = activeSession?.futures?.get(chunkIndex)?.let { future ->
+            future.isDone && !future.isCancelled && !future.isCompletedExceptionally
+        } == true
+        val totalChunks = if (activeSession != null && activeSession.totalLength > 0L && chunkSize > 0L) {
+            (activeSession.totalLength + chunkSize - 1L) / chunkSize
+        } else {
+            0L
+        }
+        activeSession?.noteRead(
+            chunkIndex,
+            bytesServedThisOpen >= EARNED_PREFETCH_BYTES,
+            currentComplete,
+            totalChunks
+        )
     }
 
     private fun scheduleChunks() {
@@ -709,6 +819,23 @@ internal class ParallelRangeDataSource(
 
     private fun ensureChunkScheduled(chunkIndex: Long) {
         val activeSession = session ?: return
+        val totalChunks = if (activeSession.totalLength > 0L && chunkSize > 0L) {
+            (activeSession.totalLength + chunkSize - 1L) / chunkSize
+        } else {
+            0L
+        }
+        if (isTailChunk(chunkIndex, totalChunks) ||
+            !shouldMoveMainCursor(
+                activeSession.lastReadChunkIndex,
+                chunkIndex,
+                activeSession.prefetchWindow,
+                sequentialOpen = false,
+                currentChunkComplete = false,
+                totalChunks = totalChunks
+            )
+        ) {
+            activeSession.pinSideChunk(chunkIndex)
+        }
         enforceSessionCap(activeSession, protectIndex = chunkIndex, poolCap = maxPoolSize)
         activeSession.futures.computeIfAbsent(chunkIndex) {
             val future = CompletableFuture<DownloadedChunk>()
@@ -720,6 +847,8 @@ internal class ParallelRangeDataSource(
                         val result = downloadChunk(activeSession, chunkIndex, future)
                         if (!future.complete(result)) {
                             releaseBuffer(result.buffer)
+                        } else {
+                            activeSession.touch(chunkIndex)
                         }
                     } else if (future.isCancelled) {
                         // no-op: never started
@@ -1036,7 +1165,12 @@ internal class ParallelRangeDataSource(
 
             val active = activeInstances.decrementAndGet()
             if (active <= 0) {
-                clearGlobalPool()
+                val sessionLive = synchronized(sessionLock) {
+                    currentChunkSession?.abandoned?.get() == false
+                }
+                if (!sessionLive) {
+                    clearGlobalPool()
+                }
             }
         }
     }
@@ -1121,13 +1255,14 @@ internal class ParallelRangeDataSource(
             val activeSession = session ?: return C.RESULT_END_OF_INPUT
             ensureChunkScheduled(chunkIndex)
             val future = activeSession.futures[chunkIndex] ?: return C.RESULT_END_OF_INPUT
-            activeSession.noteRead(chunkIndex)
+            noteSessionRead(activeSession, chunkIndex)
             try {
                 currentChunk = future.get(60, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (closed.get()) return C.RESULT_END_OF_INPUT
                 if (activeSession.futures.remove(chunkIndex, future)) {
                     activeSession.lastTouch.remove(chunkIndex)
+                    activeSession.pinnedSideChunks.remove(chunkIndex)
                     if (!future.cancel(true) && future.isDone && !future.isCancelled) {
                         try {
                             releaseSessionBuffer(future.get().buffer, activeSession.chunkSize, maxPoolSize)
@@ -1164,7 +1299,7 @@ internal class ParallelRangeDataSource(
         position += readSize
         bytesRemaining -= readSize
         bytesServedThisOpen += readSize
-        session?.noteRead(chunkIndex)
+        noteSessionRead(session, chunkIndex)
 
         return readSize
     }

@@ -105,4 +105,145 @@ class ParallelRangeDataSourceTest {
             )
         )
     }
+
+    @Test
+    fun `side cursor does not move main read cursor`() {
+        assertEquals(
+            false,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = -1L,
+                chunkIndex = 1389L,
+                prefetchWindow = 4,
+                sequentialOpen = false,
+                currentChunkComplete = false,
+                totalChunks = 1390L
+            )
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = -1L,
+                chunkIndex = 35L,
+                prefetchWindow = 4,
+                sequentialOpen = false,
+                currentChunkComplete = false,
+                totalChunks = 1390L
+            )
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.isTailChunk(1389L, 1392L)
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.isTailChunk(1388L, 1392L)
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.isTailChunk(1387L, 1392L)
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.isTailChunk(105L, 1392L)
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = 35L,
+                chunkIndex = 36L,
+                prefetchWindow = 4,
+                sequentialOpen = false,
+                currentChunkComplete = false,
+                totalChunks = 1390L
+            )
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = 35L,
+                chunkIndex = 1389L,
+                prefetchWindow = 4,
+                sequentialOpen = false,
+                currentChunkComplete = false,
+                totalChunks = 1390L
+            )
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = 35L,
+                chunkIndex = 1389L,
+                prefetchWindow = 4,
+                sequentialOpen = true,
+                currentChunkComplete = true,
+                totalChunks = 1390L
+            )
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = 35L,
+                chunkIndex = 80L,
+                prefetchWindow = 4,
+                sequentialOpen = true,
+                currentChunkComplete = false,
+                totalChunks = 1390L
+            )
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.shouldMoveMainCursor(
+                lastReadChunkIndex = 35L,
+                chunkIndex = 80L,
+                prefetchWindow = 4,
+                sequentialOpen = true,
+                currentChunkComplete = true,
+                totalChunks = 1390L
+            )
+        )
+    }
+
+    @Test
+    fun `playhead window keeps two chunks behind the reader`() {
+        assertEquals(
+            true,
+            ParallelRangeDataSource.isInPlayheadWindow(
+                readerIdx = 253L,
+                chunkIndex = 251L,
+                prefetchWindow = 4
+            )
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.isInPlayheadWindow(
+                readerIdx = 255L,
+                chunkIndex = 255L,
+                prefetchWindow = 4
+            )
+        )
+        assertEquals(
+            true,
+            ParallelRangeDataSource.isInPlayheadWindow(
+                readerIdx = 251L,
+                chunkIndex = 255L,
+                prefetchWindow = 4
+            )
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.isInPlayheadWindow(
+                readerIdx = 255L,
+                chunkIndex = 251L,
+                prefetchWindow = 4
+            )
+        )
+        assertEquals(
+            false,
+            ParallelRangeDataSource.isInPlayheadWindow(
+                readerIdx = -1L,
+                chunkIndex = 251L,
+                prefetchWindow = 4
+            )
+        )
+    }
 }
