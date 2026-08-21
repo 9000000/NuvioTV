@@ -267,7 +267,6 @@
     <string name="collections_editor_tmdb_watch_providers">IDs de proveedores de visualización</string>
     <string name="collections_editor_tmdb_watch_providers_helper">Usa los IDs de proveedores de TMDB. Separa múltiples con comas para AND, o barras verticales para OR.</string>
     <string name="collections_editor_tmdb_watch_providers_placeholder">8|337|350</string>
-    <string name="collections_editor_tmdb_quick_watch_providers">Proveedores de visualización rápidos</string>
     <string name="collections_editor_tmdb_without_watch_providers_helper">Excluir títulos disponibles en estos números de proveedores de visualización de TMDB en la región seleccionada.</string>
     <string name="collections_editor_tmdb_without_watch_providers_placeholder">8|337|350</string>
     <string name="collections_editor_tmdb_quick_watch_providers">Proveedores de visualización rápidos</string>
