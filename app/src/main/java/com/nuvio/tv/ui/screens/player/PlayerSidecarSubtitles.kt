@@ -116,7 +116,7 @@ internal fun PlayerRuntimeController.startSidecarAddonSubtitle(subtitle: Subtitl
 
     sidecarSubtitleJob = scope.launch {
         try {
-            val rawBody = downloadSubtitleBody(subtitle.url)
+            val rawBody = downloadSubtitleBody(subtitle.url, subtitle.lang)
             if (activeSidecarSubtitleKey != subtitleKey) return@launch
 
             val resolvedMime = PlayerSubtitleUtils.sniffSubtitleMimeType(rawBody, subtitle.url)
