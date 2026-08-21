@@ -92,6 +92,7 @@ import com.nuvio.tv.core.streams.StreamBadgePlacement
 import com.nuvio.tv.core.streams.StreamBadgeSettings
 import com.nuvio.tv.data.local.PlayerPreference
 import com.nuvio.tv.domain.model.Stream
+import com.nuvio.tv.ui.components.RefreshFilterChip
 import com.nuvio.tv.ui.components.SourceChipItem
 import com.nuvio.tv.ui.components.SourceChipStatus
 import com.nuvio.tv.ui.components.SourceStatusFilterChip
@@ -897,6 +898,7 @@ private fun AddonFilterChips(
         if (selectedAddon == null) 1 else (orderedNames.indexOf(selectedAddon) + 2).coerceAtLeast(1)
     ) }
     LaunchedEffect(selectedAddon, orderedNames) {
+        if (refreshHasFocus || focusedChipIndex == 0) return@LaunchedEffect
         val idx = if (selectedAddon == null) 1 else (orderedNames.indexOf(selectedAddon) + 2).coerceAtLeast(1)
         focusedChipIndex = idx
     }
@@ -905,6 +907,7 @@ private fun AddonFilterChips(
     fun moveFocusTo(targetIndex: Int) {
         focusedChipIndex = targetIndex
         if (targetIndex == 0) {
+            refreshHasFocus = true
             scope.coroutineLaunch {
                 withFrameNanos {}
                 try { focusRequesters[0].requestFocus() } catch (_: Exception) {}
@@ -912,8 +915,15 @@ private fun AddonFilterChips(
             return
         }
 
+        refreshHasFocus = false
         val selectedFilter = if (targetIndex == 1) null else orderedNames[targetIndex - 2]
         onAddonSelected(selectedFilter)
+        scope.coroutineLaunch {
+            withFrameNanos {}
+            if (targetIndex in focusRequesters.indices) {
+                try { focusRequesters[targetIndex].requestFocus() } catch (_: Exception) {}
+            }
+        }
     }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
@@ -964,10 +974,11 @@ private fun AddonFilterChips(
             RefreshFilterChip(
                 onClick = onRefresh,
                 isLoading = isStillFetching,
-                onFocusChanged = { refreshHasFocus = it },
-                modifier = Modifier
-                    .focusRequester(focusRequesters[0])
-                    .focusProperties { canFocus = focusedChipIndex == 0 }
+                onFocusChanged = { isFocused ->
+                    refreshHasFocus = isFocused
+                    if (isFocused) focusedChipIndex = 0
+                },
+                modifier = Modifier.focusRequester(focusRequesters[0])
             )
         }
 
@@ -980,7 +991,12 @@ private fun AddonFilterChips(
                 onClick = { onAddonSelected(null) },
                 modifier = Modifier
                     .focusRequester(focusRequesters[1])
-                    .focusProperties { canFocus = selectedAddon == null || chipRowHasFocus }
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            focusedChipIndex = 1
+                            refreshHasFocus = false
+                        }
+                    }
             )
         }
 
@@ -988,101 +1004,23 @@ private fun AddonFilterChips(
             val addon = orderedNames[i]
             val chipStatus = chipMap[addon]?.status ?: SourceChipStatus.SUCCESS
             val isSelectable = addon in addons && chipStatus == SourceChipStatus.SUCCESS
+            val requesterIdx = i + 2
             SourceStatusFilterChip(
                 name = addon,
                 isSelected = selectedAddon == addon,
                 status = chipStatus,
                 isSelectable = isSelectable,
                 onClick = { if (isSelectable) onAddonSelected(addon) },
-                modifier = Modifier.focusRequester(focusRequesters[i + 2])
+                modifier = Modifier
+                    .focusRequester(focusRequesters[requesterIdx])
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            focusedChipIndex = requesterIdx
+                            refreshHasFocus = false
+                        }
+                    }
             )
         }
-    }
-}
-
-@Composable
-private fun RefreshFilterChip(
-    onClick: () -> Unit,
-    isLoading: Boolean = false,
-    onFocusChanged: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    val contentColor = if (isFocused) {
-        NuvioTheme.colors.OnSecondary
-    } else {
-        NuvioTheme.colors.TextSecondary
-    }
-
-    val rotationAnimatable = remember { Animatable(0f) }
-    var hasCompletedFullRotation by remember { mutableStateOf(false) }
-    LaunchedEffect(isLoading) {
-        if (isLoading) {
-            // Spin continuously while loading
-            coroutineDelay(100)
-            hasCompletedFullRotation = false
-            while (true) {
-                val remaining = 360f - rotationAnimatable.value
-                rotationAnimatable.animateTo(
-                    targetValue = 360f,
-                    animationSpec = tween(
-                        durationMillis = (remaining / 360f * 1000).toInt(),
-                        easing = LinearEasing
-                    )
-                )
-                hasCompletedFullRotation = true
-                rotationAnimatable.snapTo(0f)
-            }
-        } else {
-            // Complete current rotation then stop
-            if (hasCompletedFullRotation && rotationAnimatable.value > 0f) {
-                val remaining = 360f - rotationAnimatable.value
-                rotationAnimatable.animateTo(
-                    targetValue = 360f,
-                    animationSpec = tween(
-                        durationMillis = (remaining / 360f * 1000).toInt(),
-                        easing = LinearEasing
-                    )
-                )
-            }
-            rotationAnimatable.snapTo(0f)
-            hasCompletedFullRotation = false
-        }
-    }
-
-    FilterChip(
-        selected = false,
-        onClick = onClick,
-        modifier = modifier.onFocusChanged {
-            isFocused = it.isFocused
-            onFocusChanged(it.isFocused)
-        },
-        colors = FilterChipDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = NuvioTheme.colors.Secondary,
-            contentColor = contentColor,
-            focusedContentColor = contentColor
-        ),
-        border = FilterChipDefaults.border(
-            border = Border(
-                border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
-                shape = RoundedCornerShape(20.dp)
-            ),
-            focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
-                shape = RoundedCornerShape(20.dp)
-            )
-        ),
-        shape = FilterChipDefaults.shape(shape = RoundedCornerShape(20.dp))
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Refresh,
-            contentDescription = stringResource(R.string.cd_refresh),
-            modifier = Modifier
-                .size(20.dp)
-                .graphicsLayer { rotationZ = rotationAnimatable.value },
-            tint = contentColor
-        )
     }
 }
 
@@ -1266,16 +1204,34 @@ private fun StreamsList(
                 when (event.key) {
                     Key.DirectionLeft -> {
                         if (isRtl) {
-                            if (currentIdx < allOptions.lastIndex) { onAddonFilterSelected(allOptions[currentIdx + 1]); true } else false
+                            if (currentIdx < allOptions.lastIndex) {
+                                onAddonFilterSelected(allOptions[currentIdx + 1])
+                                true
+                            } else false
                         } else {
-                            if (currentIdx > 0) { onAddonFilterSelected(allOptions[currentIdx - 1]); true } else false
+                            if (currentIdx > 0) {
+                                onAddonFilterSelected(allOptions[currentIdx - 1])
+                                true
+                            } else {
+                                onRequestChipFocus(0)
+                                true
+                            }
                         }
                     }
                     Key.DirectionRight -> {
                         if (isRtl) {
-                            if (currentIdx > 0) { onAddonFilterSelected(allOptions[currentIdx - 1]); true } else false
+                            if (currentIdx > 0) {
+                                onAddonFilterSelected(allOptions[currentIdx - 1])
+                                true
+                            } else {
+                                onRequestChipFocus(0)
+                                true
+                            }
                         } else {
-                            if (currentIdx < allOptions.lastIndex) { onAddonFilterSelected(allOptions[currentIdx + 1]); true } else false
+                            if (currentIdx < allOptions.lastIndex) {
+                                onAddonFilterSelected(allOptions[currentIdx + 1])
+                                true
+                            } else false
                         }
                     }
                     else -> false
