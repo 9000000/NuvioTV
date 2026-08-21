@@ -94,22 +94,29 @@ object SubtitleCharsetDetector {
         val normalized = languageHint.trim().lowercase()
         val lang = normalized.substringBefore('-').substringBefore('_')
 
-        return when (lang) {
-            "heb", "he", "iw" -> CHARSET_WIN1255
-            "ara", "ar" -> CHARSET_WIN1256
-            "ell", "el", "gre" -> CHARSET_WIN1253
-            "tur", "tr" -> CHARSET_WIN1254
-            "rus", "ru", "ukr", "uk", "bel", "be", "bul", "bg", "mkd", "mk", "srp", "sr" -> {
+        return when {
+            lang == "heb" || lang == "he" || lang == "iw" || lang.startsWith("hebrew") -> CHARSET_WIN1255
+            lang == "ara" || lang == "ar" || lang.startsWith("arabic") -> CHARSET_WIN1256
+            lang == "ell" || lang == "el" || lang == "gre" || lang.startsWith("greek") -> CHARSET_WIN1253
+            lang == "tur" || lang == "tr" || lang.startsWith("turkish") -> CHARSET_WIN1254
+            lang == "rus" || lang == "ru" || lang == "ukr" || lang == "uk" || lang == "bel" || lang == "be" ||
+                lang == "bul" || lang == "bg" || lang == "mkd" || lang == "mk" || lang == "srp" || lang == "sr" ||
+                lang.startsWith("russian") || lang.startsWith("ukrainian") || lang.startsWith("bulgarian") ||
+                lang.startsWith("serbian") || lang.startsWith("cyrillic") -> {
                 if (hasKoi8Vowels(bytes, offset, length)) CHARSET_KOI8_R else CHARSET_WIN1251
             }
-            "tha", "th" -> CHARSET_WIN874
-            "vie", "vi" -> CHARSET_WIN1258
-            "pol", "pl", "ces", "cs", "cze", "hun", "hu", "slv", "sl", "hrv", "hr", "ron", "ro", "rum", "slk", "sk" -> CHARSET_WIN1250
-            "zho", "zh", "chi" -> {
+            lang == "tha" || lang == "th" || lang.startsWith("thai") -> CHARSET_WIN874
+            lang == "vie" || lang == "vi" || lang.startsWith("vietnamese") -> CHARSET_WIN1258
+            lang == "pol" || lang == "pl" || lang == "ces" || lang == "cs" || lang == "cze" || lang == "hun" ||
+                lang == "hu" || lang == "slv" || lang == "sl" || lang == "hrv" || lang == "hr" || lang == "ron" ||
+                lang == "ro" || lang == "rum" || lang == "slk" || lang == "sk" || lang.startsWith("polish") ||
+                lang.startsWith("czech") || lang.startsWith("hungarian") || lang.startsWith("romanian") ||
+                lang.startsWith("croatian") || lang.startsWith("slovak") || lang.startsWith("slovenian") -> CHARSET_WIN1250
+            lang == "zho" || lang == "zh" || lang == "chi" || lang.startsWith("chinese") -> {
                 if (isCjkClean(bytes, offset, length, CHARSET_BIG5)) CHARSET_BIG5 else CHARSET_GB18030
             }
-            "jpn", "ja" -> CHARSET_SHIFT_JIS
-            "kor", "ko" -> CHARSET_EUC_KR
+            lang == "jpn" || lang == "ja" || lang.startsWith("japanese") -> CHARSET_SHIFT_JIS
+            lang == "kor" || lang == "ko" || lang.startsWith("korean") -> CHARSET_EUC_KR
             else -> null
         }
     }
