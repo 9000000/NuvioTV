@@ -36,6 +36,11 @@ class SubtitleMojibakeSanitizerTest {
     }
 
     @Test
+    fun stripsReplacementCharacters() {
+        assertEquals("Hello world", SubtitleMojibakeSanitizer.sanitize("Hello \uFFFDworld\uFFFD").toString())
+    }
+
+    @Test
     fun sanitizesCueWhilePreservingProperties() {
         val cue = Cue.Builder()
             .setText("â™ª Music playing â™ª")

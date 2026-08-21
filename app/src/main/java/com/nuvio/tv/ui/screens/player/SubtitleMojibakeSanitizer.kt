@@ -31,7 +31,8 @@ internal object SubtitleMojibakeSanitizer {
         "Â»" to "»",
         "Â " to " ",
         "â™" to "♪",
-        "â€" to "”"
+        "â€" to "”",
+        "\uFFFD" to ""
     )
 
     fun sanitizeCue(cue: Cue): Cue {
@@ -71,7 +72,7 @@ internal object SubtitleMojibakeSanitizer {
 
     private fun hasPotentialMojibake(text: CharSequence): Boolean {
         for (index in 0 until text.length) {
-            if (text[index] == 'â' || text[index] == 'Â') return true
+            if (text[index] == 'â' || text[index] == 'Â' || text[index] == '\uFFFD') return true
         }
         return false
     }
