@@ -6,6 +6,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import java.io.InterruptedIOException
@@ -21,6 +22,7 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 import com.nuvio.tv.data.local.PlayerSettings
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import android.os.SystemClock
 
 import java.nio.ByteBuffer
@@ -116,6 +118,33 @@ internal class ParallelRangeDataSource(
         // Never evict a chunk touched in the last 2 s: closes the narrow race
         // where an overlapping old instance is still copying from the buffer.
         private const val EVICTION_TOUCH_GUARD_MS = 2_000L
+
+        // Rate-limit (HTTP 429/503) handling. A 429 is the server's explicit
+        // "slow down", so the response is shaped like congestion control:
+        // back off before retrying (honouring Retry-After when the server
+        // states one), reduce in-flight depth multiplicatively, and recover
+        // additively once the server goes quiet — so each session converges
+        // just under whatever request budget the provider actually enforces
+        // instead of oscillating between extremes. All state is per-session:
+        // providers differ, so every title probes fresh.
+        private const val RATE_LIMIT_MAX_BACKOFF_RETRIES = 3
+        private const val RATE_LIMIT_BACKOFF_BASE_MS = 500L
+        // Cap for GUESSED waits in a first episode. Deliberately short:
+        // playback is real-time, so long speculative sleeps on a download
+        // thread trade a maybe-429 for a certain stall.
+        private const val RATE_LIMIT_BACKOFF_CYCLE_CAP_MS = 3_000L
+        // Absolute ceiling for any single wait, including a server-stated
+        // Retry-After — a broken or hostile header must never camp a
+        // real-time pipeline.
+        private const val RATE_LIMIT_WAIT_HARD_CAP_MS = 15_000L
+        private const val RATE_LIMIT_BACKOFF_JITTER_MS = 250L
+        private const val RATE_LIMIT_SLEEP_SLICE_MS = 100L
+        // Additive-recovery probe cadence: +1 depth per quiet interval; the
+        // interval doubles on every fresh trip (gentler probing of a strict
+        // provider) and resets once the cap fully clears.
+        private const val RATE_LIMIT_DEPTH_STEP_BASE_MS = 10_000L
+        private const val RATE_LIMIT_DEPTH_STEP_MAX_MS = 60_000L
+        private const val RATE_LIMIT_ESCALATION_MAX = 5
         // A conforming DataSource blocks rather than returning 0 for a
         // positive-length read; tolerate a few zero-progress reads, then fail
         // the chunk instead of spinning forever.
@@ -157,6 +186,94 @@ internal class ParallelRangeDataSource(
             fun noteRead(chunkIndex: Long) {
                 touch(chunkIndex)
                 lastReadChunkIndex = chunkIndex
+            }
+
+            // --- Rate-limit (429/503) state: AIMD depth + escalating waits ---
+            // Multiplicative-decrease ceiling on prefetch depth;
+            // Int.MAX_VALUE = uncapped. Halved (never below 1) once per
+            // rate-limited episode, stepped +1 per quiet probe interval, and
+            // cleared once it climbs past the configured depth again.
+            val rateLimitDepthCap = AtomicInteger(Int.MAX_VALUE)
+            @Volatile var lastRateLimitAtMs: Long = 0L
+            @Volatile var lastDepthHalveAtMs: Long = 0L
+            @Volatile var lastDepthStepAtMs: Long = 0L
+            @Volatile var depthStepIntervalMs: Long = RATE_LIMIT_DEPTH_STEP_BASE_MS
+            // Escalation persists across backoff CYCLES: the per-attempt
+            // ladder alone resets every time the outer retry machinery
+            // re-enters it, which is exactly how a hard limiter produces an
+            // indefinite fixed-period hammer. Repeated episodes therefore
+            // start from longer waits; quiet recovery walks the level back
+            // down one notch per depth step.
+            val rateLimitEscalation = AtomicInteger(0)
+
+            /** Stamp an observed 429/503 so quiet time restarts. */
+            fun noteRateLimitHit() {
+                lastRateLimitAtMs = SystemClock.uptimeMillis()
+            }
+
+            /**
+             * Record the start of one rate-limited episode: stamp, bump the
+             * wait escalation, and apply ONE multiplicative depth decrease
+             * (guarded so a burst of concurrent 429s across download threads
+             * counts as a single congestion event, not a cascade to 1).
+             * Returns the escalation level this episode's waits should use
+             * (the pre-bump value, so a first-ever episode still starts from
+             * the short ladder).
+             */
+            fun beginRateLimitEpisode(configuredDepth: Int): Int {
+                val now = SystemClock.uptimeMillis()
+                lastRateLimitAtMs = now
+                val escalation = rateLimitEscalation.getAndUpdate {
+                    (it + 1).coerceAtMost(RATE_LIMIT_ESCALATION_MAX)
+                }
+                if (now - lastDepthHalveAtMs >= 1_000L) {
+                    val alreadyCapped = rateLimitDepthCap.get() < configuredDepth
+                    val effective = rateLimitDepthCap.get().coerceAtMost(configuredDepth)
+                    val halved = (effective / 2).coerceAtLeast(1)
+                    if (halved < effective) {
+                        rateLimitDepthCap.set(halved)
+                        lastDepthHalveAtMs = now
+                        // Gentler probing only when the provider pushes back
+                        // AGAIN during the climb: the first trip keeps the base
+                        // cadence, a re-trip doubles the interval.
+                        if (alreadyCapped) {
+                            depthStepIntervalMs =
+                                (depthStepIntervalMs * 2).coerceAtMost(RATE_LIMIT_DEPTH_STEP_MAX_MS)
+                        }
+                        Log.w(TAG, "Rate-limited; prefetch depth halved to " +
+                            "$halved/$configuredDepth (probe interval ${depthStepIntervalMs}ms)")
+                    }
+                }
+                return escalation
+            }
+
+            /**
+             * Current allowed prefetch depth. Uncapped sessions pay nothing.
+             * A capped session steps +1 after each probe interval of quiet
+             * (no 429/503 observed) and clears the cap — resetting the probe
+             * interval and decaying the wait escalation — once it climbs past
+             * the configured depth again.
+             */
+            fun currentAllowedDepth(configuredDepth: Int): Int {
+                val cap = rateLimitDepthCap.get()
+                if (cap >= configuredDepth) return configuredDepth
+                val now = SystemClock.uptimeMillis()
+                if (now - lastRateLimitAtMs >= depthStepIntervalMs &&
+                    now - lastDepthStepAtMs >= depthStepIntervalMs) {
+                    val stepped = cap + 1
+                    if (rateLimitDepthCap.compareAndSet(cap, stepped)) {
+                        lastDepthStepAtMs = now
+                        rateLimitEscalation.updateAndGet { (it - 1).coerceAtLeast(0) }
+                        if (stepped >= configuredDepth) {
+                            rateLimitDepthCap.set(Int.MAX_VALUE)
+                            depthStepIntervalMs = RATE_LIMIT_DEPTH_STEP_BASE_MS
+                            Log.i(TAG, "Rate-limit depth cap cleared; parallel prefetch fully restored")
+                        } else {
+                            Log.i(TAG, "Rate-limit quiet; prefetch depth stepped to $stepped/$configuredDepth")
+                        }
+                    }
+                }
+                return rateLimitDepthCap.get().coerceAtMost(configuredDepth)
             }
         }
 
@@ -725,7 +842,13 @@ internal class ParallelRangeDataSource(
         // meaningful sequential run. Side cursors (a few bytes per open on
         // scatter-read files) fetch only the chunk they actually need, instead
         // of fanning out connections+1 chunks of dead prefetch per visit.
-        val maxAhead = if (bytesServedThisOpen >= EARNED_PREFETCH_BYTES) parallelConnections + 1 else 1
+        val earnedAhead = if (bytesServedThisOpen >= EARNED_PREFETCH_BYTES) parallelConnections + 1 else 1
+        // AIMD: a rate-limited session halves its depth cap and recovers +1
+        // per quiet probe interval (ChunkSession.currentAllowedDepth), so a
+        // provider that 429s converges just under its actual request budget
+        // instead of pinning the whole session to a single connection.
+        val maxAhead = session?.currentAllowedDepth(parallelConnections + 1)?.coerceAtMost(earnedAhead)
+            ?: earnedAhead
 
         for (i in 0 until maxAhead) {
             val ci = currentChunkIdx + i
@@ -772,6 +895,15 @@ internal class ParallelRangeDataSource(
                 // Downloads belong to the session, not the instance —
                 // only future cancellation or session teardown aborts them.
                 if (activeSession.abandoned.get() || future.isCancelled) throw IOException("Session abandoned or cancelled")
+                // HTTP 429/503 is the server rate-limiting, not a stalled
+                // download: hand the chunk to the dedicated backoff path,
+                // which waits (honouring Retry-After), reduces depth, and
+                // retries — instead of the immediate re-request below, which
+                // against a hard limiter just converts into more 429s.
+                val rlError = e.findRateLimitException()
+                if (rlError != null) {
+                    return downloadChunkWithRateLimitBackoff(activeSession, chunkIndex, future, rlError)
+                }
                 lastException = e
                 if (attempt == 0) {
                     if (e.isTransientInterruption()) {
@@ -829,6 +961,121 @@ internal class ParallelRangeDataSource(
         if (this is InterruptedIOException || this is InterruptedException) return true
         val cause = cause
         return cause is InterruptedIOException || cause is InterruptedException
+    }
+
+    /** Walk the cause chain for an HTTP 429/503 (rate-limit) response. */
+    private fun Throwable.findRateLimitException(): HttpDataSource.InvalidResponseCodeException? {
+        var cause: Throwable? = this
+        var depth = 0
+        while (cause != null && depth < 6) {
+            val c = cause
+            if (c is HttpDataSource.InvalidResponseCodeException &&
+                (c.responseCode == 429 || c.responseCode == 503)) {
+                return c
+            }
+            cause = c.cause
+            depth++
+        }
+        return null
+    }
+
+    /**
+     * Dedicated handling for a rate-limited chunk. One invocation = one
+     * congestion episode: one multiplicative depth decrease and one wait
+     * escalation, then up to RATE_LIMIT_MAX_BACKOFF_RETRIES properly-spaced
+     * retries. Bounded and cancellation-aware (a stop/seek aborts any wait
+     * within a sleep slice); when the budget is spent it throws and the
+     * existing failure handling and auto-recovery take over — never worse
+     * than before.
+     */
+    private fun downloadChunkWithRateLimitBackoff(
+        activeSession: ChunkSession,
+        chunkIndex: Long,
+        future: CompletableFuture<*>,
+        firstError: HttpDataSource.InvalidResponseCodeException
+    ): DownloadedChunk {
+        var rl: HttpDataSource.InvalidResponseCodeException = firstError
+        var lastException: Exception = firstError
+        val escalation = activeSession.beginRateLimitEpisode(parallelConnections + 1)
+        var attempt = 0
+        while (attempt < RATE_LIMIT_MAX_BACKOFF_RETRIES) {
+            val waitMs = rateLimitWaitMs(attempt, escalation, rl)
+            Log.w(TAG, "Chunk $chunkIndex rate-limited (HTTP ${rl.responseCode}); backing off ${waitMs}ms " +
+                "(attempt ${attempt + 1}/$RATE_LIMIT_MAX_BACKOFF_RETRIES, escalation $escalation)")
+            if (!sleepInterruptibly(waitMs, future, activeSession)) {
+                throw IOException("Cancelled during rate-limit backoff")
+            }
+            if (future.isCancelled || activeSession.abandoned.get()) throw IOException("Cancelled")
+            try {
+                return downloadChunkOnce(activeSession, chunkIndex, future)
+            } catch (e: Exception) {
+                if (activeSession.abandoned.get() || future.isCancelled) throw IOException("Session abandoned or cancelled")
+                lastException = e
+                // A non-rate-limit error after a 429 is a different failure: surface it.
+                rl = e.findRateLimitException() ?: throw e
+                activeSession.noteRateLimitHit()
+                attempt++
+            }
+        }
+        throw IOException(
+            "Chunk $chunkIndex still rate-limited after $RATE_LIMIT_MAX_BACKOFF_RETRIES backoffs",
+            lastException
+        )
+    }
+
+    /**
+     * Wait before retrying a rate-limited chunk. A server-stated Retry-After
+     * (delta-seconds or HTTP-date, via ParallelRangeRetryAfter) is honoured
+     * up to a hard cap — the server knows its own limiter, but a broken or
+     * hostile header must never camp a real-time pipeline. With no usable
+     * header the wait is exponential per attempt from a base that itself
+     * escalates with repeated episodes, so a hard limiter produces
+     * progressively longer waits across cycles instead of the indefinite
+     * fixed-period retry a self-resetting ladder degenerates into. Jitter
+     * decorrelates concurrent retries.
+     */
+    private fun rateLimitWaitMs(
+        attempt: Int,
+        escalation: Int,
+        rl: HttpDataSource.InvalidResponseCodeException
+    ): Long {
+        val jitter = (Math.random() * RATE_LIMIT_BACKOFF_JITTER_MS).toLong()
+        val header = rl.headerFields.entries
+            .firstOrNull { it.key?.equals("Retry-After", ignoreCase = true) == true }
+            ?.value?.firstOrNull()?.trim()
+        val headerMs = ParallelRangeRetryAfter.parseHeaderMs(header)
+        if (headerMs != null) {
+            return headerMs.coerceAtMost(RATE_LIMIT_WAIT_HARD_CAP_MS) + jitter
+        }
+        val cycleCapMs = (RATE_LIMIT_BACKOFF_CYCLE_CAP_MS shl escalation.coerceIn(0, RATE_LIMIT_ESCALATION_MAX))
+            .coerceAtMost(RATE_LIMIT_WAIT_HARD_CAP_MS)
+        val base = RATE_LIMIT_BACKOFF_BASE_MS shl (attempt + escalation).coerceIn(0, 6)
+        return base.coerceIn(RATE_LIMIT_BACKOFF_BASE_MS, cycleCapMs) + jitter
+    }
+
+    /**
+     * Sleep in short slices so a stop/seek aborts the backoff promptly.
+     * Watches future cancellation and session teardown only — not the
+     * instance closed flag — to stay consistent with the session-owned
+     * download model. Returns false if the wait should abort.
+     */
+    private fun sleepInterruptibly(
+        totalMs: Long,
+        future: CompletableFuture<*>,
+        activeSession: ChunkSession
+    ): Boolean {
+        var slept = 0L
+        while (slept < totalMs) {
+            if (future.isCancelled || activeSession.abandoned.get()) return false
+            val slice = minOf(RATE_LIMIT_SLEEP_SLICE_MS, totalMs - slept)
+            try {
+                Thread.sleep(slice)
+            } catch (_: InterruptedException) {
+                return false
+            }
+            slept += slice
+        }
+        return !(future.isCancelled || activeSession.abandoned.get())
     }
 
     /** Read from an already-opened DataSource into a pooled chunk buffer. */
