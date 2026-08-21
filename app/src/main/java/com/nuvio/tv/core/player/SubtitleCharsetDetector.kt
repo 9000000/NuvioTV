@@ -47,7 +47,8 @@ object SubtitleCharsetDetector {
             (bytes[offset + 1].toInt() and 0xFF) == 0xBB &&
             (bytes[offset + 2].toInt() and 0xFF) == 0xBF
         ) {
-            return String(bytes, offset + 3, length - 3, StandardCharsets.UTF_8)
+            val utf8 = String(bytes, offset + 3, length - 3, StandardCharsets.UTF_8)
+            return repairDoubleEncodedUtf8IfNeeded(utf8, languageHint)
         }
         if (length >= 2 && (bytes[offset].toInt() and 0xFF) == 0xFF &&
             (bytes[offset + 1].toInt() and 0xFF) == 0xFE
@@ -61,12 +62,14 @@ object SubtitleCharsetDetector {
         }
 
         if (isFastValidUtf8(bytes, offset, length)) {
-            return String(bytes, offset, length, StandardCharsets.UTF_8)
+            val utf8 = String(bytes, offset, length, StandardCharsets.UTF_8)
+            return repairDoubleEncodedUtf8IfNeeded(utf8, languageHint)
         }
 
         val hintedCharset = resolveCharsetFromLanguageHint(bytes, offset, length, languageHint)
         val charset = hintedCharset ?: detectUniversalCharset(bytes, offset, length)
-        return String(bytes, offset, length, charset)
+        val decoded = String(bytes, offset, length, charset)
+        return repairDoubleEncodedUtf8IfNeeded(decoded, languageHint)
     }
 
     fun normalizeToUtf8(
@@ -75,13 +78,68 @@ object SubtitleCharsetDetector {
         length: Int = bytes.size - offset,
         languageHint: String? = null
     ): ByteArray {
-        if (length <= 0) return ByteArray(0)
-        if (isFastValidUtf8(bytes, offset, length)) {
-            return if (offset == 0 && length == bytes.size) bytes else bytes.copyOfRange(offset, offset + length)
+        val decoded = decode(bytes, offset, length, languageHint)
+        return decoded.toByteArray(StandardCharsets.UTF_8)
+    }
+
+    fun repairDoubleEncodedUtf8IfNeeded(text: String, languageHint: String? = null): String {
+        if (text.isEmpty()) return text
+
+        val normalized = languageHint?.trim()?.lowercase()?.substringBefore('-')?.substringBefore('_')
+
+        val targetCharset = when {
+            normalized == "heb" || normalized == "he" || normalized == "iw" || normalized?.startsWith("hebrew") == true -> CHARSET_WIN1255
+            normalized == "ara" || normalized == "ar" || normalized?.startsWith("arabic") == true -> CHARSET_WIN1256
+            normalized == "ell" || normalized == "el" || normalized == "gre" || normalized?.startsWith("greek") == true -> CHARSET_WIN1253
+            normalized == "tur" || normalized == "tr" || normalized?.startsWith("turkish") == true -> CHARSET_WIN1254
+            normalized == "rus" || normalized == "ru" || normalized == "ukr" || normalized == "uk" || normalized == "bel" || normalized == "be" ||
+                normalized == "bul" || normalized == "bg" || normalized == "mkd" || normalized == "mk" || normalized == "srp" || normalized == "sr" ||
+                normalized?.startsWith("russian") == true || normalized?.startsWith("ukrainian") == true || normalized?.startsWith("bulgarian") == true ||
+                normalized?.startsWith("serbian") == true || normalized?.startsWith("cyrillic") == true -> CHARSET_WIN1251
+            normalized == "tha" || normalized == "th" || normalized?.startsWith("thai") == true -> CHARSET_WIN874
+            normalized == "vie" || normalized == "vi" || normalized?.startsWith("vietnamese") == true -> CHARSET_WIN1258
+            normalized == "pol" || normalized == "pl" || normalized == "ces" || normalized == "cs" || normalized == "cze" || normalized == "hun" ||
+                normalized == "hu" || normalized == "slv" || normalized == "sl" || normalized == "hrv" || normalized == "hr" || normalized == "ron" ||
+                normalized == "ro" || normalized == "rum" || normalized == "slk" || normalized == "sk" || normalized?.startsWith("polish") == true ||
+                normalized?.startsWith("czech") == true || normalized?.startsWith("hungarian") == true || normalized?.startsWith("romanian") == true ||
+                normalized?.startsWith("croatian") == true || normalized?.startsWith("slovak") == true || normalized?.startsWith("slovenian") == true -> CHARSET_WIN1250
+            else -> null
         }
-        val hintedCharset = resolveCharsetFromLanguageHint(bytes, offset, length, languageHint)
-        val charset = hintedCharset ?: detectUniversalCharset(bytes, offset, length)
-        return String(bytes, offset, length, charset).toByteArray(StandardCharsets.UTF_8)
+
+        if (targetCharset != null) {
+            val latin1Count = text.count { it in '\u00E0'..'\u00FA' }
+            if (latin1Count >= 5) {
+                try {
+                    val win1252Bytes = text.toByteArray(CHARSET_WIN1252)
+                    val candidate = String(win1252Bytes, targetCharset)
+                    val validTargetChars = when (targetCharset) {
+                        CHARSET_WIN1255 -> candidate.count { it in '\u0590'..'\u05FF' }
+                        CHARSET_WIN1256 -> candidate.count { it in '\u0600'..'\u06FF' }
+                        CHARSET_WIN1253 -> candidate.count { it in '\u0370'..'\u03FF' }
+                        CHARSET_WIN1251 -> candidate.count { it in '\u0400'..'\u04FF' }
+                        CHARSET_WIN874 -> candidate.count { it in '\u0E00'..'\u0E7F' }
+                        else -> 0
+                    }
+                    if (validTargetChars > 0) {
+                        return candidate
+                    }
+                } catch (_: Exception) {}
+            }
+        } else {
+            val latin1Count = text.count { it in '\u00E0'..'\u00FA' }
+            if (latin1Count >= 15) {
+                try {
+                    val win1252Bytes = text.toByteArray(CHARSET_WIN1252)
+                    val hebrewCandidate = String(win1252Bytes, CHARSET_WIN1255)
+                    val hebrewChars = hebrewCandidate.count { it in '\u0590'..'\u05FF' }
+                    if (hebrewChars >= latin1Count * 0.8) {
+                        return hebrewCandidate
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        return text
     }
 
     private fun resolveCharsetFromLanguageHint(

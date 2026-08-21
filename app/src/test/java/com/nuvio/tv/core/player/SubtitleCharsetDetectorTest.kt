@@ -109,12 +109,21 @@ class SubtitleCharsetDetectorTest {
     }
 
     @Test
-    fun normalizeToUtf8ConvertsHebrewCorrectly() {
-        val win1255Charset = Charset.forName("windows-1255")
-        val rawBytes = "זוהן".toByteArray(win1255Charset)
+    fun decodesDoubleEncodedHebrewUtf8WithLanguageHint() {
+        val gibberishLatin1Utf8Text = "46\n00:04:42,243 --> 00:04:45,387\næåäï, äçæøðå àú\n!äôðèåí. -ìà"
+        val rawBytes = gibberishLatin1Utf8Text.toByteArray(Charsets.UTF_8)
 
-        val utf8Bytes = SubtitleCharsetDetector.normalizeToUtf8(rawBytes, languageHint = "heb")
-        val stringUtf8 = String(utf8Bytes, Charsets.UTF_8)
-        assertEquals("זוהן", stringUtf8)
+        val decoded = SubtitleCharsetDetector.decode(rawBytes, languageHint = "heb")
+        assertTrue("Expected decoded Hebrew text, but got: $decoded", decoded.contains("זוהן, החזרנו את"))
+        assertTrue(decoded.contains("!הפנטום. -לא"))
+    }
+
+    @Test
+    fun decodesDoubleEncodedHebrewUtf8WithoutLanguageHint() {
+        val gibberishLatin1Utf8Text = "46\n00:04:42,243 --> 00:04:45,387\næåäï, äçæøðå àú\n!äôðèåí. -ìà\n\n47\n00:04:46,652 --> 00:04:49,374\n,îä æàú àåîøú\n?äçæøðå àú äôðèåí"
+        val rawBytes = gibberishLatin1Utf8Text.toByteArray(Charsets.UTF_8)
+
+        val decoded = SubtitleCharsetDetector.decode(rawBytes, languageHint = null)
+        assertTrue("Expected decoded Hebrew text, but got: $decoded", decoded.contains("זוהן, החזרנו את"))
     }
 }
