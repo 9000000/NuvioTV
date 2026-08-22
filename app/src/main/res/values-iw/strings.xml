@@ -1210,7 +1210,7 @@
     <string name="trakt_waiting_approval">ממתין לאישור…</string>
     <string name="qr_login_approved">ההתחברות אושרה. מסיים כניסה…</string>
     <string name="qr_login_pending">ממתין לאישור בטלפון שלך…</string>
-    <string name="qr_login_expired">קוד ה-QR פג. לחץ על \"רענן QR\".</string>
+    <string name="qr_login_expired">קוד ה-QR פג. לחץ על \"רענן קוד QR\".</string>
     <string name="qr_login_preparing">מכין כניסה עם קוד QR…</string>
     <string name="qr_login_device_auth_failed">אימות המכשיר נכשל</string>
     <string name="qr_login_scan_prompt">סרוק קוד QR והתחבר בטלפון שלך</string>
