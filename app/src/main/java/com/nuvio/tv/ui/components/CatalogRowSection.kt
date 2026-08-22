@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -280,19 +281,17 @@ fun CatalogRowSection(
                 .fillMaxWidth()
                 .onFocusChanged { rowHasFocusRef.value = it.hasFocus }
                 .focusRequester(resolvedRowFocusRequester)
-                .focusRestorer(
+                .focusRestorer {
                     if (enableRowFocusRestorer) {
-                        run {
-                            val idx = (if (lastFocusedItemIndex.intValue >= 0) lastFocusedItemIndex.intValue else restorerFocusedIndex)
-                                .coerceIn(0, (catalogRow.items.size - 1).coerceAtLeast(0))
-                            catalogRow.items.getOrNull(idx)
-                                ?.let { itemFocusRequestersByKey.getOrPut(rowItemFocusKey(idx, it)) { FocusRequester() } }
-                                ?: FocusRequester.Default
-                        }
+                        val idx = (if (lastFocusedItemIndex.intValue >= 0) lastFocusedItemIndex.intValue else restorerFocusedIndex)
+                            .coerceIn(0, (catalogRow.items.size - 1).coerceAtLeast(0))
+                        catalogRow.items.getOrNull(idx)
+                            ?.let { itemFocusRequestersByKey.getOrPut(rowItemFocusKey(idx, it)) { FocusRequester() } }
+                            ?: FocusRequester.Default
                     } else {
                         FocusRequester.Default
                     }
-                )
+                }
                 .focusGroup(),
             contentPadding = PaddingValues(start = NuvioTheme.spacing.xxxl, end = 200.dp),
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
@@ -304,8 +303,16 @@ fun CatalogRowSection(
                 },
                 contentType = { _, item -> item.apiType } // Group items by apiType for better recycling
             ) { index, item ->
-                val targetIndex = if (lastFocusedItemIndex.intValue >= 0) lastFocusedItemIndex.intValue else 0
-                val isEntryTarget = entryFocusRequester != null && index == targetIndex
+                val isEntryTarget by remember(entryFocusRequester, index) {
+                    derivedStateOf {
+                        val targetIndex = if (lastFocusedItemIndex.intValue >= 0) {
+                            lastFocusedItemIndex.intValue
+                        } else {
+                            0
+                        }
+                        entryFocusRequester != null && index == targetIndex
+                    }
+                }
                 val cardFocusRequester = itemFocusRequestersByKey.getOrPut(
                     rowItemFocusKey(index, item)
                 ) { FocusRequester() }

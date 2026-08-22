@@ -104,20 +104,6 @@ fun ClassicHomeContent(
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val density = LocalDensity.current
-    val verticalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec) {
-        val topInsetPx = with(density) { CLASSIC_ROW_HEADER_FOCUS_INSET.toPx() }
-        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-        object : BringIntoViewSpec {
-            override val scrollAnimationSpec: AnimationSpec<Float> =
-                defaultBringIntoViewSpec.scrollAnimationSpec
-
-            override fun calculateScrollDistance(
-                offset: Float,
-                size: Float,
-                containerSize: Float
-            ): Float = offset - topInsetPx
-        }
-    }
     val classicCatalogPosterCardStyle = remember(posterCardStyle) {
         posterCardStyle.copy(
             width = posterCardStyle.width * CLASSIC_CATALOG_POSTER_SCALE,
@@ -162,6 +148,25 @@ fun ClassicHomeContent(
         initialFirstVisibleItemScrollOffset = focusState.verticalScrollOffset,
         prefetchStrategy = nestedPrefetchStrategy
     )
+    val verticalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec, columnListState) {
+        val topInsetPx = with(density) { CLASSIC_ROW_HEADER_FOCUS_INSET.toPx() }
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec: AnimationSpec<Float> =
+                defaultBringIntoViewSpec.scrollAnimationSpec
+
+            override fun calculateScrollDistance(
+                offset: Float,
+                size: Float,
+                containerSize: Float
+            ): Float {
+                val distance = offset - topInsetPx
+                if (kotlin.math.abs(distance) < 1f) return 0f
+                if (distance < 0f && !columnListState.canScrollBackward) return 0f
+                return distance
+            }
+        }
+    }
 
     // Scroll to top when triggered from sidebar Home button.
     LaunchedEffect(scrollToTopTrigger) {
@@ -438,6 +443,7 @@ fun ClassicHomeContent(
         artworkProvider = { focusedArtwork },
         enabled = uiState.classicFocusGradientEnabled,
         visibleProvider = { catalogFocusBackdropVisible.value },
+        updatesPausedProvider = { isVerticalScrollingState.value },
         modifier = Modifier.fillMaxSize()
     )
     LazyColumn(

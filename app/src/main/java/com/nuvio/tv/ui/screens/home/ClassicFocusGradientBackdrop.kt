@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size as DrawSize
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +29,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.Size
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -49,6 +51,7 @@ internal fun ClassicFocusGradientBackdrop(
     artworkProvider: () -> ClassicFocusArtwork?,
     enabled: Boolean,
     visibleProvider: () -> Boolean = { true },
+    updatesPausedProvider: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -57,23 +60,30 @@ internal fun ClassicFocusGradientBackdrop(
     var targetColor by remember { mutableStateOf(Color.Transparent) }
     val animatedColor = animateColorAsState(
         targetValue = targetColor,
-        animationSpec = tween(durationMillis = 700),
+        animationSpec = tween(durationMillis = NuvioTheme.motion.durations.overlay),
         label = "classicFocusGradientColor"
     )
 
     LaunchedEffect(context, enabled, fallbackColor) {
-        androidx.compose.runtime.snapshotFlow { artworkProvider() }.collectLatest { artwork ->
-            if (!enabled || artwork == null) {
+        androidx.compose.runtime.snapshotFlow {
+            Triple(artworkProvider(), visibleProvider(), updatesPausedProvider())
+        }.collectLatest { (artwork, visible, updatesPaused) ->
+            if (!enabled) {
+                targetColor = Color.Transparent
+                return@collectLatest
+            }
+            if (!visible || updatesPaused) return@collectLatest
+            if (artwork == null) {
                 targetColor = Color.Transparent
                 return@collectLatest
             }
 
+            delay(CLASSIC_FOCUS_GRADIENT_DEBOUNCE_MS)
             colorCache[artwork]?.let {
                 targetColor = it
                 return@collectLatest
             }
 
-            delay(CLASSIC_FOCUS_GRADIENT_DEBOUNCE_MS)
             var resolvedColor = resolveArtworkColor(context, artwork, fallbackColor)
             targetColor = resolvedColor.color
             if (!resolvedColor.cacheable) {
@@ -89,21 +99,30 @@ internal fun ClassicFocusGradientBackdrop(
 
     Box(
         modifier = modifier.drawWithCache {
+            val visible = visibleProvider()
+            val firstVisibleX = size.width * 0.29f
+            val brush = if (visible) {
+                val color = animatedColor.value
+                Brush.linearGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.42f to Color.Transparent,
+                        0.66f to color.copy(alpha = 0.16f),
+                        0.84f to color.copy(alpha = 0.30f),
+                        1f to color.copy(alpha = 0.44f)
+                    ),
+                    start = Offset(size.width * 0.12f, 0f),
+                    end = Offset(size.width, size.height * 0.82f)
+                )
+            } else {
+                null
+            }
             onDrawBehind {
-                if (visibleProvider()) {
-                    val color = animatedColor.value
+                if (brush != null) {
                     drawRect(
-                        brush = Brush.linearGradient(
-                            colorStops = arrayOf(
-                                0f to Color.Transparent,
-                                0.42f to Color.Transparent,
-                                0.66f to color.copy(alpha = 0.16f),
-                                0.84f to color.copy(alpha = 0.30f),
-                                1f to color.copy(alpha = 0.44f)
-                            ),
-                            start = Offset(size.width * 0.12f, 0f),
-                            end = Offset(size.width, size.height * 0.82f)
-                        )
+                        brush = brush,
+                        topLeft = Offset(firstVisibleX, 0f),
+                        size = DrawSize(size.width - firstVisibleX, size.height)
                     )
                 }
             }
@@ -145,7 +164,13 @@ private suspend fun resolveArtworkColor(
             .networkCachePolicy(CachePolicy.DISABLED)
             .size(Size(72, 72))
             .build()
-        val result = runCatching { context.imageLoader.execute(request) }.getOrNull()
+        val result = try {
+            context.imageLoader.execute(request)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
         val image = (result as? SuccessResult)?.image
             ?: return@withContext ResolvedArtworkColor(fallback, cacheable = false)
         val bitmap = (image as? BitmapImage)?.bitmap

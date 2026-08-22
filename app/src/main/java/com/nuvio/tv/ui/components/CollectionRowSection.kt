@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -174,18 +175,22 @@ fun CollectionRowSection(
         }
 
         CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalBringIntoViewSpec) {
-            val restoreIdx = lastFocusedItemIndex.coerceIn(0, (collection.folders.size - 1).coerceAtLeast(0))
-            val restoreFolder = collection.folders.getOrNull(restoreIdx)
-            val restoreFocusRequester = if (restoreFolder != null) {
-                itemFocusRequesters.getOrPut(folderFocusKey(restoreIdx, restoreFolder)) { FocusRequester() }
-            } else FocusRequester.Default
-
             LazyRow(
                 state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(rowFocusRequester)
-                    .focusRestorer(restoreFocusRequester)
+                    .focusRestorer {
+                        val restoreIdx = lastFocusedItemIndex
+                            .coerceIn(0, (collection.folders.size - 1).coerceAtLeast(0))
+                        collection.folders.getOrNull(restoreIdx)
+                            ?.let { folder ->
+                                itemFocusRequesters.getOrPut(folderFocusKey(restoreIdx, folder)) {
+                                    FocusRequester()
+                                }
+                            }
+                            ?: FocusRequester.Default
+                    }
                     .focusGroup(),
                 contentPadding = PaddingValues(start = NuvioTheme.spacing.xxxl, end = 200.dp),
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
@@ -195,8 +200,16 @@ fun CollectionRowSection(
                     key = { index, folder -> folderFocusKey(index, folder) },
                     contentType = { _, _ -> "collection_folder" }
                 ) { index, folder ->
-                    val targetIndex = if (lastFocusedItemIndex >= 0) lastFocusedItemIndex else 0
-                    val isEntryTarget = entryFocusRequester != null && index == targetIndex
+                    val isEntryTarget by remember(entryFocusRequester, index) {
+                        derivedStateOf {
+                            val targetIndex = if (lastFocusedItemIndex >= 0) {
+                                lastFocusedItemIndex
+                            } else {
+                                0
+                            }
+                            entryFocusRequester != null && index == targetIndex
+                        }
+                    }
 
                     FolderCard(
                         folder = folder,
