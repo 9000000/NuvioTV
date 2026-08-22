@@ -132,7 +132,16 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
             ParallelRangeDataSource.Factory(
                 okHttpFactory,
                 if (mp4SessionMode) 1 else parallelConnectionCount,
-                if (mp4SessionMode) MP4_SESSION_CHUNK_BYTES else parallelChunkSizeKb.toLong() * 1024L,
+                if (mp4SessionMode) {
+                    MP4_SESSION_CHUNK_BYTES
+                } else {
+                    // Runtime enforcement of the tier chunk cap: a value
+                    // persisted before the cap existed (or on another device)
+                    // must not bypass it.
+                    parallelChunkSizeKb
+                        .coerceAtMost(com.nuvio.tv.ui.screens.settings.MemoryBudget.tierMaxChunkMb * 1024)
+                        .toLong() * 1024L
+                },
                 useNativeMemory = nuvioPerformanceModeEnabled,
                 shouldAllowBackgroundPrefetch = { parallelStartupPrefetchUnlocked.get() },
                 onResolvedUri = { resolved -> currentVodCacheResolvedUrl = resolved?.toString() }
