@@ -152,12 +152,21 @@ internal fun StreamSourcesSidePanel(
     }
 
     fun requestChipFocus(index: Int) {
-        if (index !in chipFocusRequesters.indices) return
+        if (chipFocusRequesters.isEmpty()) return
+        val targetIndex = index.coerceIn(0, chipFocusRequesters.lastIndex)
         userMovedFromFirstResult = true
         focusJob?.cancel()
         focusJob = scope.coroutineLaunch {
             withFrameNanos { }
-            runCatching { chipFocusRequesters[index].requestFocus() }
+            runCatching { chipFocusRequesters[targetIndex].requestFocus() }
+        }
+    }
+
+    // If the selected addon was removed (e.g. error chip dismissed after 1.6s), reset filter and refocus "All"
+    LaunchedEffect(orderedAddonNames, uiState.sourceSelectedAddonFilter) {
+        if (uiState.sourceSelectedAddonFilter != null && uiState.sourceSelectedAddonFilter !in orderedAddonNames) {
+            onAddonFilterSelected(null)
+            requestChipFocus(1)
         }
     }
 

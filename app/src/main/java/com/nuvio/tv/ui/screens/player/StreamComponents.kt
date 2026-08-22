@@ -277,6 +277,10 @@ internal fun AddonFilterChips(
     ) }
     LaunchedEffect(selectedAddon, orderedNames) {
         if (refreshHasFocus || focusedChipIndex == 0) return@LaunchedEffect
+        val maxIndex = if (hasRefresh) orderedNames.size + 1 else orderedNames.size
+        if (focusedChipIndex > maxIndex) {
+            focusedChipIndex = maxIndex.coerceAtLeast(if (hasRefresh) 1 else 0)
+        }
         val currentAddonAtFocus = if (hasRefresh) {
             if (focusedChipIndex == 1) null else orderedNames.getOrNull(focusedChipIndex - 2)
         } else {
@@ -288,14 +292,20 @@ internal fun AddonFilterChips(
         } else {
             if (selectedAddon == null) 0 else (orderedNames.indexOf(selectedAddon) + 1).coerceAtLeast(0)
         }
-        focusedChipIndex = idx
+        focusedChipIndex = idx.coerceIn(0, maxIndex)
     }
 
-    // Preserve chip focus when loading completes or new addons are discovered while focused
+    // Preserve chip focus when loading completes, new addons are discovered, or failed addons disappear while focused
     LaunchedEffect(isStillFetching, orderedNames) {
+        val maxIndex = if (hasRefresh) orderedNames.size + 1 else orderedNames.size
+        if (focusedChipIndex > maxIndex) {
+            focusedChipIndex = maxIndex.coerceAtLeast(if (hasRefresh) 1 else 0)
+        }
         if (chipRowHasFocus) {
             withFrameNanos {}
-            runCatching { focusRequesters.getOrNull(focusedChipIndex)?.requestFocus() }
+            val targetRequester = focusRequesters.getOrNull(focusedChipIndex)
+                ?: focusRequesters.getOrNull(if (hasRefresh) 1 else 0)
+            runCatching { targetRequester?.requestFocus() }
         }
     }
     val scope = rememberCoroutineScope()
