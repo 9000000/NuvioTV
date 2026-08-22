@@ -959,7 +959,7 @@
     <string name="layout_blur_unwatched">Blur Unwatched Episodes</string>
     <string name="layout_blur_unwatched_sub">Blur episode thumbnails until watched to avoid spoilers.</string>
     <string name="layout_blur_cw_next_up">Blur Unwatched in Continue Watching</string>
-    <string name="layout_blur_cw_next_up_sub">Blur next episode thumbnails in Continue Watching to avoid spoilers.</string>
+    <string name="layout_blur_cw_next_up_sub">Blur unwatched episode thumbnails in Continue Watching to avoid spoilers.</string>
     <string name="layout_next_up_furthest_episode">Up Next From Furthest Episode</string>
     <string name="layout_next_up_furthest_episode_sub">Show next episode based on the furthest watched episode. Disable for rewatches to use the most recently watched episode instead.</string>
     <string name="layout_show_unaired_next_up">Show Unaired Next Up Episodes</string>
