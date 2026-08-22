@@ -30,6 +30,7 @@ import coil3.request.allowHardware
 import coil3.size.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
 import kotlin.math.max
@@ -47,28 +48,29 @@ internal data class ClassicFocusArtwork(
 internal fun ClassicFocusGradientBackdrop(
     artworkProvider: () -> ClassicFocusArtwork?,
     enabled: Boolean,
+    visibleProvider: () -> Boolean = { true },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val fallbackColor = NuvioTheme.colors.FocusBackground
     val colorCache = remember(fallbackColor) { classicFocusGradientColorCache() }
     var targetColor by remember { mutableStateOf(Color.Transparent) }
-    val animatedColor by animateColorAsState(
+    val animatedColor = animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(durationMillis = 700),
         label = "classicFocusGradientColor"
     )
 
     LaunchedEffect(context, enabled, fallbackColor) {
-        androidx.compose.runtime.snapshotFlow { artworkProvider() }.collect { artwork ->
+        androidx.compose.runtime.snapshotFlow { artworkProvider() }.collectLatest { artwork ->
             if (!enabled || artwork == null) {
                 targetColor = Color.Transparent
-                return@collect
+                return@collectLatest
             }
 
             colorCache[artwork]?.let {
                 targetColor = it
-                return@collect
+                return@collectLatest
             }
 
             delay(CLASSIC_FOCUS_GRADIENT_DEBOUNCE_MS)
@@ -87,19 +89,23 @@ internal fun ClassicFocusGradientBackdrop(
 
     Box(
         modifier = modifier.drawWithCache {
-            val brush = Brush.linearGradient(
-                colorStops = arrayOf(
-                    0f to Color.Transparent,
-                    0.42f to Color.Transparent,
-                    0.66f to animatedColor.copy(alpha = 0.16f),
-                    0.84f to animatedColor.copy(alpha = 0.30f),
-                    1f to animatedColor.copy(alpha = 0.44f)
-                ),
-                start = Offset(size.width * 0.12f, 0f),
-                end = Offset(size.width, size.height * 0.82f)
-            )
             onDrawBehind {
-                drawRect(brush = brush)
+                if (visibleProvider()) {
+                    val color = animatedColor.value
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.42f to Color.Transparent,
+                                0.66f to color.copy(alpha = 0.16f),
+                                0.84f to color.copy(alpha = 0.30f),
+                                1f to color.copy(alpha = 0.44f)
+                            ),
+                            start = Offset(size.width * 0.12f, 0f),
+                            end = Offset(size.width, size.height * 0.82f)
+                        )
+                    )
+                }
             }
         }
     )

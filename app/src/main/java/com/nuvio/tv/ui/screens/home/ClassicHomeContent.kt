@@ -4,6 +4,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import com.nuvio.tv.LocalContentFocusRequester
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -34,10 +35,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
 import com.nuvio.tv.ui.util.dpadVerticalFastScroll
 import com.nuvio.tv.ui.util.asStable
@@ -57,6 +59,7 @@ import com.nuvio.tv.ui.components.CollectionRowSection
 import com.nuvio.tv.ui.components.ContinueWatchingSection
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.ui.components.HeroCarousel
+import com.nuvio.tv.ui.components.HeroCarouselBackdrop
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.PosterCardStyle
 import androidx.compose.ui.res.stringResource
@@ -72,6 +75,7 @@ private class FocusSnapshot(
 private const val CLASSIC_CATALOG_POSTER_SCALE = 1.35f
 private const val CLASSIC_SECONDARY_ROW_POSTER_SCALE = 1.2f
 private val CLASSIC_ROW_HEADER_FOCUS_INSET = 85.dp
+private val CLASSIC_IMMERSIVE_FADE_DISTANCE = 180.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -280,6 +284,9 @@ fun ClassicHomeContent(
     val stableTrailerPreviewAudioUrls = remember { androidx.compose.runtime.mutableStateOf(trailerPreviewAudioUrls) }
         .apply { value = trailerPreviewAudioUrls }
     var focusedArtwork by remember { mutableStateOf<ClassicFocusArtwork?>(null) }
+    var activeHeroItem by remember(uiState.heroItems.firstOrNull()?.id) {
+        mutableStateOf(uiState.heroItems.firstOrNull())
+    }
     val latestOnItemFocus by rememberUpdatedState(onItemFocus)
     val latestOnRequestTrailerPreview by rememberUpdatedState(onRequestTrailerPreview)
 
@@ -370,15 +377,67 @@ fun ClassicHomeContent(
     val isVerticalScrollingState = remember(columnListState) {
         derivedStateOf { columnListState.isScrollInProgress }
     }
+    val immersiveFadeDistancePx = remember(density) {
+        with(density) { CLASSIC_IMMERSIVE_FADE_DISTANCE.toPx() }
+    }
+    val immersiveBackdropAlpha = remember(columnListState, immersiveFadeDistancePx) {
+        derivedStateOf {
+            if (columnListState.firstVisibleItemIndex > 0) {
+                0f
+            } else {
+                1f - (columnListState.firstVisibleItemScrollOffset / immersiveFadeDistancePx)
+                    .coerceIn(0f, 1f)
+            }
+        }
+    }
+    val catalogFocusBackdropVisible = remember(immersiveBackdropAlpha) {
+        derivedStateOf { immersiveBackdropAlpha.value <= 0f }
+    }
+    val immersiveBackdropVisible = remember(immersiveBackdropAlpha) {
+        derivedStateOf { immersiveBackdropAlpha.value > 0f }
+    }
+    val backgroundColor = NuvioTheme.colors.Background
     CompositionLocalProvider(
         LocalBringIntoViewSpec provides verticalBringIntoViewSpec,
         LocalFastScrollActive provides isFastScrollingState,
         LocalVerticalRowsScrolling provides isVerticalScrollingState
     ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+    ) {
+    activeHeroItem?.let { item ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    if (immersiveBackdropVisible.value) {
+                        drawContent()
+                    }
+                }
+        ) {
+            HeroCarouselBackdrop(
+                item = item,
+                fullPage = true,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawBehind {
+                val coverAlpha = 1f - immersiveBackdropAlpha.value
+                if (coverAlpha > 0f && coverAlpha < 1f) {
+                    drawRect(color = backgroundColor, alpha = coverAlpha)
+                }
+            }
+    )
     ClassicFocusGradientBackdrop(
         artworkProvider = { focusedArtwork },
         enabled = uiState.classicFocusGradientEnabled,
+        visibleProvider = { catalogFocusBackdropVisible.value },
         modifier = Modifier.fillMaxSize()
     )
     LazyColumn(
@@ -454,11 +513,8 @@ fun ClassicHomeContent(
                     items = uiState.heroItems.asStable(),
                     focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
                     showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
-                    modifier = Modifier.onFocusChanged {
-                        if (it.hasFocus && uiState.classicFocusGradientEnabled) {
-                            focusedArtwork = null
-                        }
-                    },
+                    onActiveItemChanged = { activeHeroItem = it },
+                    showBackdrop = false,
                     onItemFocus = handleHeroFocus,
                     onItemClick = { item ->
                         onNavigateToDetail(
