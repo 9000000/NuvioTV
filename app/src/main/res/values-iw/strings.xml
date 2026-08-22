@@ -342,7 +342,7 @@
     <string name="settings_style_zen">מינימלי</string>
     <string name="settings_style_zen_desc">פריסה פשוטה ושטוחה</string>
     <string name="settings_style_horizon">סרגל עליון</string>
-    <string name="settings_style_horizon_desc">לשוניות ניווט בחלק העליון (לא תומך בעברית)</string>
+    <string name="settings_style_horizon_desc">לשוניות ניווט בחלק העליון</string>
     <string name="appearance_font_and_language">גופן ושפה</string>
     <string name="appearance_font_and_language_subtitle">בחר את הגופן והשפה המשמשים בכל האפליקציה</string>
     <string name="cd_selected">נבחר</string>
@@ -2063,7 +2063,7 @@
     <!-- Library -->
 
     <!-- Error messages (shared) -->
-    <string name="error_network_required">תחבר ל-Wi-Fi או לאינטרנט כדי להשתמש בתכונה זו</string>
+    <string name="error_network_required">התחבר ל-Wi-Fi או לאינטרנט כדי להשתמש בתכונה זו</string>
     <string name="error_server_ports_unavailable">לא ניתן היה להפעיל את השרת. כל היציאות בשימוש.</string>
 
     <!-- Plugin errors -->
