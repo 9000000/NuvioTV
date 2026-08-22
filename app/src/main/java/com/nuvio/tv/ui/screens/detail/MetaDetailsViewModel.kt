@@ -1357,7 +1357,7 @@ class MetaDetailsViewModel @Inject constructor(
                 if (tmdbContentType !in listOf(ContentType.SERIES, ContentType.TV)) {
                     _uiState.update {
                         it.copy(
-                            episodeImdbRatings = emptyMap(),
+                            episodeImdbRatings = addonRatings,
                             isEpisodeRatingsLoading = false,
                             episodeRatingsError = null
                         )
@@ -1415,9 +1415,13 @@ class MetaDetailsViewModel @Inject constructor(
                         state
                     } else {
                         state.copy(
-                            episodeImdbRatings = emptyMap(),
+                            episodeImdbRatings = addonRatings,
                             isEpisodeRatingsLoading = false,
-                            episodeRatingsError = localizedContext.getString(R.string.ratings_load_error)
+                            episodeRatingsError = if (addonRatings.isEmpty()) {
+                                localizedContext.getString(R.string.ratings_load_error)
+                            } else {
+                                null
+                            }
                         )
                     }
                 }
