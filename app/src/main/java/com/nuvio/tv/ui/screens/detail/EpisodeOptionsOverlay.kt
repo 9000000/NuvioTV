@@ -21,11 +21,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -88,6 +91,7 @@ internal fun EpisodeOptionsOverlay(
     val context = LocalContext.current
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
+    val overlayColor = Color(0xFF050505)
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val primaryFocusRequester = remember { FocusRequester() }
     val title = episode.title.localizeEpisodeTitle(context)
@@ -122,19 +126,6 @@ internal fun EpisodeOptionsOverlay(
                 blur = blurUnwatchedBackdrop
             )
         }
-    }
-    val overlayBrush = remember(isRtl) {
-        Brush.horizontalGradient(
-            colorStops = arrayOf(
-                0.00f to Color(0xF2050505),
-                0.28f to Color(0xE6050505),
-                0.48f to Color(0xB8050505),
-                0.70f to Color(0x80050505),
-                1.00f to Color(0x66050505)
-            ),
-            startX = if (isRtl) Float.POSITIVE_INFINITY else 0f,
-            endX = if (isRtl) 0f else Float.POSITIVE_INFINITY
-        )
     }
     val ratingLabel = remember(imdbRating) {
         imdbRating?.takeIf { it > 0.0 }?.let { String.format(Locale.US, "%.1f", it) }
@@ -244,7 +235,9 @@ internal fun EpisodeOptionsOverlay(
                 AsyncImage(
                     model = thumbnailRequest,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
                     contentScale = ContentScale.Crop,
                     alignment = Alignment.Center,
                     filterQuality = FilterQuality.High
@@ -253,7 +246,23 @@ internal fun EpisodeOptionsOverlay(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(overlayBrush)
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithCache {
+                        val brush = Brush.horizontalGradient(
+                            colorStops = arrayOf(
+                                0.00f to overlayColor.copy(alpha = 0.95f),
+                                0.28f to overlayColor.copy(alpha = 0.90f),
+                                0.48f to overlayColor.copy(alpha = 0.72f),
+                                0.70f to overlayColor.copy(alpha = 0.50f),
+                                1.00f to overlayColor.copy(alpha = 0.40f)
+                            ),
+                            startX = if (isRtl) size.width else 0f,
+                            endX = if (isRtl) 0f else size.width
+                        )
+                        onDrawBehind {
+                            drawRect(brush = brush)
+                        }
+                    }
             )
             Row(
                 modifier = Modifier
