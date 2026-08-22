@@ -51,9 +51,6 @@ object MemoryBudget {
     /** True when the app heap is below the high-RAM threshold (Fire TV / TV-stick class). */
     val isLowRamTier: Boolean = maxHeapMb < HIGH_HEAP_THRESHOLD_MB
 
-    /** Hard chunk-size ceiling for this device tier; binds everywhere, including performance mode. */
-    val tierMaxChunkMb: Int = if (isLowRamTier) LOW_RAM_MAX_CHUNK_MB else MAX_CHUNK_MB
-
     // Pre-cap ratio budget; conversionBudgetMb derives from this so DV7 headroom isn't cut by the cap.
     private val rawBudgetMb: Int =
         (maxHeapMb * (if (isLowRamTier) LOW_HEAP_RATIO else HIGH_HEAP_RATIO)).toInt()
@@ -80,6 +77,9 @@ object MemoryBudget {
 
     fun totalUsageMb(bufferMb: Int, connectionCount: Int, chunkSizeMb: Int, parallelEnabled: Boolean): Int =
         bufferMb + if (parallelEnabled) parallelOverheadMb(connectionCount, chunkSizeMb) else 0
+
+    /** Hard chunk-size ceiling for this device tier; binds everywhere, including performance mode. */
+    val tierMaxChunkMb: Int = if (isLowRamTier) LOW_RAM_MAX_CHUNK_MB else MAX_CHUNK_MB
 
     /** Max chunk size that fits budget given current buffer size */
     fun maxChunkMb(bufferMb: Int, connectionCount: Int): Int =
