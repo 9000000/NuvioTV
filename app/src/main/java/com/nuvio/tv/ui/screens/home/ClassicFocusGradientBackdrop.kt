@@ -54,6 +54,8 @@ internal fun ClassicFocusGradientBackdrop(
     updatesPausedProvider: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
+    if (!enabled) return
+
     val context = LocalContext.current
     val fallbackColor = NuvioTheme.colors.FocusBackground
     val colorCache = remember(fallbackColor) { classicFocusGradientColorCache() }
@@ -64,14 +66,10 @@ internal fun ClassicFocusGradientBackdrop(
         label = "classicFocusGradientColor"
     )
 
-    LaunchedEffect(context, enabled, fallbackColor) {
+    LaunchedEffect(context, fallbackColor) {
         androidx.compose.runtime.snapshotFlow {
             Triple(artworkProvider(), visibleProvider(), updatesPausedProvider())
         }.collectLatest { (artwork, visible, updatesPaused) ->
-            if (!enabled) {
-                targetColor = Color.Transparent
-                return@collectLatest
-            }
             if (!visible || updatesPaused) return@collectLatest
             if (artwork == null) {
                 targetColor = Color.Transparent
