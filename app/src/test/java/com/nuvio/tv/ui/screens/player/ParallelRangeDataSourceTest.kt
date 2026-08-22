@@ -56,16 +56,18 @@ class ParallelRangeDataSourceTest {
                 bytesServedThisOpen = 0L,
                 earnedPrefetchBytes = 1L * 1024L * 1024L,
                 currentChunkComplete = false,
+                nextChunkComplete = false,
                 configuredDepth = 4,
                 rateLimitDepth = 4
             )
         )
         assertEquals(
-            1,
+            2,
             ParallelRangeDataSource.lookaheadDepth(
                 bytesServedThisOpen = 1L * 1024L * 1024L,
                 earnedPrefetchBytes = 1L * 1024L * 1024L,
                 currentChunkComplete = false,
+                nextChunkComplete = false,
                 configuredDepth = 4,
                 rateLimitDepth = 4
             )
@@ -76,6 +78,7 @@ class ParallelRangeDataSourceTest {
                 bytesServedThisOpen = 512L * 1024L,
                 earnedPrefetchBytes = 1L * 1024L * 1024L,
                 currentChunkComplete = true,
+                nextChunkComplete = true,
                 configuredDepth = 4,
                 rateLimitDepth = 4
             )
@@ -83,13 +86,25 @@ class ParallelRangeDataSourceTest {
     }
 
     @Test
-    fun `lookahead uses configured depth after current chunk is complete`() {
+    fun `lookahead uses configured depth after current and next chunks are complete`() {
+        assertEquals(
+            2,
+            ParallelRangeDataSource.lookaheadDepth(
+                bytesServedThisOpen = 1L * 1024L * 1024L,
+                earnedPrefetchBytes = 1L * 1024L * 1024L,
+                currentChunkComplete = true,
+                nextChunkComplete = false,
+                configuredDepth = 4,
+                rateLimitDepth = 4
+            )
+        )
         assertEquals(
             4,
             ParallelRangeDataSource.lookaheadDepth(
                 bytesServedThisOpen = 1L * 1024L * 1024L,
                 earnedPrefetchBytes = 1L * 1024L * 1024L,
                 currentChunkComplete = true,
+                nextChunkComplete = true,
                 configuredDepth = 4,
                 rateLimitDepth = 4
             )
@@ -100,6 +115,7 @@ class ParallelRangeDataSourceTest {
                 bytesServedThisOpen = 1L * 1024L * 1024L,
                 earnedPrefetchBytes = 1L * 1024L * 1024L,
                 currentChunkComplete = true,
+                nextChunkComplete = true,
                 configuredDepth = 4,
                 rateLimitDepth = 2
             )

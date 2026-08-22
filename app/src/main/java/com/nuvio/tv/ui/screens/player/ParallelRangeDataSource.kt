@@ -103,11 +103,14 @@ internal class ParallelRangeDataSource(
             bytesServedThisOpen: Long,
             earnedPrefetchBytes: Long,
             currentChunkComplete: Boolean,
+            nextChunkComplete: Boolean,
             configuredDepth: Int,
             rateLimitDepth: Int
         ): Int {
             if (bytesServedThisOpen < earnedPrefetchBytes) return 1
-            if (!currentChunkComplete) return 1
+            if (!currentChunkComplete || !nextChunkComplete) {
+                return 2.coerceAtMost(configuredDepth).coerceAtMost(rateLimitDepth).coerceAtLeast(1)
+            }
             return configuredDepth.coerceAtMost(rateLimitDepth).coerceAtLeast(1)
         }
 
@@ -799,13 +802,15 @@ internal class ParallelRangeDataSource(
                 position / chunkSize
             }
         val configuredDepth = parallelConnections + 1
-        val currentComplete = session?.futures?.get(currentChunkIdx)?.let { future ->
-            future.isDone && !future.isCancelled && !future.isCompletedExceptionally
-        } == true
+        fun chunkComplete(index: Long): Boolean {
+            val future = session?.futures?.get(index) ?: return false
+            return future.isDone && !future.isCancelled && !future.isCompletedExceptionally
+        }
         val maxAhead = lookaheadDepth(
             bytesServedThisOpen = bytesServedThisOpen,
             earnedPrefetchBytes = EARNED_PREFETCH_BYTES,
-            currentChunkComplete = currentComplete,
+            currentChunkComplete = chunkComplete(currentChunkIdx),
+            nextChunkComplete = chunkComplete(currentChunkIdx + 1),
             configuredDepth = configuredDepth,
             rateLimitDepth = session?.currentAllowedDepth(configuredDepth) ?: configuredDepth
         )
