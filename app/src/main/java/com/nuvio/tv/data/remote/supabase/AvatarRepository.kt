@@ -1,6 +1,7 @@
 package com.nuvio.tv.data.remote.supabase
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.nuvio.tv.data.local.MemberCatalogStorage
 import com.nuvio.tv.domain.model.ServerConfiguration
@@ -27,6 +28,13 @@ import javax.inject.Singleton
 
 private const val MemberAvatarBucket = "membership-profile-avatars"
 private const val MemberAvatarTag = "MemberAvatars"
+private const val AvatarCatalogRefreshIntervalMs = 15 * 60_000L
+
+internal fun isAvatarCatalogRefreshDue(lastRefreshAtMs: Long, nowMs: Long): Boolean {
+    return lastRefreshAtMs <= 0L ||
+        nowMs < lastRefreshAtMs ||
+        nowMs - lastRefreshAtMs >= AvatarCatalogRefreshIntervalMs
+}
 
 @Serializable
 private data class StoredAvatarCatalogPayload(
@@ -73,6 +81,8 @@ class AvatarRepository @Inject constructor(
     }
     private var standardRefreshJob: Job? = null
     private var memberRefreshJob: Job? = null
+    private var lastStandardRefreshAtMs = 0L
+    private var lastMemberRefreshAtMs = 0L
 
     suspend fun getAvatarCatalog(hasMemberAccess: Boolean = false): List<AvatarCatalogItem> {
         val hadStandardCache = cachedStandardCatalog != null
@@ -97,6 +107,7 @@ class AvatarRepository @Inject constructor(
         standardCatalogLoaded = true
         val catalog = remote.map(::toStandardCatalogItem)
         cachedStandardCatalog = catalog
+        lastStandardRefreshAtMs = SystemClock.elapsedRealtime()
         saveStoredCatalog()
         return catalog
     }
@@ -118,6 +129,7 @@ class AvatarRepository @Inject constructor(
         }
         memberMetadata = remote
         memberCatalogLoaded = true
+        lastMemberRefreshAtMs = SystemClock.elapsedRealtime()
         saveStoredCatalog()
         val catalog = coroutineScope {
             remote.map { item ->
@@ -153,10 +165,13 @@ class AvatarRepository @Inject constructor(
         memberMetadata = emptyList()
         standardCatalogLoaded = false
         memberCatalogLoaded = false
+        lastStandardRefreshAtMs = 0L
+        lastMemberRefreshAtMs = 0L
     }
 
     private fun refreshStandardCatalogInBackground() {
         if (standardRefreshJob?.isActive == true) return
+        if (!isAvatarCatalogRefreshDue(lastStandardRefreshAtMs, SystemClock.elapsedRealtime())) return
         standardRefreshJob = scope.launch {
             try {
                 fetchStandardAvatarCatalog()
@@ -170,6 +185,7 @@ class AvatarRepository @Inject constructor(
 
     private fun refreshMemberCatalogInBackground() {
         if (memberRefreshJob?.isActive == true) return
+        if (!isAvatarCatalogRefreshDue(lastMemberRefreshAtMs, SystemClock.elapsedRealtime())) return
         memberRefreshJob = scope.launch {
             try {
                 fetchMemberAvatarCatalog()
