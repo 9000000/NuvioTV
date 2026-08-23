@@ -116,6 +116,7 @@ import android.util.Log
 @Composable
 fun StreamScreen(
     viewModel: StreamScreenViewModel = hiltViewModel(),
+    startFromBeginning: Boolean = false,
     onBackPress: () -> Unit,
     onStreamSelected: (StreamPlaybackInfo) -> Unit,
     onAutoPlayResolved: (StreamPlaybackInfo) -> Unit
@@ -145,6 +146,7 @@ fun StreamScreen(
             viewModel.launchExternalPlayer(
                 playbackInfo = playbackInfo,
                 url = url,
+                startFromBeginning = startFromBeginning,
                 context = context
             )
         }
@@ -162,7 +164,8 @@ fun StreamScreen(
                 context = context,
                 url = url,
                 title = playbackInfo.title,
-                headers = playbackInfo.headers
+                headers = playbackInfo.headers,
+                startFromBeginning = startFromBeginning
             )
         }
         return true
@@ -221,6 +224,7 @@ fun StreamScreen(
                             viewModel.launchExternalPlayer(
                                 playbackInfo = playbackInfo,
                                 url = urlString,
+                                startFromBeginning = startFromBeginning,
                                 autoLaunch = true,
                                 context = context
                             )
@@ -315,6 +319,7 @@ fun StreamScreen(
                         viewModel.launchExternalPlayer(
                             playbackInfo = playbackInfo,
                             url = urlString,
+                            startFromBeginning = startFromBeginning,
                             autoLaunch = true,
                             context = context
                         )
