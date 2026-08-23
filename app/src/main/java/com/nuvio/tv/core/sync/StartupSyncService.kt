@@ -248,7 +248,7 @@ class StartupSyncService @Inject constructor(
                         }
                 }
                 "profiles" -> {
-                    profileSyncService.pullFromRemote()
+                    profileSyncService.pullFromRemote(force = true)
                         .onSuccess { profiles ->
                             Log.d(TAG, "Realtime profiles pull completed count=${profiles.size}")
                         }
