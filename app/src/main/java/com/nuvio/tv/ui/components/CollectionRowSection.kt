@@ -83,12 +83,12 @@ fun CollectionRowSection(
     focusedItemIndex: Int = -1,
     onItemFocused: (itemIndex: Int) -> Unit = {},
     onFolderFocused: (collection: Collection, folder: CollectionFolder) -> Unit = { _, _ -> },
-    entryFocusRequester: FocusRequester? = null
+    entryFocusRequester: FocusRequester? = null,
+    rowFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val currentOnFolderClick by rememberUpdatedState(onFolderClick)
     val currentOnItemFocused by rememberUpdatedState(onItemFocused)
     val currentOnFolderFocused by rememberUpdatedState(onFolderFocused)
-    val rowFocusRequester = remember { FocusRequester() }
     val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     var lastRequestedFocusKey by remember { mutableStateOf<String?>(null) }
     var lastFocusedItemIndex by remember { mutableIntStateOf(-1) }
@@ -181,14 +181,14 @@ fun CollectionRowSection(
                     .fillMaxWidth()
                     .focusRequester(rowFocusRequester)
                     .focusRestorer {
-                        val restoreIdx = lastFocusedItemIndex
-                            .coerceIn(0, (collection.folders.size - 1).coerceAtLeast(0))
-                        collection.folders.getOrNull(restoreIdx)
-                            ?.let { folder ->
-                                itemFocusRequesters.getOrPut(folderFocusKey(restoreIdx, folder)) {
-                                    FocusRequester()
-                                }
+                        val visibleIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }
+                        val restoreIdx = lastFocusedItemIndex.takeIf { it in visibleIndices }
+                            ?: visibleIndices.firstOrNull()
+                        restoreIdx?.let { index ->
+                            collection.folders.getOrNull(index)?.let { folder ->
+                                itemFocusRequesters[folderFocusKey(index, folder)]
                             }
+                        }
                             ?: FocusRequester.Default
                     }
                     .focusGroup(),

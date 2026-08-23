@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -194,16 +195,15 @@ fun ClassicHomeContent(
     val currentFocusSnapshot = remember {
         FocusSnapshot(
             rowIndex = focusState.focusedRowIndex,
-            itemIndex = focusState.focusedItemIndex
+            itemIndex = focusState.focusedItemIndex,
+            rowKey = focusState.focusedRowKey
         )
     }
 
     // Store scroll state for each row to persist position during recycling
     val rowStates = remember { mutableMapOf<String, LazyListState>() }
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
-    val rowEntryFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val rowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
-    val upcomingSectionFocusRequester = remember { FocusRequester() }
     val cwItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
@@ -235,7 +235,6 @@ fun ClassicHomeContent(
     LaunchedEffect(visibleRowKeys) {
         rowStates.keys.retainAll(visibleRowKeys)
         rowFocusRequesters.keys.retainAll(visibleRowKeys)
-        rowEntryFocusRequesters.keys.retainAll(visibleRowKeys)
     }
 
     DisposableEffect(Unit) {
@@ -459,7 +458,7 @@ fun ClassicHomeContent(
                     // Pick the item currently occupying the leading edge of
                     // the viewport, then map its LazyColumn key back to the
                     // matching FocusRequester. Hero has its own requester;
-                    // row items carry requesters in [rowEntryFocusRequesters].
+                    // row items carry requesters in [rowFocusRequesters].
                     // Continue Watching is a full-width section with no direct
                     // requester, so if it ends up at the edge we fall through
                     // to the nearest requester-bearing neighbour instead of
@@ -487,10 +486,10 @@ fun ClassicHomeContent(
                     fun requesterForKey(k: String?): FocusRequester? = when {
                         k == null -> null
                         k == "hero_carousel" -> heroFocusRequester
-                        rowEntryFocusRequesters.containsKey(k) -> rowEntryFocusRequesters[k]
+                        rowFocusRequesters.containsKey(k) -> rowFocusRequesters[k]
                         else -> {
                             val baseKey = k.substringBeforeLast('_')
-                            rowEntryFocusRequesters[baseKey]
+                            rowFocusRequesters[baseKey]
                         }
                     }
                     val requester = if (target == null) null
@@ -500,7 +499,7 @@ fun ClassicHomeContent(
                     requester?.let { req ->
                         scope.launch {
                             repeat(6) {
-                                val ok = runCatching { req.requestFocus(); true }
+                                val ok = runCatching { req.requestFocus(FocusDirection.Enter) }
                                     .getOrDefault(false)
                                 if (ok) return@launch
                                 withFrameNanos { }
@@ -535,16 +534,6 @@ fun ClassicHomeContent(
 
         if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) {
             item(key = "continue_watching", contentType = "continue_watching") {
-                val firstRowKey = visibleHomeRows.firstOrNull()?.let { row ->
-                    when (row) {
-                        is HomeRow.Catalog -> row.row.stableKey()
-                        is HomeRow.CollectionRow -> "collection_${row.collection.id}"
-                        is HomeRow.PlaceholderCatalog -> row.stableCatalogKey
-                    }
-                }
-                val firstAddonRowRequester = firstRowKey?.let { rowEntryFocusRequesters.getOrPut(it) { FocusRequester() } }
-                // When upcoming section is visible, CW should navigate down to it; otherwise go to first addon row
-                val cwDownRequester = if (uiState.upcomingItems.isNotEmpty()) upcomingSectionFocusRequester else firstAddonRowRequester
                 ContinueWatchingSection(
                     items = uiState.continueWatchingItems,
                     onItemClick = { item ->
@@ -590,6 +579,7 @@ fun ClassicHomeContent(
                     onItemFocused = { itemIndex ->
                         currentFocusSnapshot.rowIndex = -1
                         currentFocusSnapshot.itemIndex = itemIndex
+                        currentFocusSnapshot.rowKey = "continue_watching"
                         if (uiState.classicFocusGradientEnabled) {
                             focusedArtwork = uiState.continueWatchingItems.getOrNull(itemIndex)
                                 ?.toClassicFocusArtwork(uiState.focusedPosterBackdropExpandEnabled)
@@ -597,7 +587,6 @@ fun ClassicHomeContent(
                     },
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
-                    downFocusRequester = cwDownRequester,
                     focusRequesters = cwItemFocusRequesters,
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
@@ -610,14 +599,6 @@ fun ClassicHomeContent(
 
         if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
             item(key = "upcoming_section", contentType = "upcoming_section") {
-                val firstRowKey = visibleHomeRows.firstOrNull()?.let { row ->
-                    when (row) {
-                        is HomeRow.Catalog -> row.row.stableKey()
-                        is HomeRow.CollectionRow -> "collection_${row.collection.id}"
-                        is HomeRow.PlaceholderCatalog -> row.stableCatalogKey
-                    }
-                }
-                val upcomingDownRequester = firstRowKey?.let { rowEntryFocusRequesters.getOrPut(it) { FocusRequester() } }
                 ContinueWatchingSection(
                     items = uiState.upcomingItems,
                     title = stringResource(R.string.upcoming_section_title),
@@ -658,8 +639,6 @@ fun ClassicHomeContent(
                     },
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
-                    entryFocusRequester = upcomingSectionFocusRequester,
-                    downFocusRequester = upcomingDownRequester,
                     focusRequesters = upcomingItemFocusRequesters,
                     lastFocusedIndexState = lastFocusedUpcomingIndex,
                     cardWidth = classicContinueWatchingCardWidth,
@@ -745,17 +724,18 @@ fun ClassicHomeContent(
                             )
                         },
                         rowFocusRequester = rowFocusRequester,
-                        entryFocusRequester = rowEntryFocusRequesters.getOrPut(catalogKey) { FocusRequester() },
                         listState = listState,
                         enableRowFocusRestorer = true,
                         focusedItemIndex = focusedItemIndex,
-                        restorerFocusedIndex = rowFocusedItemIndex[catalogKey] ?: -1,
+                        restorerFocusedIndex = rowFocusedItemIndex[catalogKey] ?: focusedItemIndex,
                         onItemFocused = { itemIndex ->
-                            if (restoringFocus) restoringFocus = false
-                            currentFocusSnapshot.rowIndex = index
-                            currentFocusSnapshot.itemIndex = itemIndex
-                            currentFocusSnapshot.rowKey = catalogKey
-                            rowFocusedItemIndex[catalogKey] = itemIndex
+                            if (!shouldRestoreFocus || itemIndex == focusedItemIndex) {
+                                if (restoringFocus) restoringFocus = false
+                                currentFocusSnapshot.rowIndex = index
+                                currentFocusSnapshot.itemIndex = itemIndex
+                                currentFocusSnapshot.rowKey = catalogKey
+                                rowFocusedItemIndex[catalogKey] = itemIndex
+                            }
                         }
                     )
                 }
@@ -782,7 +762,7 @@ fun ClassicHomeContent(
                         listState = listState,
                         posterCardStyle = classicSecondaryPosterCardStyle,
                         focusedItemIndex = collectionFocusedItemIndex,
-                        entryFocusRequester = rowEntryFocusRequesters.getOrPut(collectionKey) { FocusRequester() },
+                        rowFocusRequester = rowFocusRequesters.getOrPut(collectionKey) { FocusRequester() },
                         onItemFocused = { itemIndex ->
                             if (restoringFocus) restoringFocus = false
                             currentFocusSnapshot.rowIndex = index

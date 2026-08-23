@@ -174,8 +174,17 @@ fun CatalogRowSection(
             val targetItemKey = rowItemFocusKey(focusedItemIndex, targetItem)
             if (lastRequestedFocusItemKey == targetItemKey) return@LaunchedEffect
             val requester = itemFocusRequestersByKey.getOrPut(targetItemKey) { FocusRequester() }
-            repeat(2) { withFrameNanos { } }
-            val focused = runCatching { requester.requestFocus() }.isSuccess
+            if (!listState.isScrollInProgress) {
+                runCatching { listState.scrollToItem(focusedItemIndex) }
+            }
+            var focused = false
+            for (attempt in 0 until 6) {
+                withFrameNanos { }
+                runCatching { requester.requestFocus() }
+                withFrameNanos { }
+                focused = lastFocusedItemIndex.intValue == focusedItemIndex
+                if (focused) break
+            }
             if (focused) {
                 lastRequestedFocusItemKey = targetItemKey
             }
@@ -283,10 +292,21 @@ fun CatalogRowSection(
                 .focusRequester(resolvedRowFocusRequester)
                 .focusRestorer {
                     if (enableRowFocusRestorer) {
-                        val idx = (if (lastFocusedItemIndex.intValue >= 0) lastFocusedItemIndex.intValue else restorerFocusedIndex)
-                            .coerceIn(0, (catalogRow.items.size - 1).coerceAtLeast(0))
-                        catalogRow.items.getOrNull(idx)
-                            ?.let { itemFocusRequestersByKey.getOrPut(rowItemFocusKey(idx, it)) { FocusRequester() } }
+                        val visibleIndices = listState.layoutInfo.visibleItemsInfo
+                            .map { it.index }
+                            .filter { it in catalogRow.items.indices }
+                        val preferredIndex = if (lastFocusedItemIndex.intValue >= 0) {
+                            lastFocusedItemIndex.intValue
+                        } else {
+                            restorerFocusedIndex
+                        }
+                        val idx = preferredIndex.takeIf { it in visibleIndices }
+                            ?: visibleIndices.firstOrNull()
+                        idx?.let { visibleIndex ->
+                            catalogRow.items.getOrNull(visibleIndex)?.let { item ->
+                                itemFocusRequestersByKey[rowItemFocusKey(visibleIndex, item)]
+                            }
+                        }
                             ?: FocusRequester.Default
                     } else {
                         FocusRequester.Default
