@@ -242,7 +242,8 @@ internal fun AddonFilterChips(
     onAddonSelected: (String?) -> Unit,
     externalFocusRequesters: List<FocusRequester>? = null,
     externalOrderedNames: List<String>? = null,
-    onUpKey: (() -> Unit)? = null
+    onUpKey: (() -> Unit)? = null,
+    debugTag: String = "AddonFilterChips"
 ) {
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val chipMap = sourceChips.associateBy { it.name }
@@ -293,19 +294,13 @@ internal fun AddonFilterChips(
             if (selectedAddon == null) 0 else (orderedNames.indexOf(selectedAddon) + 1).coerceAtLeast(0)
         }
         focusedChipIndex = idx.coerceIn(0, maxIndex)
-    }
-
-    // Preserve chip focus when loading completes, new addons are discovered, or failed addons disappear while focused
-    LaunchedEffect(isStillFetching, orderedNames) {
-        val maxIndex = if (hasRefresh) orderedNames.size + 1 else orderedNames.size
-        if (focusedChipIndex > maxIndex) {
-            focusedChipIndex = maxIndex.coerceAtLeast(if (hasRefresh) 1 else 0)
-        }
+        // When orderedNames changed (new addon arrived) and chip row has focus,
+        // move actual focus to the correct chip so highlight doesn't stick on the wrong one.
         if (chipRowHasFocus) {
             withFrameNanos {}
-            val targetRequester = focusRequesters.getOrNull(focusedChipIndex)
-                ?: focusRequesters.getOrNull(if (hasRefresh) 1 else 0)
-            runCatching { targetRequester?.requestFocus() }
+            if (idx in focusRequesters.indices) {
+                runCatching { focusRequesters[idx].requestFocus() }
+            }
         }
     }
     val scope = rememberCoroutineScope()
@@ -335,7 +330,19 @@ internal fun AddonFilterChips(
             }
         }
     }
+
+    val chipListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    // When the selected addon is removed, switch filter to the last available addon
+    LaunchedEffect(selectedAddon, orderedNames) {
+        if (selectedAddon != null && selectedAddon !in orderedNames) {
+            val lastAddon = orderedNames.lastOrNull()
+            onAddonSelected(lastAddon)
+        }
+    }
+
     LazyRow(
+        state = chipListState,
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
         contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs),
         modifier = Modifier
@@ -369,16 +376,16 @@ internal fun AddonFilterChips(
                 when (event.key) {
                     androidx.compose.ui.input.key.Key.DirectionLeft -> {
                         if (isRtl) {
-                            if (currentIdx < lastIndex) { moveFocusTo(currentIdx + 1); true } else false
+                            if (currentIdx < lastIndex) { moveFocusTo(currentIdx + 1); true } else true
                         } else {
-                            if (currentIdx > 0) { moveFocusTo(currentIdx - 1); true } else false
+                            if (currentIdx > 0) { moveFocusTo(currentIdx - 1); true } else true
                         }
                     }
                     androidx.compose.ui.input.key.Key.DirectionRight -> {
                         if (isRtl) {
-                            if (currentIdx > 0) { moveFocusTo(currentIdx - 1); true } else false
+                            if (currentIdx > 0) { moveFocusTo(currentIdx - 1); true } else true
                         } else {
-                            if (currentIdx < lastIndex) { moveFocusTo(currentIdx + 1); true } else false
+                            if (currentIdx < lastIndex) { moveFocusTo(currentIdx + 1); true } else true
                         }
                     }
                     else -> false
@@ -394,7 +401,9 @@ internal fun AddonFilterChips(
                         refreshHasFocus = isFocused
                         if (isFocused) focusedChipIndex = 0
                     },
-                    modifier = Modifier.focusRequester(focusRequesters[0])
+                    modifier = Modifier
+                        .focusRequester(focusRequesters[0])
+                        .focusProperties { canFocus = focusedChipIndex == 0 }
                 )
             }
         }

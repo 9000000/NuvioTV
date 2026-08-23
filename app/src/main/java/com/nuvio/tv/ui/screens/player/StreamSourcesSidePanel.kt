@@ -88,6 +88,8 @@ internal fun StreamSourcesSidePanel(
     val allFocusRequester = remember { FocusRequester() }
     val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val chipFocusRequesters = remember(orderedAddonNames) {
+        // Remove stale entries for addons that no longer exist
+        addonFocusRequesters.keys.retainAll(orderedAddonNames.toSet())
         buildList {
             add(refreshFocusRequester)
             add(allFocusRequester)
@@ -152,21 +154,12 @@ internal fun StreamSourcesSidePanel(
     }
 
     fun requestChipFocus(index: Int) {
-        if (chipFocusRequesters.isEmpty()) return
-        val targetIndex = index.coerceIn(0, chipFocusRequesters.lastIndex)
+        if (index !in chipFocusRequesters.indices) return
         userMovedFromFirstResult = true
         focusJob?.cancel()
         focusJob = scope.coroutineLaunch {
             withFrameNanos { }
-            runCatching { chipFocusRequesters[targetIndex].requestFocus() }
-        }
-    }
-
-    // If the selected addon was removed (e.g. error chip dismissed after 1.6s), reset filter and refocus "All"
-    LaunchedEffect(orderedAddonNames, uiState.sourceSelectedAddonFilter) {
-        if (uiState.sourceSelectedAddonFilter != null && uiState.sourceSelectedAddonFilter !in orderedAddonNames) {
-            onAddonFilterSelected(null)
-            requestChipFocus(1)
+            runCatching { chipFocusRequesters[index].requestFocus() }
         }
     }
 
@@ -174,9 +167,16 @@ internal fun StreamSourcesSidePanel(
     fun onAddonFilterSelectedGuarded(addon: String?) {
         userMovedFromFirstResult = true
         onAddonFilterSelected(addon)
-        val activeChipIdx = if (addon == null) 1
-            else (orderedAddonNames.indexOf(addon) + 2).coerceAtLeast(1)
-        requestChipFocus(activeChipIdx)
+        focusJob?.cancel()
+        focusJob = scope.coroutineLaunch {
+            withFrameNanos {}
+            val targetRequester = if (addon == null) {
+                chipFocusRequesters.getOrNull(1)
+            } else {
+                addonFocusRequesters[addon]
+            }
+            runCatching { targetRequester?.requestFocus() }
+        }
     }
 
     // Reset scroll position to top when addon filter changes
@@ -274,7 +274,8 @@ internal fun StreamSourcesSidePanel(
                     externalOrderedNames = orderedAddonNames,
                     onUpKey = {
                         try { closeButtonFocusRequester.requestFocus() } catch (_: Exception) {}
-                    }
+                    },
+                    debugTag = "SourcesSidePanel"
                 )
             }
 
@@ -342,6 +343,10 @@ internal fun StreamSourcesSidePanel(
                                     lastKeyRepeatDispatchRef.set(now)
                                 }
 
+                                if (event.key == Key.DirectionDown) {
+                                    userMovedFromFirstResult = true
+                                }
+
                                 if (orderedAddonNames.isEmpty()) return@onKeyEvent false
                                 val allOptions = listOf<String?>(null) + orderedAddonNames
                                 val currentIdx = allOptions.indexOf(uiState.sourceSelectedAddonFilter)
@@ -360,7 +365,6 @@ internal fun StreamSourcesSidePanel(
                                                 onAddonFilterSelectedGuarded(allOptions[currentIdx - 1])
                                                 true
                                             } else {
-                                                requestChipFocus(0)
                                                 true
                                             }
                                         }
@@ -371,7 +375,6 @@ internal fun StreamSourcesSidePanel(
                                                 onAddonFilterSelectedGuarded(allOptions[currentIdx - 1])
                                                 true
                                             } else {
-                                                requestChipFocus(0)
                                                 true
                                             }
                                         } else {
