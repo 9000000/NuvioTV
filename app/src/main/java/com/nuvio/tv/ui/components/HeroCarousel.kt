@@ -2,6 +2,8 @@ package com.nuvio.tv.ui.components
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import android.graphics.ColorSpace
+import android.os.Build
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -59,6 +61,7 @@ import com.nuvio.tv.ui.util.StableList
 import com.nuvio.tv.ui.util.recompositionHighlighter
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.request.colorSpace
 import coil3.request.crossfade
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.util.formatHeroRuntime
@@ -401,11 +404,16 @@ internal fun HeroCarouselBackdrop(
         with(density) { height.roundToPx() }.coerceAtLeast(1)
     }
     val backdropUrl = item.backdropUrl
-    val backgroundModel = remember(context, backdropUrl, requestWidthPx, requestHeightPx) {
+    val backgroundModel = remember(context, backdropUrl, requestWidthPx, requestHeightPx, fullPage) {
         ImageRequest.Builder(context)
             .data(backdropUrl)
             .crossfade(false)
             .size(width = requestWidthPx, height = requestHeightPx)
+            .apply {
+                if (fullPage && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    colorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
+                }
+            }
             .build()
     }
     val bgColor = NuvioTheme.colors.Background
