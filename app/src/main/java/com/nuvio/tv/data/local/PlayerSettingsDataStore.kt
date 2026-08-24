@@ -1356,7 +1356,17 @@ class PlayerSettingsDataStore @Inject constructor(
 
     private fun normalizeSelectableLanguageCode(language: String): String {
         val code = language.trim().lowercase()
-        return when (code) { "pt-br", "pt_br", "br", "pob" -> "pt-br"; "pt-pt", "pt_pt", "por" -> "pt"; "forced", "force", "forc" -> SUBTITLE_LANGUAGE_FORCED; else -> code }
+        return when (code) {
+            "pt-br", "pt_br", "br", "pob" -> "pt-br"
+            "pt-pt", "pt_pt", "por" -> "pt"
+            "forced", "force", "forc" -> SUBTITLE_LANGUAGE_FORCED
+            "zh-cn", "zh_cn" -> "zh-CN"
+            "zh-tw", "zh_tw" -> "zh-TW"
+            "en-au", "en_au" -> "en-AU"
+            "en-ca", "en_ca" -> "en-CA"
+            "en-gb", "en_gb" -> "en-GB"
+            else -> code
+        }
     }
 
     private fun normalizeSecondaryAudioLanguageCode(language: String): String? {
@@ -1381,14 +1391,23 @@ class PlayerSettingsDataStore @Inject constructor(
             @Suppress("DEPRECATION")
             android.content.res.Resources.getSystem().configuration.locale
         }
-        // Locale.getLanguage() can return legacy ISO codes ("iw", "in") instead
-        // of the modern ones our language list uses ("he", "id").
+        
         val rawLanguage = locale?.language.orEmpty()
         val legacyMapped = when (rawLanguage) {
             "iw" -> "he"
             "in" -> "id"
+            "ji" -> "yi"
             else -> rawLanguage
         }
+        val country = locale?.country.orEmpty()
+
+        if (country.isNotBlank()) {
+            val regionSpecific = normalizeSelectableLanguageCode("$legacyMapped-$country")
+            if (AVAILABLE_SUBTITLE_LANGUAGES.any { it.code == regionSpecific }) {
+                return regionSpecific
+            }
+        }
+
         val candidate = normalizeSelectableLanguageCode(legacyMapped)
         val isSupported = candidate.isNotBlank() && AVAILABLE_SUBTITLE_LANGUAGES.any { it.code == candidate }
         return if (isSupported) candidate else "en"
