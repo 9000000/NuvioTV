@@ -1070,6 +1070,7 @@ private fun SearchInputField(
                         KeyEvent.KEYCODE_DPAD_DOWN -> {
                             if (canMoveToResults) {
                                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                    keyboardController?.hide()
                                     onMoveToResults()
                                 }
                                 return@onPreviewKeyEvent true
