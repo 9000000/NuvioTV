@@ -1436,7 +1436,7 @@ Ví dụ: US, GB.</string>
     <string name="profile_background_normal">Mặc định</string>
     <string name="profile_background_custom">Tùy chỉnh</string>
     <string name="profile_avatar_none_selected">Chưa chọn ảnh đại diện</string>
-    <string name="profile_avatar_focus_hint">Chọnảnh đại diện để xem tên</string>
+    <string name="profile_avatar_focus_hint">Chọn ảnh đại diện để xem tên</string>
     <string name="profile_avatar_category_all">Tất cả</string>
     <string name="profile_avatar_category_supporter">Người tài trợ</string>
     <string name="profile_avatar_category_anime">Anime</string>
