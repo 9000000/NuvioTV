@@ -1359,6 +1359,7 @@ internal fun PlayerRuntimeController.switchToEpisodeStream(
     )
     val playbackUrl = currentStreamUrl
     val playbackHeaders = currentHeaders
+    persistSelectedStreamForReuse(stream = stream, url = playbackUrl, headers = playbackHeaders)
     persistedTrackPreference = null
     subtitleDisabledByPersistedPreference = false
     subtitleAddonRestoredByPersistedPreference = false
@@ -1369,7 +1370,6 @@ internal fun PlayerRuntimeController.switchToEpisodeStream(
     currentSeason = targetVideo?.season ?: _uiState.value.episodeStreamsSeason ?: currentSeason
     currentEpisode = targetVideo?.episode ?: _uiState.value.episodeStreamsEpisode ?: currentEpisode
     currentEpisodeTitle = targetVideo?.title ?: _uiState.value.episodeStreamsTitle ?: currentEpisodeTitle
-    persistSelectedStreamForReuse(stream = stream, url = playbackUrl, headers = playbackHeaders)
     currentTraktEpisodeMapping = null
     currentTraktEpisodeMappingKey = null
     lastSavedPosition = 0L

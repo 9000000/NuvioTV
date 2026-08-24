@@ -236,12 +236,15 @@ fun ContentCard(
         }
         val revalidationKey = com.nuvio.tv.core.image.rememberImageRevalidationKey(imageUrl)
         val imageModel = remember(imageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
-            ImageRequest.Builder(context)
+            val builder = ImageRequest.Builder(context)
                 .data(imageUrl)
-                .crossfade(revalidationKey == 0)
+                .crossfade(true)
                 .memoryCacheKey("${imageUrl}_${requestWidthPx}x${requestHeightPx}_v$revalidationKey")
                 .size(width = requestWidthPx, height = requestHeightPx)
-                .build()
+            if (revalidationKey > 0) {
+                builder.placeholderMemoryCacheKey("${imageUrl}_${requestWidthPx}x${requestHeightPx}_v${revalidationKey - 1}")
+            }
+            builder.build()
         }
         val logoRequestHeightPx = remember(density) {
             with(density) { NuvioTheme.spacing.xxxl.roundToPx() }
