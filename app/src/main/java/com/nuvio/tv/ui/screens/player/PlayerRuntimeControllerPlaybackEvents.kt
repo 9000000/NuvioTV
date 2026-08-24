@@ -1120,7 +1120,9 @@ fun PlayerRuntimeController.hideControls() {
 }
 
 fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
-    onUserInteraction()
+    if (event != PlayerEvent.OnParentalGuideHide) {
+        onUserInteraction()
+    }
     when (event) {
         PlayerEvent.OnPlayPause -> {
             if (isUsingMpvEngine()) {
