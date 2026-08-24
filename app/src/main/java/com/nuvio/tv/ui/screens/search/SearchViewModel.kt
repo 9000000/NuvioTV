@@ -266,7 +266,7 @@ class SearchViewModel @Inject constructor(
         if (trimmed.length >= MIN_SEARCH_QUERY_LENGTH) {
             liveSearchJob = viewModelScope.launch {
                 kotlinx.coroutines.delay(LIVE_SEARCH_DEBOUNCE_MS)
-                performSearch(query)
+                performSearch(query, keepSuggestions = true)
             }
         } else {
             // Emptying the field has to retire the submitted query too. Leaving it set kept the
@@ -350,6 +350,14 @@ class SearchViewModel @Inject constructor(
             }
 
             suggestionJobs.joinAll()
+
+            // Nothing came back for this query. The strip keeps the previous query's titles
+            // while a fetch is in flight, to avoid blinking on every keystroke, so without this
+            // it would keep captioning text the field no longer contains. Live search used to
+            // clear it as a side effect; it no longer does.
+            if (collectedNames.isEmpty() && _uiState.value.query.trim() == query) {
+                _uiState.update { it.copy(suggestions = emptyList()) }
+            }
         }
     }
 
@@ -423,14 +431,25 @@ class SearchViewModel @Inject constructor(
     }
 
 
-    private fun performSearch(rawQuery: String, rememberToHistory: Boolean = false) {
+    /**
+     * @param keepSuggestions live search runs this on every keystroke, while the field is still
+     * being typed into and the suggestion strip is the whole point. Those runs leave the strip
+     * alone. A submit or a retry replaces the screen with results, which retires it.
+     */
+    private fun performSearch(
+        rawQuery: String,
+        rememberToHistory: Boolean = false,
+        keepSuggestions: Boolean = false
+    ) {
         val query = rawQuery.trim()
-        suggestionJob?.cancel()
+        if (!keepSuggestions) {
+            suggestionJob?.cancel()
+        }
         _uiState.update {
             it.copy(
                 submittedQuery = submittedSearchQuery(query),
                 query = rawQuery,
-                suggestions = emptyList()
+                suggestions = if (keepSuggestions) it.suggestions else emptyList()
             )
         }
 
