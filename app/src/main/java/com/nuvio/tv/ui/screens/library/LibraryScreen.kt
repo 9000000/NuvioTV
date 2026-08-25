@@ -97,6 +97,7 @@ import com.nuvio.tv.ui.screens.stream.PlayerChoiceDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.nuvio.tv.ui.components.PosterCardDefaults
+import com.nuvio.tv.domain.model.localizedTitle
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -118,19 +119,6 @@ private enum class LibraryViewMode {
 private fun localizedTypeLabel(key: String): String = when (key.lowercase()) {
     LibraryTypeTab.ALL_KEY -> stringResource(R.string.library_type_all)
     else -> localizedContentType(key)
-}
-
-@Composable
-private fun LibraryListTab.localizedTitle(): String {
-    return when {
-        key == "simkl:status:watching" -> stringResource(R.string.library_status_watching)
-        key == "simkl:status:plantowatch" -> stringResource(R.string.library_status_plan_to_watch)
-        key == "simkl:status:hold" -> stringResource(R.string.library_status_on_hold)
-        key == "simkl:status:completed" -> stringResource(R.string.library_status_completed)
-        key == "simkl:status:dropped" -> stringResource(R.string.library_status_dropped)
-        type == LibraryListTab.Type.WATCHLIST -> stringResource(R.string.library_watchlist)
-        else -> title
-    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
