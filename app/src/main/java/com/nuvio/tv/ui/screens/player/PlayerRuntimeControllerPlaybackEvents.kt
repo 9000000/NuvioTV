@@ -1356,6 +1356,9 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                     showSubtitleDelayOverlay = false
                 )
             }
+            contentId?.takeIf { it.isNotBlank() }?.let { id ->
+                scope.launch { trackPreferenceDataStore.savePlaybackSpeed(id, event.speed) }
+            }
         }
         PlayerEvent.OnToggleControls -> {
             if (_uiState.value.showSubtitleTimingDialog) {
