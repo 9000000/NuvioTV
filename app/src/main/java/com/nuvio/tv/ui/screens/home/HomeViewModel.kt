@@ -62,6 +62,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     @ApplicationContext internal val appContext: Context,
     internal val addonRepository: AddonRepository,
+    internal val startupSyncService: com.nuvio.tv.core.sync.StartupSyncService,
     internal val catalogRepository: CatalogRepository,
     internal val watchProgressRepository: WatchProgressRepository,
     internal val libraryRepository: LibraryRepository,
@@ -328,6 +329,7 @@ class HomeViewModel @Inject constructor(
             observeProgressSourceChanges()
             observeCollections()
             observeInstalledAddons()
+            observeManualAddonRefresh()
 
             // Clear CW state when profile changes so items don't leak between profiles.
             var previousProfileId = profileManager.activeProfileId.value
@@ -743,6 +745,21 @@ class HomeViewModel @Inject constructor(
      * refresh is older than [HOME_CATALOG_REFRESH_TTL_MS], at most once per interval, and
      * merges each result into the row that is already on screen.
      */
+    /**
+     * The user pressed refresh in addon settings. Home is still on the back stack, so its
+     * catalogs are re-requested right away rather than waiting for the interval or for the
+     * user to come back. The same merge rules apply, so a row is never rebuilt under focus.
+     */
+    private fun observeManualAddonRefresh() {
+        viewModelScope.launch {
+            startupSyncService.manualAddonRefreshes.collect {
+                if (addonsCache.isEmpty()) return@collect
+                lastHomeCatalogRefreshAtMs = android.os.SystemClock.elapsedRealtime()
+                refreshVisibleCatalogsPipeline(requestedByUser = true)
+            }
+        }
+    }
+
     fun refreshHomeCatalogsIfStale() {
         if (addonsCache.isEmpty()) return
         val now = android.os.SystemClock.elapsedRealtime()

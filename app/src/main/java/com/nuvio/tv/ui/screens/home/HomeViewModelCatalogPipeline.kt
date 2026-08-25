@@ -408,7 +408,8 @@ internal fun HomeViewModel.loadCatalogPipeline(
     catalog: CatalogDescriptor,
     generation: Long,
     /** True only for the ON_RESUME refresh, where a row already on screen must be merged into. */
-    isRefresh: Boolean = false
+    isRefresh: Boolean = false,
+    requestedByUser: Boolean = false
 ) {
     val loadJob = viewModelScope.launch {
         var hasCountedCompletion = false
@@ -439,7 +440,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
                             type = catalog.apiType,
                             catalogId = catalog.id
                         )
-                        if (!isRefresh || !mergeRefreshedCatalogRow(key, result.data)) {
+                        if (!isRefresh || !mergeRefreshedCatalogRow(key, result.data, requestedByUser)) {
                             replaceCatalogRow(key, result.data)
                         }
                         // Remove placeholder descriptor now that real data is available
@@ -1104,7 +1105,13 @@ private fun HomeViewModel.reconcileFullyWatchedFromLocalItems(
  *    the focus ring, so the row the user has focus on is left alone and picked up on a later
  *    pass, once focus has moved on.
  */
-internal fun HomeViewModel.mergeRefreshedCatalogRow(key: String, fresh: CatalogRow): Boolean {
+internal fun HomeViewModel.mergeRefreshedCatalogRow(
+    key: String,
+    fresh: CatalogRow,
+    /** True when the user asked for the refresh, in which case seeing the change wins over
+     *  keeping their place in the row they happen to be on. */
+    requestedByUser: Boolean = false
+): Boolean {
     val current = readCatalogRow(key) ?: return false
     if (current.items.isEmpty()) return false
     // An addon answering 200 with no items (rate limit, partial outage) must not wipe a row the
@@ -1133,7 +1140,9 @@ internal fun HomeViewModel.mergeRefreshedCatalogRow(key: String, fresh: CatalogR
         // Nothing is removed, so the focused card only shifts along. That holds in the modern
         // layout, which keeps the whole row; the others cut it at a fixed length, where the
         // focused card can be pushed past the cut.
-        if (rowHasFocus && _uiState.value.homeLayout != HomeLayout.MODERN) return true
+        if (!requestedByUser && rowHasFocus && _uiState.value.homeLayout != HomeLayout.MODERN) {
+            return true
+        }
         val shiftedSkip = if (current.supportsSkip && current.nextSkip > 0) {
             current.nextSkip + added.size
         } else {
@@ -1149,11 +1158,11 @@ internal fun HomeViewModel.mergeRefreshedCatalogRow(key: String, fresh: CatalogR
 
     // The row was restructured. Rebuilding it drops the cards under the focus ring, so leave the
     // focused row alone and pick it up once focus has moved on.
-    return rowHasFocus
+    return rowHasFocus && !requestedByUser
 }
 
 
-internal fun HomeViewModel.refreshVisibleCatalogsPipeline() {
+internal fun HomeViewModel.refreshVisibleCatalogsPipeline(requestedByUser: Boolean = false) {
     val loadedKeys = synchronized(catalogStateLock) { catalogsMap.keys.toSet() }
     if (loadedKeys.isEmpty()) return
 
@@ -1173,5 +1182,7 @@ internal fun HomeViewModel.refreshVisibleCatalogsPipeline() {
     Log.d(HomeViewModel.TAG, "Refreshing ${toRefresh.size} home catalogs in place")
     val generation = catalogLoadGeneration
     pendingCatalogLoads += toRefresh.size
-    toRefresh.forEach { (addon, catalog) -> loadCatalogPipeline(addon, catalog, generation, isRefresh = true) }
+    toRefresh.forEach { (addon, catalog) ->
+        loadCatalogPipeline(addon, catalog, generation, isRefresh = true, requestedByUser = requestedByUser)
+    }
 }
