@@ -192,6 +192,7 @@ class SearchViewModelSuggestionsTest {
             addonRepository = SingleAddonRepository(addon),
             catalogRepository = TitleCatalogRepository(addon),
             metaRepository = mockk(relaxed = true),
+            discoverSelectionDataStore = mockk(relaxed = true),
             layoutPreferenceDataStore = layoutPreferences,
             searchHistoryDataStore = history,
             watchProgressRepository = watchProgress,
