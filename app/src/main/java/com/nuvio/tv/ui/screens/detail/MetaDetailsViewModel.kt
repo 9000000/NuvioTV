@@ -108,6 +108,9 @@ class MetaDetailsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MetaDetailsUiState())
     val uiState: StateFlow<MetaDetailsUiState> = _uiState.asStateFlow()
 
+    private val _posterCardCornerRadiusDp = MutableStateFlow(12)
+    val posterCardCornerRadiusDp: StateFlow<Int> = _posterCardCornerRadiusDp.asStateFlow()
+
     private val localizedContext: Context
         get() {
             val tag = LocaleCache.localeTag.takeIf { it != LocaleCache.UNSET && it.isNotEmpty() }
@@ -165,6 +168,10 @@ class MetaDetailsViewModel @Inject constructor(
         observeBlurUnwatchedEpisodes()
         observeOverallRatingsVisibility()
         observeDetailImdbRatingsVisibility()
+        viewModelScope.launch {
+            layoutPreferenceDataStore.posterCardCornerRadiusDp
+                .collect { _posterCardCornerRadiusDp.value = it }
+        }
         observeShowFullReleaseDate()
         observeHideUnreleasedContent()
         loadMeta()
