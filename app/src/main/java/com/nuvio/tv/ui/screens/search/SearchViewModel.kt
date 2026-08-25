@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.data.local.DiscoverSelectionDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.SearchHistoryDataStore
 import com.nuvio.tv.domain.model.Addon
@@ -49,6 +50,7 @@ class SearchViewModel @Inject constructor(
     private val addonRepository: AddonRepository,
     private val catalogRepository: CatalogRepository,
     private val metaRepository: com.nuvio.tv.domain.repository.MetaRepository,
+    private val discoverSelectionDataStore: DiscoverSelectionDataStore,
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
     private val searchHistoryDataStore: SearchHistoryDataStore,
     private val watchProgressRepository: com.nuvio.tv.domain.repository.WatchProgressRepository,
@@ -827,14 +829,12 @@ class SearchViewModel @Inject constructor(
                 }
         }
 
-        val availableTypes = discoverCatalogs.map { it.type }.distinct()
-        val currentType = _uiState.value.selectedDiscoverType
-        val selectedType = if (currentType in availableTypes) currentType else availableTypes.firstOrNull() ?: "movie"
-        val selectedCatalog = pickDiscoverCatalog(
+        val selectedCatalog = resolveDiscoverCatalog(
             catalogs = discoverCatalogs,
-            selectedType = selectedType,
-            preferredKey = _uiState.value.selectedDiscoverCatalogKey
+            preferredKey = discoverSelectionDataStore.getSelectedCatalogKey(),
+            currentKey = _uiState.value.selectedDiscoverCatalogKey
         )
+        val selectedType = selectedCatalog?.type ?: "movie"
         val selectedGenre: String? = null
 
         _uiState.update {
@@ -851,6 +851,11 @@ class SearchViewModel @Inject constructor(
                 discoverHasMore = true,
                 discoverPage = 1
             )
+        }
+        selectedCatalog?.let { catalog ->
+            viewModelScope.launch {
+                discoverSelectionDataStore.setSelectedCatalogKey(catalog.key)
+            }
         }
         fetchDiscoverContent(reset = true)
     }
@@ -874,6 +879,11 @@ class SearchViewModel @Inject constructor(
                 discoverHasMore = true
             )
         }
+        selectedCatalog?.let { catalog ->
+            viewModelScope.launch {
+                discoverSelectionDataStore.setSelectedCatalogKey(catalog.key)
+            }
+        }
         fetchDiscoverContent(reset = true)
     }
 
@@ -889,6 +899,9 @@ class SearchViewModel @Inject constructor(
                 discoverPage = 1,
                 discoverHasMore = true
             )
+        }
+        viewModelScope.launch {
+            discoverSelectionDataStore.setSelectedCatalogKey(catalog.key)
         }
         fetchDiscoverContent(reset = true)
     }
@@ -1074,3 +1087,12 @@ class SearchViewModel @Inject constructor(
         return catalogRowStableKey(addonId, addonBaseUrl, type, catalogId)
     }
 }
+
+internal fun resolveDiscoverCatalog(
+    catalogs: List<DiscoverCatalog>,
+    preferredKey: String?,
+    currentKey: String?
+): DiscoverCatalog? =
+    catalogs.firstOrNull { it.key == preferredKey }
+        ?: catalogs.firstOrNull { it.key == currentKey }
+        ?: catalogs.firstOrNull()
