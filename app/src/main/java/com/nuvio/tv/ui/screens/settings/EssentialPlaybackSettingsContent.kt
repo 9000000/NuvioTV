@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.tv.R
 import com.nuvio.tv.data.local.AudioLanguageOption
 import com.nuvio.tv.data.local.StreamAutoPlayMode
+import com.nuvio.tv.data.local.SubtitleLanguageOption
 import com.nuvio.tv.ui.components.P2pConsentDialog
 import kotlinx.coroutines.launch
 
@@ -120,10 +121,10 @@ fun EssentialPlaybackSettingsContent(
                     SettingsActionRow(
                         title = stringResource(R.string.essential_subtitle_language),
                         subtitle = stringResource(R.string.essential_subtitle_language_subtitle),
-                        value = if (settings?.subtitleStyle?.preferredLanguage == "none") {
-                            stringResource(R.string.action_none)
-                        } else {
-                            settings?.subtitleStyle?.preferredLanguage.orEmpty()
+                        value = when {
+                            settings?.subtitleStyle?.preferredLanguage == "none" -> stringResource(R.string.action_none)
+                            settings?.subtitleStyle?.isPreferredLanguageSystemDefault == true -> stringResource(R.string.appearance_language_system)
+                            else -> settings?.subtitleStyle?.preferredLanguage.orEmpty()
                         },
                         trailingIcon = Icons.Default.VideoSettings,
                         onClick = { showSubtitleLanguageDialog = true },
@@ -169,8 +170,13 @@ fun EssentialPlaybackSettingsContent(
     if (showSubtitleLanguageDialog && settings != null) {
         LanguageSelectionDialog(
             title = stringResource(R.string.essential_subtitle_language),
-            selectedLanguage = if (settings.subtitleStyle.preferredLanguage == "none") null else settings.subtitleStyle.preferredLanguage,
+            selectedLanguage = when {
+                settings.subtitleStyle.preferredLanguage == "none" -> null
+                settings.subtitleStyle.isPreferredLanguageSystemDefault -> SubtitleLanguageOption.DEVICE
+                else -> settings.subtitleStyle.preferredLanguage
+            },
             showNoneOption = true,
+            extraOptions = listOf(SubtitleLanguageOption.DEVICE to stringResource(R.string.appearance_language_system)),
             onLanguageSelected = { language ->
                 coroutineScope.launch { viewModel.setSubtitlePreferredLanguage(language ?: "none") }
                 showSubtitleLanguageDialog = false
