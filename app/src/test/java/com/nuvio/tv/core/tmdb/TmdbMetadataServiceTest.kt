@@ -18,6 +18,8 @@ import com.nuvio.tv.data.remote.api.TmdbImagesResponse
 import com.nuvio.tv.data.remote.api.TmdbMovieReleaseDatesResponse
 import com.nuvio.tv.data.remote.api.TmdbNetwork
 import com.nuvio.tv.data.remote.api.TmdbNetworkDetailsResponse
+import com.nuvio.tv.data.remote.api.TmdbPersonCreditCast
+import com.nuvio.tv.data.remote.api.TmdbPersonCreditsResponse
 import com.nuvio.tv.data.remote.api.TmdbPersonResponse
 import com.nuvio.tv.data.remote.api.TmdbSeasonResponse
 import com.nuvio.tv.data.remote.api.TmdbTvContentRatingsResponse
@@ -671,6 +673,67 @@ class TmdbMetadataServiceTest {
         assertNotNull(detail)
         assertEquals("Atsuko Tanaka", detail?.name)
         assertEquals("Atsuko Tanaka was a Japanese voice actress.", detail?.biography)
+    }
+
+    @Test
+    fun `fetchPersonDetail falls back CJK filmography titles to English`() = runTest {
+        val api = mockk<TmdbApi>()
+        coEvery { api.getPersonDetails(500, any(), "pl-PL") } returns Response.success(
+            TmdbPersonResponse(
+                id = 500,
+                name = "Atsuko Tanaka",
+                originalName = "田中敦子"
+            )
+        )
+        coEvery { api.getPersonDetails(500, any(), "en") } returns Response.success(
+            TmdbPersonResponse(
+                id = 500,
+                name = "Atsuko Tanaka",
+                originalName = "田中敦子"
+            )
+        )
+        coEvery { api.getPersonCombinedCredits(500, any(), "pl-PL") } returns Response.success(
+            TmdbPersonCreditsResponse(
+                cast = listOf(
+                    TmdbPersonCreditCast(
+                        id = 255358,
+                        name = "攻殻機動隊 STAND ALONE COMPLEX",
+                        originalName = "攻殻機動隊 STAND ALONE COMPLEX",
+                        mediaType = "tv",
+                        posterPath = "/poster.jpg",
+                        firstAirDate = "2002-10-01"
+                    ),
+                    TmdbPersonCreditCast(
+                        id = 99,
+                        title = "Make My Day",
+                        originalTitle = "Make My Day",
+                        mediaType = "movie",
+                        posterPath = "/mmd.jpg",
+                        releaseDate = "2023-01-01"
+                    )
+                )
+            )
+        )
+        coEvery { api.getPersonCombinedCredits(500, any(), "en") } returns Response.success(
+            TmdbPersonCreditsResponse(
+                cast = listOf(
+                    TmdbPersonCreditCast(
+                        id = 255358,
+                        name = "Ghost in the Shell: Stand Alone Complex",
+                        originalName = "攻殻機動隊 STAND ALONE COMPLEX",
+                        mediaType = "tv",
+                        posterPath = "/poster.jpg"
+                    )
+                )
+            )
+        )
+
+        val service = TmdbMetadataService(api)
+        val detail = service.fetchPersonDetail(personId = 500, language = "pl-PL")
+
+        assertNotNull(detail)
+        assertEquals("Ghost in the Shell: Stand Alone Complex", detail?.tvCredits?.single()?.name)
+        assertEquals("Make My Day", detail?.movieCredits?.single()?.name)
     }
 
     private data class MovieDiscoverCall(
