@@ -184,7 +184,7 @@
     <string name="hero_play_trailer">Xem trailer</string>
     <string name="hero_press_back_trailer">Nhấn quay lại để thoát trailer</string>
     <string name="hero_synopsis_read_more">Đọc thêm</string>
-    <string name="hero_synopsis_dismiss_hint">Bấm quay lại để đóng</string>
+    <string name="hero_synopsis_dismiss_hint">Nhấn quay lại để đóng</string>
     <string name="cd_rating">Xếp hạng</string>
 
     <string name="episodes_season">Mùa %1$d</string>
@@ -1882,11 +1882,11 @@ Ví dụ: US, GB.</string>
     <string name="library_empty_local_title">Chưa có %1$s</string>
     <string name="library_empty_trakt_title">Chưa có %1$s trong danh sách này</string>
     <string name="library_empty_local_subtitle">Bắt đầu lưu mục yêu thích để xem ở đây</string>
-    <string name="library_empty_trakt_subtitle">Dùng + trong chi tiết để thêm vào danh sách theo dõi hoặc danh sách</string>
+    <string name="library_empty_trakt_subtitle">Sử dụng + trong chi tiết để thêm vào danh sách theo dõi hoặc danh sách</string>
     <string name="library_empty_trakt_not_auth_title">Trakt chưa được kết nối</string>
     <string name="library_empty_trakt_not_auth_subtitle">Kết nối tài khoản Trakt trong Cài đặt để xem thư viện Trakt của bạn</string>
     <string name="library_empty_simkl_title">Không có %1$s trong trạng thái này</string>
-    <string name="library_empty_simkl_subtitle">Nhấn + trong chi tiết để thêm mục vào trạng thái Simkl</string>
+    <string name="library_empty_simkl_subtitle">Sử dụng + trong chi tiết để thêm mục vào trạng thái Simkl</string>
     <string name="library_empty_simkl_not_auth_title">Simkl chưa được kết nối</string>
     <string name="library_empty_simkl_not_auth_subtitle">Kết nối tài khoản Simkl trong Cài đặt để xem thư viện Simkl của bạn</string>
     <string name="library_list_create_dialog_title">Tạo danh sách</string>
