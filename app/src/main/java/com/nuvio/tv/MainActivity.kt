@@ -274,6 +274,7 @@ class MainActivity : ComponentActivity() {
     lateinit var deepLinkHandler: DeepLinkHandler
 
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
+    private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
     private lateinit var jankStats: JankStats
 
@@ -746,6 +747,43 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val pendingLaunch by pendingLaunchIntent.collectAsState()
+                    LaunchedEffect(navController, layoutChosen, pendingLaunch) {
+                        val intent = pendingLaunch ?: return@LaunchedEffect
+                        if (!layoutChosen) return@LaunchedEffect
+                        pendingLaunchIntent.value = null
+                        val contentId = intent.getStringExtra("contentId") ?: return@LaunchedEffect
+                        val contentType = intent.getStringExtra("contentType") ?: return@LaunchedEffect
+                        val videoId = intent.getStringExtra("videoId")
+                        val name = intent.getStringExtra("name")
+                        if (videoId != null && name != null) {
+                            navController.navigate(
+                                Screen.Stream.createRoute(
+                                    videoId = videoId,
+                                    contentType = contentType,
+                                    title = name,
+                                    poster = intent.getStringExtra("poster"),
+                                    backdrop = intent.getStringExtra("backdrop"),
+                                    logo = intent.getStringExtra("logo"),
+                                    season = intent.getIntExtra("season", -1).takeIf { it >= 0 },
+                                    episode = intent.getIntExtra("episode", -1).takeIf { it >= 0 },
+                                    episodeName = intent.getStringExtra("episodeTitle"),
+                                    contentId = contentId,
+                                    contentName = name,
+                                    returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                    returnToHomeOnBack = true
+                                )
+                            )
+                        } else {
+                            navController.navigate(
+                                Screen.Detail.createRoute(
+                                    itemId = contentId,
+                                    itemType = contentType
+                                )
+                            )
+                        }
+                    }
+
                     LaunchedEffect(navController, layoutChosen, pendingDeepLink) {
                         val url = pendingDeepLink ?: return@LaunchedEffect
                         if (!layoutChosen) return@LaunchedEffect
@@ -982,11 +1020,19 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         captureDeepLinkIntent(intent)
+        captureLaunchIntent(intent)
     }
 
     private fun captureDeepLinkIntent(intent: Intent?) {
         val url = intent?.dataString?.trim()?.takeIf(String::isNotBlank) ?: return
         pendingDeepLinkUrl.value = url
+    }
+
+    private fun captureLaunchIntent(intent: Intent?) {
+        val contentId = intent?.getStringExtra("contentId") ?: return
+        val launchMode = intent.getStringExtra("launchMode") ?: return
+        if (launchMode != "stream") return
+        pendingLaunchIntent.value = intent
     }
 
     override fun onPause() {
