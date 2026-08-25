@@ -167,7 +167,9 @@ fun LibraryScreen(
         visibleItemKeys.associateWith { FocusRequester() }
     }
     val firstVisiblePosterKey = visibleItemKeys.firstOrNull()
-    val posterCardStyle = PosterCardDefaults.Style
+    val posterCardStyle = PosterCardDefaults.Style.copy(
+        cornerRadius = uiState.posterCardCornerRadiusDp.dp
+    )
 
     val routeCloudPlayback: (CloudLibraryPlaybackInfo) -> Unit = { info ->
         scope.launch {
