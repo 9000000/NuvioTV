@@ -676,7 +676,8 @@ class HomeViewModel @Inject constructor(
                         isReleaseAlert = cached.isReleaseAlert,
                         isNewSeasonRelease = cached.isNewSeasonRelease,
                         seedSeason = cached.seedSeason,
-                        seedEpisode = cached.seedEpisode
+                        seedEpisode = cached.seedEpisode,
+                        contentLanguage = cached.contentLanguage
                     )
                 )
             }
