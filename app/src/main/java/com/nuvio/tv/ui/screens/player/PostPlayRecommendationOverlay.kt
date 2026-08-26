@@ -75,6 +75,8 @@ import com.nuvio.tv.R
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.components.MDBListRatingsRow
 import com.nuvio.tv.ui.components.PlayManualOverrideDialog
+import com.nuvio.tv.ui.components.SynopsisDescription
+import com.nuvio.tv.ui.components.SynopsisOverlay
 import com.nuvio.tv.ui.components.TrailerPlayer
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.formatHeroRuntime
@@ -83,27 +85,30 @@ import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import java.util.Locale
 
 @Composable
-fun MoviePostPlayOverlay(
-    state: MoviePostPlayUiState,
+fun PostPlayRecommendationOverlay(
+    state: PostPlayRecommendationUiState,
     currentTitle: String,
     showManualPlayOption: Boolean,
     playFocusRequester: FocusRequester,
     playerWindowFocusRequester: FocusRequester,
-    onPlay: (MoviePostPlayRecommendation) -> Unit,
-    onPlayManually: (MoviePostPlayRecommendation) -> Unit,
+    onPlay: (PostPlayRecommendation) -> Unit,
+    onPlayManually: (PostPlayRecommendation) -> Unit,
     onPlayTrailer: () -> Unit,
     onTrailerEnded: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val recommendation = state.recommendation ?: return
     val trailerFocusRequester = remember(recommendation.id) { FocusRequester() }
+    val descriptionFocusRequester = remember(recommendation.id) { FocusRequester() }
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val playPainter = rememberMoviePostPlayIcon(R.raw.ic_player_play)
-    val trailerPainter = rememberMoviePostPlayIcon(R.raw.trailer_play_button)
+    val playPainter = rememberPostPlayRecommendationIcon(R.raw.ic_player_play)
+    val trailerPainter = rememberPostPlayRecommendationIcon(R.raw.trailer_play_button)
     var logoLoadFailed by remember(recommendation.logo) { mutableStateOf(false) }
     var showPlayOptionsDialog by remember(recommendation.id) { mutableStateOf(false) }
+    var descriptionTruncated by remember(recommendation.id) { mutableStateOf(false) }
+    var showSynopsisOverlay by remember(recommendation.id) { mutableStateOf(false) }
     val showLogo = !recommendation.logo.isNullOrBlank() && !logoLoadFailed
     val metadata = recommendation.metadataLine(context)
     val imdbRating = recommendation.rating
@@ -113,17 +118,17 @@ fun MoviePostPlayOverlay(
     val logoHeight by animateDpAsState(
         targetValue = if (state.isTrailerPlaying) 60.dp else 92.dp,
         animationSpec = tween(600),
-        label = "moviePostPlayLogoHeight"
+        label = "postPlayRecommendationLogoHeight"
     )
     val logoMaxWidth by animateFloatAsState(
         targetValue = if (state.isTrailerPlaying) 0.48f else 0.76f,
         animationSpec = tween(600),
-        label = "moviePostPlayLogoWidth"
+        label = "postPlayRecommendationLogoWidth"
     )
     val actionTopSpacing by animateDpAsState(
         targetValue = if (state.isTrailerPlaying) NuvioTheme.spacing.md else NuvioTheme.spacing.xl,
         animationSpec = tween(600),
-        label = "moviePostPlayActionSpacing"
+        label = "postPlayRecommendationActionSpacing"
     )
     val horizontalScrim = if (isRtl) {
         Brush.horizontalGradient(
@@ -259,7 +264,7 @@ fun MoviePostPlayOverlay(
                         transitionSpec = {
                             fadeIn(tween(600)) togetherWith fadeOut(tween(240))
                         },
-                        label = "moviePostPlayTitleSize"
+                        label = "postPlayRecommendationTitleSize"
                     ) { trailerPlaying ->
                         Text(
                             text = recommendation.title,
@@ -322,12 +327,14 @@ fun MoviePostPlayOverlay(
 
                         if (!recommendation.description.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                            Text(
-                                text = recommendation.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = NuvioTheme.colors.TextPrimary,
+                            SynopsisDescription(
+                                description = recommendation.description,
+                                onShowFullDescription = { showSynopsisOverlay = true },
                                 maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
+                                focusRequester = descriptionFocusRequester,
+                                upFocusRequester = playerWindowFocusRequester,
+                                downFocusRequester = playFocusRequester,
+                                onTruncationChanged = { descriptionTruncated = it },
                                 modifier = Modifier.fillMaxWidth(0.92f)
                             )
                         }
@@ -340,7 +347,7 @@ fun MoviePostPlayOverlay(
                     val buttonSpacing = NuvioTheme.spacing.md
                     val buttonWidth = (maxWidth - buttonSpacing) / 2
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        MoviePostPlayButton(
+                        PostPlayRecommendationButton(
                             label = stringResource(R.string.player_post_play_play),
                             painter = playPainter,
                             primary = true,
@@ -354,8 +361,11 @@ fun MoviePostPlayOverlay(
                             modifier = Modifier
                                 .width(buttonWidth)
                                 .focusProperties {
-                                    if (!state.isTrailerPlaying && !state.hasAutoPlayedTrailer) {
-                                        up = playerWindowFocusRequester
+                                    if (!state.isTrailerPlaying) {
+                                        when {
+                                            descriptionTruncated -> up = descriptionFocusRequester
+                                            !state.hasAutoPlayedTrailer -> up = playerWindowFocusRequester
+                                        }
                                     }
                                 }
                         )
@@ -367,7 +377,7 @@ fun MoviePostPlayOverlay(
                         ) {
                             Row {
                                 Spacer(modifier = Modifier.width(buttonSpacing))
-                                MoviePostPlayButton(
+                                PostPlayRecommendationButton(
                                     label = trailerButtonLabel(state),
                                     painter = trailerPainter,
                                     primary = false,
@@ -376,8 +386,9 @@ fun MoviePostPlayOverlay(
                                     modifier = Modifier
                                         .width(buttonWidth)
                                         .focusProperties {
-                                            if (!state.hasAutoPlayedTrailer) {
-                                                up = playerWindowFocusRequester
+                                            when {
+                                                descriptionTruncated -> up = descriptionFocusRequester
+                                                !state.hasAutoPlayedTrailer -> up = playerWindowFocusRequester
                                             }
                                         }
                                 )
@@ -400,6 +411,16 @@ fun MoviePostPlayOverlay(
             }
         )
     }
+
+    recommendation.description
+        ?.takeIf { state.isVisible && showSynopsisOverlay && it.isNotBlank() }
+        ?.let { description ->
+            SynopsisOverlay(
+                title = recommendation.title,
+                description = description,
+                onDismiss = { showSynopsisOverlay = false }
+            )
+        }
 }
 
 @Composable
@@ -447,7 +468,7 @@ private fun StandardRatingsRow(
 }
 
 @Composable
-private fun trailerButtonLabel(state: MoviePostPlayUiState): String {
+private fun trailerButtonLabel(state: PostPlayRecommendationUiState): String {
     return when {
         state.isTrailerPlaying -> stringResource(R.string.player_post_play_trailer_playing)
         state.countdownSeconds != null -> stringResource(
@@ -459,7 +480,7 @@ private fun trailerButtonLabel(state: MoviePostPlayUiState): String {
 }
 
 @Composable
-private fun MoviePostPlayButton(
+private fun PostPlayRecommendationButton(
     label: String,
     painter: Painter,
     primary: Boolean,
@@ -545,7 +566,7 @@ private fun MoviePostPlayButton(
                 transitionSpec = {
                     fadeIn(tween(140)) togetherWith fadeOut(tween(100))
                 },
-                label = "moviePostPlayButtonLabel"
+                label = "postPlayRecommendationButtonLabel"
             ) { currentLabel ->
                 Text(
                     text = currentLabel,
@@ -558,7 +579,7 @@ private fun MoviePostPlayButton(
 }
 
 @Composable
-private fun rememberMoviePostPlayIcon(@RawRes iconRes: Int): Painter {
+private fun rememberPostPlayRecommendationIcon(@RawRes iconRes: Int): Painter {
     val context = LocalContext.current
     val density = LocalDensity.current
     val sizePx = remember(density) { with(density) { NuvioTheme.spacing.xl.roundToPx() } }
@@ -581,7 +602,7 @@ private fun isSelectOrMenuKey(keyCode: Int): Boolean {
     return isSelectKey(keyCode) || keyCode == AndroidKeyEvent.KEYCODE_MENU
 }
 
-private fun MoviePostPlayRecommendation.metadataLine(context: android.content.Context): String {
+private fun PostPlayRecommendation.metadataLine(context: android.content.Context): String {
     return buildList {
         genres.take(2)
             .map { localizedGenreLabel(context, it) }

@@ -138,7 +138,7 @@ class PlayerViewModel @Inject constructor(
         scope = viewModelScope
     )
 
-    private val moviePostPlayController = MoviePostPlayController(
+    private val postPlayRecommendationController = PostPlayRecommendationController(
         playbackController = controller,
         metaRepository = metaRepository,
         tmdbService = tmdbService,
@@ -162,8 +162,8 @@ class PlayerViewModel @Inject constructor(
     val playbackTimeline: StateFlow<PlaybackTimelineState>
         get() = controller.playbackTimeline
 
-    val moviePostPlayUiState: StateFlow<MoviePostPlayUiState>
-        get() = moviePostPlayController.uiState
+    val postPlayRecommendationUiState: StateFlow<PostPlayRecommendationUiState>
+        get() = postPlayRecommendationController.uiState
 
     val effectiveAutoplayEnabled = playerSettingsDataStore.playerSettings
         .map(StreamAutoPlayPolicy::isEffectivelyEnabled)
@@ -177,20 +177,20 @@ class PlayerViewModel @Inject constructor(
     fun getCurrentHeaders(): Map<String, String> = controller.getCurrentHeaders()
 
     fun stopAndRelease() {
-        moviePostPlayController.stop()
+        postPlayRecommendationController.stop()
         controller.stopAndRelease()
     }
 
     fun playPostPlayTrailer() {
-        moviePostPlayController.playTrailer()
+        postPlayRecommendationController.playTrailer()
     }
 
     fun onPostPlayTrailerEnded() {
-        moviePostPlayController.onTrailerEnded()
+        postPlayRecommendationController.onTrailerEnded()
     }
 
-    fun dismissMoviePostPlay() {
-        moviePostPlayController.dismiss()
+    fun dismissPostPlayRecommendation() {
+        postPlayRecommendationController.dismiss()
     }
 
     fun scheduleHideControls() {
@@ -238,7 +238,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        moviePostPlayController.stop()
+        postPlayRecommendationController.stop()
         controller.onCleared()
         // Allow the trailer player to be re-created when returning to home screen.
         trailerPlayerPool.reclaim()

@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -49,8 +48,6 @@ import com.nuvio.tv.ui.screens.profile.ProfileSelectionMode
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.screens.tmdb.TmdbEntityBrowseScreen
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
-import com.nuvio.tv.core.util.parseRuntimeMinutes
-import com.nuvio.tv.ui.util.localizedGenreLabel
 
 @Composable
 fun NuvioNavHost(
@@ -58,8 +55,6 @@ fun NuvioNavHost(
     startDestination: String = Screen.Home.route,
     hideBuiltInHeaders: Boolean = false
 ) {
-    val context = LocalContext.current
-
     fun isStreamToPlayer(from: String, to: String): Boolean {
         return from.startsWith("stream/") && to.startsWith("player/")
     }
@@ -260,6 +255,16 @@ fun NuvioNavHost(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("playOnLoad") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
+                },
+                navArgument("manualSelection") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
                 }
             )
         ) { backStackEntry ->
@@ -278,11 +283,15 @@ fun NuvioNavHost(
                 "heroRestoreToken", 0
             ).collectAsState()
             val heroBackdropUrl = detailArgs?.getString("heroBackdropUrl")?.takeIf { it.isNotBlank() }
+            val playOnLoad = detailArgs?.getString("playOnLoad")?.toBooleanStrictOrNull() == true
+            val manualSelection = detailArgs?.getString("manualSelection")?.toBooleanStrictOrNull() == true
             MetaDetailsScreen(
                 returnFocusSeason = returnFocusSeason,
                 returnFocusEpisode = returnFocusEpisode,
                 heroRestoreToken = heroRestoreToken,
                 heroBackdropUrl = heroBackdropUrl,
+                playOnLoad = playOnLoad,
+                playOnLoadManually = manualSelection,
                 onReturnFocusConsumed = {
                     savedState["returnFocusSeason"] = null
                     savedState["returnFocusEpisode"] = null
@@ -985,39 +994,22 @@ fun NuvioNavHost(
                     val returnToHomeOnBack = backStackEntry.arguments
                         ?.getString("returnToHomeOnBack")
                         ?.toBooleanStrictOrNull() == true
-                    val playbackRootRoute = moviePostPlayPopUpRoute(
+                    val playbackRootRoute = postPlayRecommendationPopUpRoute(
                         navController.previousBackStackEntry?.destination?.route
-                    )
-                    val route = Screen.Stream.createRoute(
-                        videoId = recommendation.id,
-                        contentType = recommendation.contentType,
-                        title = recommendation.title,
-                        poster = recommendation.poster,
-                        backdrop = recommendation.backdrop,
-                        logo = recommendation.logo,
-                        genres = recommendation.genres
-                            .takeIf { it.isNotEmpty() }
-                            ?.joinToString(" • ") { localizedGenreLabel(context, it) },
-                        year = recommendation.releaseInfo?.trim(),
-                        contentId = recommendation.id,
-                        contentName = recommendation.title,
-                        runtime = parseRuntimeMinutes(recommendation.runtime),
-                        manualSelection = manualSelection,
-                        returnToHomeOnBack = returnToHomeOnBack,
-                        contentLanguage = recommendation.contentLanguage
                     )
                     navController.navigate(
                         Screen.Detail.createRoute(
                             itemId = recommendation.id,
                             itemType = recommendation.contentType,
+                            addonBaseUrl = recommendation.sourceAddonBaseUrl,
                             returnToHomeOnBack = returnToHomeOnBack,
-                            heroBackdropUrl = recommendation.backdrop
+                            heroBackdropUrl = recommendation.backdrop,
+                            playOnLoad = true,
+                            manualSelection = manualSelection
                         )
                     ) {
                         popUpTo(playbackRootRoute) { inclusive = true }
-                        launchSingleTop = true
                     }
-                    navController.navigate(route)
                 },
                 onPlaybackErrorBack = {
                     val returnedToStream = popBackToStream()

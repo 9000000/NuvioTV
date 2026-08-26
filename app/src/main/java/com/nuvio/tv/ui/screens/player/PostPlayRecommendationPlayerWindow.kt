@@ -23,7 +23,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun MoviePostPlayPlayerWindow(
+internal fun PostPlayRecommendationPlayerWindow(
     focusRequester: FocusRequester,
     downFocusRequester: FocusRequester,
     onClick: () -> Unit,

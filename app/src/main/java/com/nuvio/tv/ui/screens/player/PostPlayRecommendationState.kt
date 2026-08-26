@@ -1,11 +1,12 @@
 package com.nuvio.tv.ui.screens.player
 
 import androidx.compose.runtime.Immutable
+import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.MDBListRatings
 import kotlin.math.ceil
 
 @Immutable
-data class MoviePostPlayRecommendation(
+data class PostPlayRecommendation(
     val id: String,
     val contentType: String,
     val title: String,
@@ -17,6 +18,7 @@ data class MoviePostPlayRecommendation(
     val rating: Float?,
     val genres: List<String>,
     val runtime: String?,
+    val sourceAddonBaseUrl: String? = null,
     val tmdbId: String? = null,
     val tmdbRating: Float? = null,
     val ageRating: String? = null,
@@ -34,8 +36,8 @@ data class MoviePostPlayRecommendation(
 }
 
 @Immutable
-data class MoviePostPlayUiState(
-    val recommendation: MoviePostPlayRecommendation? = null,
+data class PostPlayRecommendationUiState(
+    val recommendation: PostPlayRecommendation? = null,
     val isLoadingRecommendation: Boolean = false,
     val isLoadingTrailer: Boolean = false,
     val isVisible: Boolean = false,
@@ -47,12 +49,12 @@ data class MoviePostPlayUiState(
         get() = recommendation != null || isVisible || isLoadingRecommendation
 }
 
-internal const val MOVIE_POST_PLAY_PREFETCH_PROGRESS = 0.9f
-internal const val MOVIE_POST_PLAY_PREFETCH_REMAINING_MS = 10 * 60_000L
-internal const val MOVIE_POST_PLAY_TRAILER_COUNTDOWN_SECONDS = 5
-internal const val MOVIE_POST_PLAY_TRANSITION_MS = 420
+internal const val POST_PLAY_RECOMMENDATION_PREFETCH_PROGRESS = 0.9f
+internal const val POST_PLAY_RECOMMENDATION_PREFETCH_REMAINING_MS = 10 * 60_000L
+internal const val POST_PLAY_RECOMMENDATION_TRAILER_COUNTDOWN_SECONDS = 5
+internal const val POST_PLAY_RECOMMENDATION_TRANSITION_MS = 420
 
-internal fun shouldPrefetchMoviePostPlay(
+internal fun shouldPrefetchPostPlayRecommendation(
     positionMs: Long,
     durationMs: Long
 ): Boolean {
@@ -60,18 +62,43 @@ internal fun shouldPrefetchMoviePostPlay(
     val position = positionMs.coerceIn(0L, durationMs)
     val remaining = durationMs - position
     val progress = position.toDouble() / durationMs.toDouble()
-    return progress >= MOVIE_POST_PLAY_PREFETCH_PROGRESS ||
-        remaining <= MOVIE_POST_PLAY_PREFETCH_REMAINING_MS
+    return progress >= POST_PLAY_RECOMMENDATION_PREFETCH_PROGRESS ||
+        remaining <= POST_PLAY_RECOMMENDATION_PREFETCH_REMAINING_MS
 }
 
-internal fun moviePostPlayCountdownSeconds(
+internal fun postPlayRecommendationCountdownSeconds(
     positionMs: Long,
     durationMs: Long
 ): Int? {
     if (durationMs <= 0L) return null
     val remainingMs = (durationMs - positionMs).coerceAtLeast(0L)
-    if (remainingMs > MOVIE_POST_PLAY_TRAILER_COUNTDOWN_SECONDS * 1_000L) return null
+    if (remainingMs > POST_PLAY_RECOMMENDATION_TRAILER_COUNTDOWN_SECONDS * 1_000L) return null
     return ceil(remainingMs / 1_000.0)
         .toInt()
-        .coerceIn(1, MOVIE_POST_PLAY_TRAILER_COUNTDOWN_SECONDS)
+        .coerceIn(1, POST_PLAY_RECOMMENDATION_TRAILER_COUNTDOWN_SECONDS)
+}
+
+internal fun shouldUsePostPlayRecommendation(
+    contentType: String?,
+    isNextEpisodeMetadataResolved: Boolean,
+    nextEpisodeHasAired: Boolean?
+): Boolean = when (resolvePostPlayContentType(contentType)) {
+    ContentType.MOVIE -> true
+    ContentType.SERIES -> isNextEpisodeMetadataResolved && nextEpisodeHasAired != true
+    else -> false
+}
+
+internal fun resolvePostPlayContentType(
+    apiType: String?,
+    fallback: ContentType? = null
+): ContentType? {
+    return when (apiType?.trim()?.lowercase()) {
+        "movie", "film" -> ContentType.MOVIE
+        "series", "tv", "show", "tvshow" -> ContentType.SERIES
+        else -> when (fallback) {
+            ContentType.MOVIE -> ContentType.MOVIE
+            ContentType.SERIES, ContentType.TV -> ContentType.SERIES
+            else -> null
+        }
+    }
 }

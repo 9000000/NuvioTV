@@ -15,7 +15,6 @@ import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.repository.MDBListRepository
 import com.nuvio.tv.data.repository.TraktRelatedService
 import com.nuvio.tv.data.trailer.TrailerService
-import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.repository.MetaRepository
@@ -34,7 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal class MoviePostPlayController(
+internal class PostPlayRecommendationController(
     private val playbackController: PlayerRuntimeController,
     private val metaRepository: MetaRepository,
     private val tmdbService: TmdbService,
@@ -51,8 +50,19 @@ internal class MoviePostPlayController(
     private val trailerPlayerPool: TrailerPlayerPool,
     private val scope: CoroutineScope
 ) {
-    private data class PlaybackSnapshot(
+    private data class PlaybackIdentity(
         val contentType: String?,
+        val contentId: String?,
+        val videoId: String?,
+        val season: Int?,
+        val episode: Int?
+    )
+
+    private data class PlaybackSnapshot(
+        val identity: PlaybackIdentity,
+        val contentType: String?,
+        val isNextEpisodeMetadataResolved: Boolean,
+        val nextEpisodeHasAired: Boolean?,
         val hasError: Boolean,
         val hasBlockingOverlay: Boolean,
         val playbackEnded: Boolean,
@@ -61,7 +71,7 @@ internal class MoviePostPlayController(
     )
 
     private data class ResolvedCandidate(
-        val recommendation: MoviePostPlayRecommendation,
+        val recommendation: PostPlayRecommendation,
         val meta: Meta?
     )
 
@@ -70,8 +80,8 @@ internal class MoviePostPlayController(
         val showStandardRatings: Boolean
     )
 
-    private val _uiState = MutableStateFlow(MoviePostPlayUiState())
-    val uiState: StateFlow<MoviePostPlayUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(PostPlayRecommendationUiState())
+    val uiState: StateFlow<PostPlayRecommendationUiState> = _uiState.asStateFlow()
 
     private var recommendationJob: Job? = null
     private var postEndCountdownJob: Job? = null
@@ -79,6 +89,7 @@ internal class MoviePostPlayController(
     private var recommendationLoadAttempted = false
     private var autoPlayTrailerEnabled = true
     private var lastSnapshot: PlaybackSnapshot? = null
+    private var lastPlaybackIdentity: PlaybackIdentity? = null
     private var dismissedForCurrentPlayback = false
 
     init {
@@ -88,7 +99,16 @@ internal class MoviePostPlayController(
                 playbackController.playbackTimeline
             ) { playerState, timeline ->
                 PlaybackSnapshot(
+                    identity = PlaybackIdentity(
+                        contentType = playerState.contentType?.trim()?.lowercase(),
+                        contentId = playbackController.contentId,
+                        videoId = playerState.currentVideoId,
+                        season = playerState.currentSeason,
+                        episode = playerState.currentEpisode
+                    ),
                     contentType = playerState.contentType,
+                    isNextEpisodeMetadataResolved = playerState.isNextEpisodeMetadataResolved,
+                    nextEpisodeHasAired = playerState.nextEpisode?.hasAired,
                     hasError = !playerState.error.isNullOrBlank(),
                     hasBlockingOverlay = playerState.showPauseOverlay ||
                         playerState.showStreamInfoOverlay ||
@@ -108,6 +128,10 @@ internal class MoviePostPlayController(
             }
                 .distinctUntilChanged()
                 .collect { snapshot ->
+                    if (lastPlaybackIdentity?.let { it != snapshot.identity } == true) {
+                        clearRecommendationState()
+                    }
+                    lastPlaybackIdentity = snapshot.identity
                     lastSnapshot = snapshot
                     evaluate(snapshot)
                 }
@@ -143,13 +167,19 @@ internal class MoviePostPlayController(
             )
         }
         dismissAnimationJob = scope.launch {
-            delay(MOVIE_POST_PLAY_TRANSITION_MS.toLong())
-            _uiState.value = MoviePostPlayUiState()
+            delay(POST_PLAY_RECOMMENDATION_TRANSITION_MS.toLong())
+            _uiState.value = PostPlayRecommendationUiState()
             dismissAnimationJob = null
         }
     }
 
     fun stop() {
+        clearRecommendationState()
+        lastSnapshot = null
+        lastPlaybackIdentity = null
+    }
+
+    private fun clearRecommendationState() {
         recommendationJob?.cancel()
         recommendationJob = null
         postEndCountdownJob?.cancel()
@@ -162,16 +192,22 @@ internal class MoviePostPlayController(
         if (_uiState.value.isTrailerPlaying) {
             trailerPlayerPool.stop()
         }
-        _uiState.value = MoviePostPlayUiState()
+        _uiState.value = PostPlayRecommendationUiState()
     }
 
     private fun evaluate(snapshot: PlaybackSnapshot) {
-        if (!snapshot.contentType.isMovieContent() || snapshot.hasError) {
+        val shouldUseRecommendation = shouldUsePostPlayRecommendation(
+            contentType = snapshot.contentType,
+            isNextEpisodeMetadataResolved = snapshot.isNextEpisodeMetadataResolved,
+            nextEpisodeHasAired = snapshot.nextEpisodeHasAired
+        )
+        if (!shouldUseRecommendation || snapshot.hasError) {
             if (_uiState.value.recommendation != null ||
                 _uiState.value.isVisible ||
-                _uiState.value.isLoadingRecommendation
+                _uiState.value.isLoadingRecommendation ||
+                recommendationJob != null
             ) {
-                stop()
+                clearRecommendationState()
             }
             return
         }
@@ -184,7 +220,7 @@ internal class MoviePostPlayController(
         if (isShortPlaceholderDuration(effectiveDuration)) return
 
         if (!recommendationLoadAttempted &&
-            shouldPrefetchMoviePostPlay(snapshot.positionMs, effectiveDuration)
+            shouldPrefetchPostPlayRecommendation(snapshot.positionMs, effectiveDuration)
         ) {
             loadRecommendation()
         }
@@ -211,9 +247,9 @@ internal class MoviePostPlayController(
                 it.copy(
                     isVisible = true,
                     countdownSeconds = if (needsPostEndCountdown) {
-                        MOVIE_POST_PLAY_TRAILER_COUNTDOWN_SECONDS
+                        POST_PLAY_RECOMMENDATION_TRAILER_COUNTDOWN_SECONDS
                     } else {
-                        moviePostPlayCountdownSeconds(snapshot.positionMs, effectiveDuration)
+                        postPlayRecommendationCountdownSeconds(snapshot.positionMs, effectiveDuration)
                     }
                 )
             }
@@ -241,7 +277,7 @@ internal class MoviePostPlayController(
             return
         }
 
-        val countdown = moviePostPlayCountdownSeconds(snapshot.positionMs, effectiveDuration)
+        val countdown = postPlayRecommendationCountdownSeconds(snapshot.positionMs, effectiveDuration)
         if (countdown != state.countdownSeconds) {
             _uiState.update { it.copy(countdownSeconds = countdown) }
         }
@@ -375,6 +411,10 @@ internal class MoviePostPlayController(
     }
 
     private suspend fun loadCandidate(meta: Meta): MetaPreview? {
+        val tmdbContentType = resolvePostPlayContentType(
+            apiType = playbackController.contentType,
+            fallback = meta.type
+        ) ?: return null
         val candidates = withTimeoutOrNull(10_000L) {
             val sourcePreference = traktSettingsDataStore.moreLikeThisSource.first()
             val traktAuthenticated = traktAuthDataStore.isAuthenticated.first()
@@ -389,13 +429,14 @@ internal class MoviePostPlayController(
             } else {
                 val settings = tmdbSettingsDataStore.settings.first()
                 if (!settings.enabled || !settings.useMoreLikeThis) return@withTimeoutOrNull emptyList()
-                val tmdbId = tmdbService.ensureTmdbId(meta.id, "movie")
-                    ?: playbackController.contentId?.let { tmdbService.ensureTmdbId(it, "movie") }
+                val lookupType = tmdbContentType.toApiString(playbackController.contentType)
+                val tmdbId = tmdbService.ensureTmdbId(meta.id, lookupType)
+                    ?: playbackController.contentId?.let { tmdbService.ensureTmdbId(it, lookupType) }
                     ?: return@withTimeoutOrNull emptyList()
                 runCatching {
                     tmdbMetadataService.fetchMoreLikeThis(
                         tmdbId = tmdbId,
-                        contentType = com.nuvio.tv.domain.model.ContentType.MOVIE,
+                        contentType = tmdbContentType,
                         language = settings.language,
                         maxItems = 4
                     )
@@ -423,6 +464,10 @@ internal class MoviePostPlayController(
         } catch (_: Exception) {
             null
         }
+        val candidateContentType = resolvePostPlayContentType(
+            apiType = meta?.apiType ?: candidate.apiType,
+            fallback = meta?.type ?: candidate.type
+        )
         val tmdbId = try {
             tmdbService.ensureTmdbId(
                 videoId = meta?.id ?: candidate.id,
@@ -437,12 +482,12 @@ internal class MoviePostPlayController(
         } catch (_: Exception) {
             null
         }
-        val enrichment = if (settings.enabled && tmdbId != null) {
+        val enrichment = if (settings.enabled && tmdbId != null && candidateContentType != null) {
             try {
                 withTimeoutOrNull(12_000L) {
                     tmdbMetadataService.fetchEnrichment(
                         tmdbId = tmdbId,
-                        contentType = ContentType.MOVIE,
+                        contentType = candidateContentType,
                         language = settings.language
                     )
                 }
@@ -455,7 +500,7 @@ internal class MoviePostPlayController(
             null
         }
         return ResolvedCandidate(
-            recommendation = resolveMoviePostPlayRecommendation(
+            recommendation = resolvePostPlayRecommendation(
                 candidate = candidate,
                 meta = meta,
                 enrichment = enrichment,
@@ -492,7 +537,7 @@ internal class MoviePostPlayController(
             return
         }
         postEndCountdownJob = scope.launch {
-            for (seconds in MOVIE_POST_PLAY_TRAILER_COUNTDOWN_SECONDS downTo 1) {
+            for (seconds in POST_PLAY_RECOMMENDATION_TRAILER_COUNTDOWN_SECONDS downTo 1) {
                 _uiState.update { it.copy(countdownSeconds = seconds) }
                 delay(1_000L)
             }
@@ -516,10 +561,6 @@ internal class MoviePostPlayController(
             )
         }
     }
-}
-
-private fun String?.isMovieContent(): Boolean {
-    return this?.trim()?.lowercase() in setOf("movie", "film")
 }
 
 private fun String.normalizedId(): String = trim().lowercase()

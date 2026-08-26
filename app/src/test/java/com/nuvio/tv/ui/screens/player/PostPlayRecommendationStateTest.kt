@@ -11,11 +11,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MoviePostPlayStateTest {
+class PostPlayRecommendationStateTest {
     @Test
     fun `prefetches in final ten minutes`() {
         assertTrue(
-            shouldPrefetchMoviePostPlay(
+            shouldPrefetchPostPlayRecommendation(
                 positionMs = 6_600_000L,
                 durationMs = 7_200_000L
             )
@@ -25,7 +25,7 @@ class MoviePostPlayStateTest {
     @Test
     fun `does not prefetch early in playback`() {
         assertFalse(
-            shouldPrefetchMoviePostPlay(
+            shouldPrefetchPostPlayRecommendation(
                 positionMs = 1_800_000L,
                 durationMs = 7_200_000L
             )
@@ -34,19 +34,19 @@ class MoviePostPlayStateTest {
 
     @Test
     fun `countdown follows final playback seconds`() {
-        assertEquals(5, moviePostPlayCountdownSeconds(95_200L, 100_000L))
-        assertEquals(2, moviePostPlayCountdownSeconds(98_400L, 100_000L))
-        assertEquals(1, moviePostPlayCountdownSeconds(100_000L, 100_000L))
+        assertEquals(5, postPlayRecommendationCountdownSeconds(95_200L, 100_000L))
+        assertEquals(2, postPlayRecommendationCountdownSeconds(98_400L, 100_000L))
+        assertEquals(1, postPlayRecommendationCountdownSeconds(100_000L, 100_000L))
     }
 
     @Test
     fun `countdown stays hidden before final five seconds`() {
-        assertNull(moviePostPlayCountdownSeconds(94_900L, 100_000L))
+        assertNull(postPlayRecommendationCountdownSeconds(94_900L, 100_000L))
     }
 
     @Test
     fun `loaded recommendation holds natural completion until overlay evaluation`() {
-        val recommendation = MoviePostPlayRecommendation(
+        val recommendation = PostPlayRecommendation(
             id = "tmdb:1",
             contentType = "movie",
             title = "Example",
@@ -60,12 +60,12 @@ class MoviePostPlayStateTest {
             runtime = null
         )
 
-        assertTrue(MoviePostPlayUiState(recommendation = recommendation).blocksNaturalCompletion)
+        assertTrue(PostPlayRecommendationUiState(recommendation = recommendation).blocksNaturalCompletion)
     }
 
     @Test
     fun `resolved recommendation uses detail enrichment artwork and title`() {
-        val recommendation = resolveMoviePostPlayRecommendation(
+        val recommendation = resolvePostPlayRecommendation(
             candidate = preview(
                 background = "https://image/candidate-backdrop.jpg",
                 logo = null
@@ -87,6 +87,7 @@ class MoviePostPlayStateTest {
         )
 
         assertEquals("Localized title", recommendation.title)
+        assertEquals("Localized description", recommendation.description)
         assertEquals("https://image/detail-backdrop.jpg", recommendation.backdrop)
         assertEquals("https://image/title-logo.png", recommendation.logo)
         assertEquals("42", recommendation.tmdbId)
@@ -95,7 +96,7 @@ class MoviePostPlayStateTest {
 
     @Test
     fun `resolved recommendation respects disabled artwork enrichment`() {
-        val recommendation = resolveMoviePostPlayRecommendation(
+        val recommendation = resolvePostPlayRecommendation(
             candidate = preview(
                 background = "https://image/addon-backdrop.jpg",
                 logo = "https://image/addon-logo.png"
@@ -112,6 +113,68 @@ class MoviePostPlayStateTest {
 
         assertEquals("https://image/addon-backdrop.jpg", recommendation.backdrop)
         assertEquals("https://image/addon-logo.png", recommendation.logo)
+    }
+
+    @Test
+    fun `movies always use recommendation post play`() {
+        assertTrue(
+            shouldUsePostPlayRecommendation(
+                contentType = "movie",
+                isNextEpisodeMetadataResolved = false,
+                nextEpisodeHasAired = null
+            )
+        )
+    }
+
+    @Test
+    fun `series use recommendations after an unaired next episode is resolved`() {
+        assertTrue(
+            shouldUsePostPlayRecommendation(
+                contentType = "series",
+                isNextEpisodeMetadataResolved = true,
+                nextEpisodeHasAired = false
+            )
+        )
+    }
+
+    @Test
+    fun `ended series use recommendations after metadata resolves without a next episode`() {
+        assertTrue(
+            shouldUsePostPlayRecommendation(
+                contentType = "tv",
+                isNextEpisodeMetadataResolved = true,
+                nextEpisodeHasAired = null
+            )
+        )
+    }
+
+    @Test
+    fun `series keep the episode post play flow when the next episode has aired`() {
+        assertFalse(
+            shouldUsePostPlayRecommendation(
+                contentType = "series",
+                isNextEpisodeMetadataResolved = true,
+                nextEpisodeHasAired = true
+            )
+        )
+    }
+
+    @Test
+    fun `series wait for episode metadata before using recommendations`() {
+        assertFalse(
+            shouldUsePostPlayRecommendation(
+                contentType = "series",
+                isNextEpisodeMetadataResolved = false,
+                nextEpisodeHasAired = null
+            )
+        )
+    }
+
+    @Test
+    fun `series api types resolve to series metadata requests`() {
+        assertEquals(ContentType.SERIES, resolvePostPlayContentType("series"))
+        assertEquals(ContentType.SERIES, resolvePostPlayContentType("tv"))
+        assertEquals(ContentType.SERIES, resolvePostPlayContentType("show"))
     }
 
     private fun preview(background: String, logo: String?): MetaPreview {

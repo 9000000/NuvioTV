@@ -7,13 +7,13 @@ import com.nuvio.tv.domain.model.TmdbSettings
 import com.nuvio.tv.domain.model.countryToLanguageCode
 import com.nuvio.tv.domain.model.normalizeLanguageCode
 
-internal fun resolveMoviePostPlayRecommendation(
+internal fun resolvePostPlayRecommendation(
     candidate: MetaPreview,
     meta: Meta?,
     enrichment: TmdbEnrichment?,
     settings: TmdbSettings,
     tmdbId: String?
-): MoviePostPlayRecommendation {
+): PostPlayRecommendation {
     val baseTitle = meta?.name?.takeIf { it.isNotBlank() } ?: candidate.name
     val basePoster = meta?.rawPosterUrl
         ?: meta?.poster
@@ -34,7 +34,7 @@ internal fun resolveMoviePostPlayRecommendation(
     val language = if (useDetails) enrichment?.language ?: meta?.language ?: candidate.language
     else meta?.language ?: candidate.language
 
-    return MoviePostPlayRecommendation(
+    return PostPlayRecommendation(
         id = candidate.id,
         contentType = candidate.apiType,
         title = if (useBasicInfo) {
@@ -60,6 +60,7 @@ internal fun resolveMoviePostPlayRecommendation(
         } else {
             meta?.runtime ?: candidate.runtime
         },
+        sourceAddonBaseUrl = candidate.sourceAddonBaseUrl,
         tmdbId = tmdbId,
         tmdbRating = if (useBasicInfo) enrichment?.rating?.toFloat() else null,
         ageRating = if (useDetails) enrichment?.ageRating ?: meta?.ageRating ?: candidate.ageRating
