@@ -29,6 +29,11 @@ import com.nuvio.tv.domain.repository.WatchProgressRepository
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
+import com.nuvio.tv.data.local.TraktAuthDataStore
+import com.nuvio.tv.data.local.TraktSettingsDataStore
+import com.nuvio.tv.data.local.TrailerSettingsDataStore
+import com.nuvio.tv.data.repository.TraktRelatedService
+import com.nuvio.tv.data.trailer.TrailerService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +69,11 @@ class PlayerViewModel @Inject constructor(
     private val tmdbMetadataService: TmdbMetadataService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val trailerPlayerPool: com.nuvio.tv.core.player.TrailerPlayerPool,
+    private val trailerService: TrailerService,
+    private val trailerSettingsDataStore: TrailerSettingsDataStore,
+    private val traktRelatedService: TraktRelatedService,
+    private val traktAuthDataStore: TraktAuthDataStore,
+    private val traktSettingsDataStore: TraktSettingsDataStore,
     private val directDebridResolver: DirectDebridResolver,
     private val directDebridStreamPreparer: DirectDebridStreamPreparer,
     private val cloudLibraryRepository: CloudLibraryRepository,
@@ -121,11 +131,30 @@ class PlayerViewModel @Inject constructor(
         scope = viewModelScope
     )
 
+    private val moviePostPlayController = MoviePostPlayController(
+        playbackController = controller,
+        metaRepository = metaRepository,
+        tmdbService = tmdbService,
+        tmdbMetadataService = tmdbMetadataService,
+        tmdbSettingsDataStore = tmdbSettingsDataStore,
+        traktRelatedService = traktRelatedService,
+        traktAuthDataStore = traktAuthDataStore,
+        traktSettingsDataStore = traktSettingsDataStore,
+        layoutPreferenceDataStore = layoutPreferenceDataStore,
+        trailerService = trailerService,
+        trailerSettingsDataStore = trailerSettingsDataStore,
+        trailerPlayerPool = trailerPlayerPool,
+        scope = viewModelScope
+    )
+
     val uiState: StateFlow<PlayerUiState>
         get() = controller.uiState
 
     val playbackTimeline: StateFlow<PlaybackTimelineState>
         get() = controller.playbackTimeline
+
+    val moviePostPlayUiState: StateFlow<MoviePostPlayUiState>
+        get() = moviePostPlayController.uiState
 
     val exoPlayer: ExoPlayer?
         get() = controller.exoPlayer
@@ -135,7 +164,16 @@ class PlayerViewModel @Inject constructor(
     fun getCurrentHeaders(): Map<String, String> = controller.getCurrentHeaders()
 
     fun stopAndRelease() {
+        moviePostPlayController.stop()
         controller.stopAndRelease()
+    }
+
+    fun playPostPlayTrailer() {
+        moviePostPlayController.playTrailer()
+    }
+
+    fun onPostPlayTrailerEnded() {
+        moviePostPlayController.onTrailerEnded()
     }
 
     fun scheduleHideControls() {
@@ -183,6 +221,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        moviePostPlayController.stop()
         controller.onCleared()
         // Allow the trailer player to be re-created when returning to home screen.
         trailerPlayerPool.reclaim()

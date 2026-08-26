@@ -976,6 +976,39 @@ fun NuvioNavHost(
                         }
                     }
                 },
+                onPlayRecommendation = { recommendation ->
+                    val returnToHomeOnBack = backStackEntry.arguments
+                        ?.getString("returnToHomeOnBack")
+                        ?.toBooleanStrictOrNull() == true
+                    val route = Screen.Stream.createRoute(
+                        videoId = recommendation.id,
+                        contentType = recommendation.contentType,
+                        title = recommendation.title,
+                        poster = recommendation.poster,
+                        backdrop = recommendation.backdrop,
+                        logo = recommendation.logo,
+                        genres = recommendation.genres.takeIf { it.isNotEmpty() }?.joinToString(","),
+                        year = recommendation.releaseInfo,
+                        contentId = recommendation.id,
+                        contentName = recommendation.title,
+                        runtime = recommendation.runtime
+                            ?.takeWhile { it.isDigit() }
+                            ?.toIntOrNull(),
+                        returnToHomeOnBack = returnToHomeOnBack
+                    )
+                    navController.navigate(
+                        Screen.Detail.createRoute(
+                            itemId = recommendation.id,
+                            itemType = recommendation.contentType,
+                            returnToHomeOnBack = returnToHomeOnBack,
+                            heroBackdropUrl = recommendation.backdrop
+                        )
+                    ) {
+                        popUpTo(Screen.Stream.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                    navController.navigate(route)
+                },
                 onPlaybackErrorBack = {
                     val returnedToStream = popBackToStream()
                     if (!returnedToStream) {

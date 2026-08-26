@@ -26,8 +26,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -141,9 +143,11 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel(),
     onBackPress: (currentVideoId: String?, currentSeason: Int?, currentEpisode: Int?, autoPlayEnabled: Boolean, playbackCompleted: Boolean) -> Unit,
     onPlaybackErrorBack: () -> Unit = { onBackPress(null, null, null, false, false) },
-    onPlaybackEnded: ((nextVideoId: String?, nextSeason: Int?, nextEpisode: Int?, exitReason: PlayerExitReason?) -> Unit)? = null
+    onPlaybackEnded: ((nextVideoId: String?, nextSeason: Int?, nextEpisode: Int?, exitReason: PlayerExitReason?) -> Unit)? = null,
+    onPlayRecommendation: (MoviePostPlayRecommendation) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val moviePostPlayState by viewModel.moviePostPlayUiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -171,8 +175,9 @@ fun PlayerScreen(
         exitDispatched = true
         val timeline = viewModel.playbackTimeline.value
         viewModel.stopAndRelease()
-        val completed = timeline.duration > 0L &&
-            (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD
+        val completed = moviePostPlayState.isVisible || uiState.playbackEnded ||
+            (timeline.duration > 0L &&
+                (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD)
         onBackPress(uiState.currentVideoId, uiState.currentSeason, uiState.currentEpisode, uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL, completed)
     }
     val exitPlayerFromError: () -> Unit = exitPlayerFromError@{
@@ -187,6 +192,7 @@ fun PlayerScreen(
 
     val currentOnPlaybackEnded by rememberUpdatedState(onPlaybackEnded)
     val currentOnBackPress by rememberUpdatedState(onBackPress)
+    val currentOnPlayRecommendation by rememberUpdatedState(onPlayRecommendation)
     val nextEpisodeForEndPrompt = uiState.nextEpisode?.takeIf { it.hasAired }
     val shouldConfirmNextEpisodeOnEnd =
         uiState.playbackEnded &&
@@ -240,7 +246,9 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
-        if (shouldConfirmNextEpisodeOnEnd) {
+        if (moviePostPlayState.isVisible || moviePostPlayState.isLoadingRecommendation) {
+            exitPlayer()
+        } else if (shouldConfirmNextEpisodeOnEnd) {
             returnToDetailsFromEndPrompt()
         } else if (uiState.error != null) {
             exitPlayerFromError()
@@ -291,11 +299,18 @@ fun PlayerScreen(
         handleBackPress()
     }
 
-    LaunchedEffect(uiState.playbackEnded, uiState.error, uiState.pendingExitReason, shouldConfirmNextEpisodeOnEnd) {
+    LaunchedEffect(
+        uiState.playbackEnded,
+        uiState.error,
+        uiState.pendingExitReason,
+        shouldConfirmNextEpisodeOnEnd,
+        moviePostPlayState.blocksNaturalCompletion
+    ) {
         val explicitReason = uiState.pendingExitReason
         val shouldDispatchNatural = uiState.playbackEnded &&
             uiState.error == null &&
             uiState.postPlayMode?.blocksNaturalCompletion() != true &&
+            !moviePostPlayState.blocksNaturalCompletion &&
             !shouldConfirmNextEpisodeOnEnd &&
             explicitReason == null
         when {
@@ -417,8 +432,9 @@ fun PlayerScreen(
         uiState.showSubtitleOverlay,
         uiState.showSpeedDialog,
         shouldConfirmNextEpisodeOnEnd,
+        moviePostPlayState.isVisible,
     ) {
-        if (shouldConfirmNextEpisodeOnEnd) return@LaunchedEffect
+        if (shouldConfirmNextEpisodeOnEnd || moviePostPlayState.isVisible) return@LaunchedEffect
         if (uiState.showControls && !uiState.showEpisodesPanel && !uiState.showSourcesPanel &&
             !uiState.showAudioOverlay && !uiState.showSubtitleOverlay &&
             !uiState.showSubtitleStylePanel && !uiState.showSubtitleDelayOverlay &&
@@ -642,7 +658,8 @@ fun PlayerScreen(
                         uiState.showSubtitleDelayOverlay || uiState.showSubtitleTimingDialog ||
                         uiState.showMoreDialog ||
                         shouldConfirmNextEpisodeOnEnd ||
-                        uiState.postPlayMode is PostPlayMode.StillWatching
+                        uiState.postPlayMode is PostPlayMode.StillWatching ||
+                        moviePostPlayState.isVisible
                 if (panelOrDialogOpen) return@onKeyEvent false
 
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
@@ -788,35 +805,80 @@ fun PlayerScreen(
                 } else false
             }
     ) {
-        // Video Player
-        if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
-            MpvPlayerSurface(
-                viewModel = viewModel,
-                isPlaying = uiState.isPlaying,
-                isBuffering = uiState.isBuffering,
-                aspectMode = uiState.aspectMode,
-                subtitleStyle = uiState.subtitleStyle,
-                modifier = Modifier.fillMaxSize()
-            )
+        val moviePostPlayPlayerWidth by animateFloatAsState(
+            targetValue = if (moviePostPlayState.isVisible) 0.32f else 1f,
+            animationSpec = tween(durationMillis = 420),
+            label = "moviePostPlayPlayerWidth"
+        )
+        val moviePostPlayPlayerPadding by animateDpAsState(
+            targetValue = if (moviePostPlayState.isVisible) NuvioTheme.spacing.xxl else 0.dp,
+            animationSpec = tween(durationMillis = 420),
+            label = "moviePostPlayPlayerPadding"
+        )
+        val playerSurfaceModifier = if (moviePostPlayState.isVisible) {
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = moviePostPlayPlayerPadding, top = moviePostPlayPlayerPadding)
+                .fillMaxWidth(moviePostPlayPlayerWidth)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                    RoundedCornerShape(12.dp)
+                )
+                .background(Color.Black)
+                .zIndex(2.2f)
         } else {
-            viewModel.exoPlayer?.let { player ->
-                ExoPlayerSurface(
-                    player = player,
-                    controller = viewModel.controller,
+            Modifier.fillMaxSize()
+        }
+
+        if (!moviePostPlayState.isTrailerPlaying) {
+            if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
+                MpvPlayerSurface(
+                    viewModel = viewModel,
                     isPlaying = uiState.isPlaying,
                     isBuffering = uiState.isBuffering,
                     aspectMode = uiState.aspectMode,
-                    useLibass = uiState.useLibass,
-                    libassRenderType = uiState.libassRenderType,
                     subtitleStyle = uiState.subtitleStyle,
-                    onBindSubtitleView = viewModel::bindExoSubtitleView,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = playerSurfaceModifier
                 )
+            } else {
+                viewModel.exoPlayer?.let { player ->
+                    ExoPlayerSurface(
+                        player = player,
+                        controller = viewModel.controller,
+                        isPlaying = uiState.isPlaying,
+                        isBuffering = uiState.isBuffering,
+                        aspectMode = uiState.aspectMode,
+                        useLibass = uiState.useLibass,
+                        libassRenderType = uiState.libassRenderType,
+                        subtitleStyle = uiState.subtitleStyle,
+                        onBindSubtitleView = viewModel::bindExoSubtitleView,
+                        modifier = playerSurfaceModifier
+                    )
+                }
             }
         }
 
+        MoviePostPlayOverlay(
+            state = moviePostPlayState,
+            currentTitle = uiState.contentName ?: uiState.title,
+            onPlay = { recommendation ->
+                if (!exitDispatched) {
+                    exitDispatched = true
+                    viewModel.stopAndRelease()
+                    currentOnPlayRecommendation(recommendation)
+                }
+            },
+            onPlayTrailer = viewModel::playPostPlayTrailer,
+            onTrailerEnded = viewModel::onPostPlayTrailerEnded,
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(1f)
+        )
+
         LoadingOverlay(
-            visible = uiState.showLoadingOverlay && uiState.error == null,
+            visible = uiState.showLoadingOverlay && uiState.error == null && !moviePostPlayState.isVisible,
             backdropUrl = uiState.backdrop,
             logoUrl = uiState.logo,
             title = uiState.title,
@@ -830,7 +892,8 @@ fun PlayerScreen(
         if (uiState.playbackIssueReportsEnabled &&
             uiState.showLoadingOverlay &&
             uiState.error == null &&
-            uiState.loadingIssueReportVisible
+            uiState.loadingIssueReportVisible &&
+            !moviePostPlayState.isVisible
         ) {
             LoadingIssueReportAction(
                 elapsedMs = uiState.loadingIssueElapsedMs,
@@ -846,7 +909,8 @@ fun PlayerScreen(
         }
 
         PauseOverlay(
-            visible = uiState.showPauseOverlay && uiState.error == null && !uiState.showLoadingOverlay,
+            visible = uiState.showPauseOverlay && uiState.error == null &&
+                !uiState.showLoadingOverlay && !moviePostPlayState.isVisible,
             onClose = { viewModel.onEvent(PlayerEvent.OnDismissPauseOverlay) },
             title = uiState.title,
             logo = uiState.logo,
@@ -863,7 +927,8 @@ fun PlayerScreen(
         )
 
         StreamInfoOverlay(
-            visible = uiState.showStreamInfoOverlay && uiState.error == null && !uiState.showLoadingOverlay,
+            visible = uiState.showStreamInfoOverlay && uiState.error == null &&
+                !uiState.showLoadingOverlay && !moviePostPlayState.isVisible,
             onClose = dismissStreamInfoOverlay,
             data = uiState.streamInfoData,
             modifier = Modifier
@@ -873,7 +938,8 @@ fun PlayerScreen(
 
         // Torrent stats overlay (top-right corner)
         TorrentOverlay(
-            visible = uiState.isTorrentStream && uiState.showTorrentStats && !uiState.hideTorrentStats && uiState.error == null,
+            visible = uiState.isTorrentStream && uiState.showTorrentStats &&
+                !uiState.hideTorrentStats && uiState.error == null && !moviePostPlayState.isVisible,
             downloadSpeed = uiState.torrentDownloadSpeed,
             uploadSpeed = uiState.torrentUploadSpeed,
             peers = uiState.torrentPeers,
@@ -889,7 +955,7 @@ fun PlayerScreen(
         // isBuffering state changes only recompose this small subtree instead
         // of the entire PlayerScreen.
         PlayerBufferingIndicator(
-            isBuffering = uiState.isBuffering,
+            isBuffering = uiState.isBuffering && !moviePostPlayState.isVisible,
             showLoadingOverlay = uiState.showLoadingOverlay,
             isTorrentStream = uiState.isTorrentStream,
             torrentBufferingMessage = uiState.torrentBufferingMessage,
@@ -929,7 +995,11 @@ fun PlayerScreen(
             subtitleOverlayVisible = uiState.showSubtitleOverlay,
         )
         SkipIntroButton(
-            interval = if (uiState.showPauseOverlay || uiState.showLoadingOverlay) null else uiState.activeSkipInterval,
+            interval = if (uiState.showPauseOverlay || uiState.showLoadingOverlay || moviePostPlayState.isVisible) {
+                null
+            } else {
+                uiState.activeSkipInterval
+            },
             dismissed = uiState.skipIntervalDismissed,
             controlsVisible = uiState.showControls,
             // Autoplay next-episode card owns focus; subtitle menu must keep D-pad focus (#2874).
@@ -963,6 +1033,7 @@ fun PlayerScreen(
         PostPlayOverlay(
             mode = uiState.postPlayMode.takeIf {
                 uiState.error == null &&
+                    !moviePostPlayState.isVisible &&
                     !shouldConfirmNextEpisodeOnEnd &&
                     !uiState.showLoadingOverlay &&
                     !uiState.showPauseOverlay &&
@@ -1024,7 +1095,8 @@ fun PlayerScreen(
             !uiState.showSubtitleStylePanel &&
             !uiState.showSpeedDialog &&
             !uiState.showMoreDialog &&
-            !uiState.showDisplayModeInfo
+            !uiState.showDisplayModeInfo &&
+            !moviePostPlayState.isVisible
 
         AnimatedVisibility(
             visible = showClockOverlay,
@@ -1053,6 +1125,7 @@ fun PlayerScreen(
                 !uiState.showAudioOverlay &&
                 !uiState.showSubtitleOverlay &&
                 !uiState.showSpeedDialog &&
+                !moviePostPlayState.isVisible &&
                 uiState.postPlayMode !is PostPlayMode.StillWatching,
             enter = fadeIn(animationSpec = tween(200)),
             exit = fadeOut(animationSpec = tween(200))
