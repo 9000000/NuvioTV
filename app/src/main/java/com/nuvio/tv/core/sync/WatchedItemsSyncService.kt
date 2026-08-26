@@ -23,6 +23,7 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -56,13 +57,18 @@ class WatchedItemsSyncService @Inject constructor(
     private val pushMutex = Mutex()
 
     /**
-     * Timestamp of the last successful push to remote.
-     * Used to protect local items created after this point from being
-     * removed during pull (they haven't reached remote yet).
+     * Read time of the last full push, per profile. Used to protect local entries
+     * created after that point: they have not reached remote yet, so their absence
+     * from a pull response does not mean they were deleted on another device.
+     *
+     * Kept per profile because the payload each stamp describes belongs to one
+     * profile. A single shared value would let one profile's push vouch for
+     * another profile's entries, which is the same misread this whole guard exists
+     * to prevent.
      */
-    @Volatile
-    var lastSuccessfulPushMs: Long = 0L
-        private set
+    private val syncPoints = ConcurrentHashMap<Int, Long>()
+
+    private fun syncPointFor(profileId: Int): Long = syncPoints[profileId] ?: 0L
 
     /**
      * @param syncPointMs when the pushed items were read, not when the upload finished.
@@ -73,15 +79,15 @@ class WatchedItemsSyncService @Inject constructor(
     fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
         // Never move the point backwards. A push that read older data can still finish
         // last, and its stamp would otherwise retract a newer push's claim.
-        val advanced = maxOf(lastSuccessfulPushMs, syncPointMs)
-        lastSuccessfulPushMs = advanced
+        val advanced = maxOf(syncPointFor(profileId), syncPointMs)
+        syncPoints[profileId] = advanced
         CoroutineScope(Dispatchers.IO).launch {
             watchedItemsPreferences.setLastSuccessfulPushMs(advanced, profileId)
         }
     }
 
     suspend fun restoreLastPushTimestamp(profileId: Int = profileManager.activeProfileId.value) {
-        lastSuccessfulPushMs = watchedItemsPreferences.getLastSuccessfulPushMs(profileId)
+        syncPoints[profileId] = watchedItemsPreferences.getLastSuccessfulPushMs(profileId)
     }
 
     private suspend fun <T> withJwtRefreshRetry(block: suspend () -> T): T {
@@ -289,7 +295,7 @@ class WatchedItemsSyncService @Inject constructor(
             val localCount = watchedItemsPreferences.getAllItems(profileId).size
             Log.d(
                 TAG,
-                "syncDeltaFromRemote: start profile=$profileId localCount=$localCount deltaInitialized=$deltaInitialized cursor=$deltaCursor lastPush=$lastSuccessfulPushMs"
+                "syncDeltaFromRemote: start profile=$profileId localCount=$localCount deltaInitialized=$deltaInitialized cursor=$deltaCursor lastPush=${syncPointFor(profileId)}"
             )
             if (!shouldUseSupabaseWatchProgressSync()) {
                 Log.d(TAG, "Using tracking provider watch progress, skipping watched items delta pull")
@@ -383,7 +389,7 @@ class WatchedItemsSyncService @Inject constructor(
         Log.d(TAG, "pullSnapshotFromRemote: snapshot returned ${remoteWatchedItems.size} watched items for profile $profileId")
         val hadUnsyncedItems = watchedItemsPreferences.replaceWithRemoteItems(
             remoteWatchedItems,
-            lastSuccessfulPushMs = lastSuccessfulPushMs,
+            lastSuccessfulPushMs = syncPointFor(profileId),
             profileId = profileId
         )
         if (resetDeltaState) {
