@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -235,14 +236,16 @@ fun PostPlayRecommendationOverlay(
                 )
             }
 
-            TrailerPlayer(
-                trailerUrl = recommendation.trailerVideoUrl,
-                trailerAudioUrl = recommendation.trailerAudioUrl,
-                isPlaying = state.isTrailerPlaying,
-                onEnded = onTrailerEnded,
-                cropToFill = true,
-                modifier = Modifier.fillMaxSize()
-            )
+            key(recommendation.trailerVideoUrl ?: recommendation.id) {
+                TrailerPlayer(
+                    trailerUrl = recommendation.trailerVideoUrl,
+                    trailerAudioUrl = recommendation.trailerAudioUrl,
+                    isPlaying = state.isTrailerPlaying,
+                    onEnded = onTrailerEnded,
+                    cropToFill = true,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
             Box(
                 modifier = Modifier
