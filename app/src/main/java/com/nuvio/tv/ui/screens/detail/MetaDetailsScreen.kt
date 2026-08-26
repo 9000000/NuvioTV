@@ -109,6 +109,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.DetailImdbRatingsVisibility
+import com.nuvio.tv.domain.model.EpisodeOptionsOverlayStyle
 import com.nuvio.tv.domain.model.HomeImdbRatingsVisibility
 import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.LibrarySourceMode
@@ -487,6 +488,7 @@ fun MetaDetailsScreen(
                     watchedEpisodes = uiState.watchedEpisodes,
                     episodeWatchedPendingKeys = uiState.episodeWatchedPendingKeys,
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
+                    episodeOptionsOverlayStyle = uiState.episodeOptionsOverlayStyle,
                     showFullReleaseDate = uiState.showFullReleaseDate,
                     overallRatingsVisibility = uiState.overallRatingsVisibility,
                     detailImdbRatingsVisibility = uiState.detailImdbRatingsVisibility,
@@ -864,6 +866,7 @@ private fun MetaDetailsContent(
     watchedEpisodes: Set<Pair<Int, Int>>,
     episodeWatchedPendingKeys: Set<String>,
     blurUnwatchedEpisodes: Boolean,
+    episodeOptionsOverlayStyle: EpisodeOptionsOverlayStyle,
     showFullReleaseDate: Boolean,
     overallRatingsVisibility: HomeImdbRatingsVisibility,
     detailImdbRatingsVisibility: DetailImdbRatingsVisibility,
@@ -1753,6 +1756,7 @@ private fun MetaDetailsContent(
                             watchedEpisodes = watchedEpisodes,
                             episodeWatchedPendingKeys = episodeWatchedPendingKeys,
                             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                            episodeOptionsOverlayStyle = episodeOptionsOverlayStyle,
                             posterCardCornerRadiusDp = posterCardCornerRadiusDp,
                             onEpisodeClick = episodeClick,
                             onEpisodeManualPlayClick = episodeManualClick,
