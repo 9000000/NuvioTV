@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +53,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +75,7 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.nuvio.tv.R
+import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.components.MDBListRatingsRow
 import com.nuvio.tv.ui.components.PlayManualOverrideDialog
@@ -93,6 +97,7 @@ fun PostPlayRecommendationOverlay(
     playerWindowFocusRequester: FocusRequester,
     onPlay: (PostPlayRecommendation) -> Unit,
     onPlayManually: (PostPlayRecommendation) -> Unit,
+    onOpenDetails: (PostPlayRecommendation) -> Unit,
     onPlayTrailer: () -> Unit,
     onTrailerEnded: () -> Unit,
     modifier: Modifier = Modifier
@@ -104,7 +109,11 @@ fun PostPlayRecommendationOverlay(
     val imageLoader = context.imageLoader
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val playPainter = rememberPostPlayRecommendationIcon(R.raw.ic_player_play)
+    val detailsPainter = rememberVectorPainter(Icons.Default.Info)
     val trailerPainter = rememberPostPlayRecommendationIcon(R.raw.trailer_play_button)
+    val opensDetails = remember(recommendation.contentType) {
+        resolvePostPlayContentType(recommendation.contentType) == ContentType.SERIES
+    }
     var logoLoadFailed by remember(recommendation.logo) { mutableStateOf(false) }
     var showPlayOptionsDialog by remember(recommendation.id) { mutableStateOf(false) }
     var descriptionTruncated by remember(recommendation.id) { mutableStateOf(false) }
@@ -348,11 +357,17 @@ fun PostPlayRecommendationOverlay(
                     val buttonWidth = (maxWidth - buttonSpacing) / 2
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         PostPlayRecommendationButton(
-                            label = stringResource(R.string.player_post_play_play),
-                            painter = playPainter,
+                            label = stringResource(
+                                if (opensDetails) R.string.tmdb_details_title
+                                else R.string.player_post_play_play
+                            ),
+                            painter = if (opensDetails) detailsPainter else playPainter,
                             primary = true,
-                            onClick = { onPlay(recommendation) },
-                            onLongPress = if (showManualPlayOption) {
+                            onClick = {
+                                if (opensDetails) onOpenDetails(recommendation)
+                                else onPlay(recommendation)
+                            },
+                            onLongPress = if (!opensDetails && showManualPlayOption) {
                                 { showPlayOptionsDialog = true }
                             } else {
                                 null
@@ -400,7 +415,7 @@ fun PostPlayRecommendationOverlay(
         }
     }
 
-    if (state.isVisible && showManualPlayOption && showPlayOptionsDialog) {
+    if (state.isVisible && !opensDetails && showManualPlayOption && showPlayOptionsDialog) {
         PlayManualOverrideDialog(
             title = recommendation.title,
             subtitle = stringResource(R.string.hero_play),

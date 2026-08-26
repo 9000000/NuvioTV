@@ -144,7 +144,8 @@ fun PlayerScreen(
     onBackPress: (currentVideoId: String?, currentSeason: Int?, currentEpisode: Int?, autoPlayEnabled: Boolean, playbackCompleted: Boolean) -> Unit,
     onPlaybackErrorBack: () -> Unit = { onBackPress(null, null, null, false, false) },
     onPlaybackEnded: ((nextVideoId: String?, nextSeason: Int?, nextEpisode: Int?, exitReason: PlayerExitReason?) -> Unit)? = null,
-    onPlayRecommendation: (PostPlayRecommendation, manualSelection: Boolean) -> Unit = { _, _ -> }
+    onPlayRecommendation: (PostPlayRecommendation, manualSelection: Boolean) -> Unit = { _, _ -> },
+    onOpenRecommendationDetails: (PostPlayRecommendation) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val postPlayRecommendationState by viewModel.postPlayRecommendationUiState.collectAsState()
@@ -196,6 +197,7 @@ fun PlayerScreen(
     val currentOnPlaybackEnded by rememberUpdatedState(onPlaybackEnded)
     val currentOnBackPress by rememberUpdatedState(onBackPress)
     val currentOnPlayRecommendation by rememberUpdatedState(onPlayRecommendation)
+    val currentOnOpenRecommendationDetails by rememberUpdatedState(onOpenRecommendationDetails)
     val nextEpisodeForEndPrompt = uiState.nextEpisode?.takeIf { it.hasAired }
     val shouldConfirmNextEpisodeOnEnd =
         uiState.playbackEnded &&
@@ -914,6 +916,13 @@ fun PlayerScreen(
                         exitDispatched = true
                         viewModel.stopAndRelease()
                         currentOnPlayRecommendation(recommendation, true)
+                    }
+                },
+                onOpenDetails = { recommendation ->
+                    if (!exitDispatched) {
+                        exitDispatched = true
+                        viewModel.stopAndRelease()
+                        currentOnOpenRecommendationDetails(recommendation)
                     }
                 },
                 onPlayTrailer = viewModel::playPostPlayTrailer,
