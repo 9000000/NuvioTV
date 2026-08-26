@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.detail
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.theme.NuvioMotion
 
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
@@ -308,6 +309,21 @@ fun MetaDetailsScreen(
     val playOnLoadHandoffDispatched = rememberSaveable { mutableStateOf(false) }
     val playOnLoadReturnObserved = rememberSaveable { mutableStateOf(false) }
     val suppressInitialPlayOnLoadContent = playOnLoad && !playOnLoadReturnObserved.value
+    val playOnLoadReturnContentReady = !uiState.isLoading && uiState.meta != null
+    var playOnLoadReturnRevealRequested by remember(playOnLoad) { mutableStateOf(!playOnLoad) }
+    var playOnLoadReturnContentRevealed by remember(playOnLoad) { mutableStateOf(!playOnLoad) }
+
+    LaunchedEffect(playOnLoad, playOnLoadReturnObserved.value, playOnLoadReturnContentReady) {
+        if (!playOnLoad || (playOnLoadReturnObserved.value && playOnLoadReturnContentReady)) {
+            playOnLoadReturnRevealRequested = true
+        }
+    }
+    val playOnLoadReturnContentAlpha by animateFloatAsState(
+        targetValue = if (playOnLoadReturnRevealRequested) 1f else 0f,
+        animationSpec = NuvioMotion.mediumTween(),
+        label = "playOnLoadReturnContentAlpha",
+        finishedListener = { playOnLoadReturnContentRevealed = it == 1f }
+    )
 
     BackHandler {
         if (selectedComment != null) {
@@ -459,7 +475,7 @@ fun MetaDetailsScreen(
     ) {
         when {
             uiState.isLoading -> {
-                if (suppressInitialPlayOnLoadContent) {
+                if (playOnLoad && !playOnLoadReturnContentRevealed) {
                     PlaybackHandoffBackdrop(backdropUrl = heroBackdropUrl)
                 } else {
                     if (!heroBackdropUrl.isNullOrBlank()) {
@@ -619,7 +635,13 @@ fun MetaDetailsScreen(
                     PlaybackHandoffBackdrop(backdropUrl = heroBackdropUrl ?: meta.backdropUrl)
                     return@Box
                 }
+                if (playOnLoad && !playOnLoadReturnContentRevealed) {
+                    PlaybackHandoffBackdrop(backdropUrl = heroBackdropUrl ?: meta.backdropUrl)
+                }
                 MetaDetailsContent(
+                    modifier = Modifier.graphicsLayer {
+                        alpha = playOnLoadReturnContentAlpha
+                    },
                     heroBackdropUrl = heroBackdropUrl,
                     meta = meta,
                     detailReturnEpisodeFocusRequest = DetailReturnEpisodeFocusRequest(
@@ -933,6 +955,7 @@ fun MetaDetailsScreen(
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun MetaDetailsContent(
+    modifier: Modifier = Modifier,
     heroBackdropUrl: String? = null,
     meta: Meta,
     detailReturnEpisodeFocusRequest: DetailReturnEpisodeFocusRequest? = null,
@@ -1726,7 +1749,7 @@ private fun MetaDetailsContent(
 
     // Always-composed bottom gradient alpha (avoids add/remove during scroll)
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
         // Sticky background — backdrop or trailer
         BackdropLayer(
             backdropRequest = backdropRequest,
