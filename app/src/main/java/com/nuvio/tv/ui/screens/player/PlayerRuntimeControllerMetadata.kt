@@ -91,9 +91,8 @@ internal fun PlayerRuntimeController.updateEpisodeDescription() {
         video.season == currentSeason && video.episode == currentEpisode
     }?.overview
 
-    if (!overview.isNullOrBlank()) {
-        _uiState.update { it.copy(description = overview) }
-    }
+    // Always update description when switching episodes - clear stale description
+    _uiState.update { it.copy(description = overview) }
 
     // Push episode metadata to the MediaSession so Google Home shows the new episode.
     updateMediaSessionMetadata()
