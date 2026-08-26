@@ -2965,13 +2965,13 @@
     <string name="about_update_banner_subtitle">Zobraziť banner, keď je k dispozícii nová verzia</string>
     <string name="support_nuvio_name">Podporiť Nuvio</string>
     <string name="supporter_membership_title">Členstvo podporovateľa Nuvio</string>
-    <string name="supporter_membership_description">Podpora aplikácie Nuvio pomáha pokrývať náklady na infraštruktúru a nepretržitý vývoj, pričom základné funkcue ostávajú pre všetkých zadarmo.</string>
+    <string name="supporter_membership_description">Podpora aplikácie Nuvio pomáha pokrývať náklady na infraštruktúru a nepretržitý vývoj, pričom základné funkcie ostávajú pre všetkých zadarmo.</string>
     <string name="supporter_membership_view">Zobraziť členstvo</string>
     <string name="supporter_membership_manage">Spravovať členstvo</string>
     <string name="supporter_membership_refresh">Obnoviť</string>
     <string name="supporter_membership_refreshing">Obnovuje sa</string>
     <string name="supporter_membership_loading">Načítava sa členstvo…</string>
-    <string name="supporter_membership_unable_load">Napadarilo sa načítať stav členstva. Skúste to znova.</string>
+    <string name="supporter_membership_unable_load">Nepodarilo sa načítať stav členstva. Skúste to znova.</string>
     <string name="supporter_membership_you_are">Ste</string>
     <string name="supporter_membership_thank_you">Ďakujeme.</string>
     <string name="supporter_membership_supporter_since">Podporovateľom od %1$s.</string>
@@ -3065,7 +3065,7 @@
     <string name="custom_server_check">Skontrolovať server</string>
     <string name="custom_server_checking">Kontroluje sa\u2026</string>
     <string name="custom_server_review_title">Skontrolovať vlastný server</string>
-    <string name="custom_server_review_description">Riešiteľský dokument je platný. Pripojenie vás odhlási do aktuálneho servera a reštartuje aplikáciu. Potvrďte, že ide o server, ktorý vlastníte alebo mu dôverujete.</string>
+    <string name="custom_server_review_description">Riešiteľský dokument je platný. Pripojenie vás odhlási od aktuálneho servera a reštartuje aplikáciu. Potvrďte, že ide o server, ktorý vlastníte alebo mu dôverujete.</string>
     <string name="custom_server_verified_label">Zistený backend</string>
     <string name="custom_server_key_label">Konfigurácia klienta</string>
     <string name="custom_server_key_discovered">Verejný kľúč bol zistený automaticky</string>
