@@ -97,6 +97,7 @@ import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @Composable
 fun PostPlayRecommendationOverlay(
@@ -167,7 +168,7 @@ fun PostPlayRecommendationOverlay(
         showPlayOptionsDialog
     ) {
         if (!state.isVisible || showPlayOptionsDialog) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
+        delay(POST_PLAY_RECOMMENDATION_TRANSITION_MS.toLong())
         runCatching { playFocusRequester.requestFocus() }
     }
 
