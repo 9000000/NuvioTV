@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
+import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.player.TrailerPlayerPool
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
@@ -96,7 +97,8 @@ internal class PostPlayRecommendationController(
     private val recommendationDetailJobs = mutableMapOf<Int, Job>()
     private val recommendationCache = mutableMapOf<Int, PostPlayRecommendation>()
     private var recommendationLoadAttempted = false
-    private var autoPlayTrailerEnabled = true
+    private val postPlayTrailerPlaybackEnabled = AppFeaturePolicy.inAppTrailerPlaybackEnabled
+    private var autoPlayTrailerEnabled = postPlayTrailerPlaybackEnabled
     private var lastSnapshot: PlaybackSnapshot? = null
     private var lastPlaybackIdentity: PlaybackIdentity? = null
     private var dismissedForCurrentPlayback = false
@@ -206,7 +208,7 @@ internal class PostPlayRecommendationController(
         dismissAnimationJob?.cancel()
         dismissAnimationJob = null
         recommendationLoadAttempted = false
-        autoPlayTrailerEnabled = true
+        autoPlayTrailerEnabled = postPlayTrailerPlaybackEnabled
         dismissedForCurrentPlayback = false
         if (_uiState.value.isTrailerPlaying) {
             trailerPlayerPool.stop()
@@ -336,7 +338,7 @@ internal class PostPlayRecommendationController(
             recommendationCandidates = candidates
             val preferences = loadRatingPreferences()
             ratingPreferences = preferences
-            autoPlayTrailerEnabled = runCatching {
+            autoPlayTrailerEnabled = postPlayTrailerPlaybackEnabled && runCatching {
                 trailerSettingsDataStore.settings.first().enabled
             }.getOrDefault(true)
             candidates.indices.forEach(::startCandidateResolution)
@@ -354,7 +356,7 @@ internal class PostPlayRecommendationController(
                     recommendationIndex = 0,
                     recommendationCount = candidates.size,
                     isLoadingRecommendation = false,
-                    isLoadingTrailer = true
+                    isLoadingTrailer = postPlayTrailerPlaybackEnabled
                 )
             }
             lastSnapshot?.let(::evaluate)
@@ -441,7 +443,8 @@ internal class PostPlayRecommendationController(
                         recommendation = recommendation,
                         recommendationIndex = targetIndex,
                         isChangingRecommendation = false,
-                        isLoadingTrailer = recommendationDetailJobs[targetIndex]?.isCompleted != true
+                        isLoadingTrailer = postPlayTrailerPlaybackEnabled &&
+                            recommendationDetailJobs[targetIndex]?.isCompleted != true
                     )
                 }
                 loadRecommendationDetails(targetIndex, resolvedCandidate, preferences)
@@ -460,7 +463,11 @@ internal class PostPlayRecommendationController(
         val candidate = recommendationCandidates[index]
         recommendationDetailJobs[index] = scope.launch {
             _uiState.update { state ->
-                if (state.recommendationIndex == index) state.copy(isLoadingTrailer = true) else state
+                if (state.recommendationIndex == index) {
+                    state.copy(isLoadingTrailer = postPlayTrailerPlaybackEnabled)
+                } else {
+                    state
+                }
             }
             val ratingsJob = launch {
                 val ratings = loadRatings(
@@ -474,6 +481,7 @@ internal class PostPlayRecommendationController(
             }
 
             val trailerJob = launch {
+                if (!postPlayTrailerPlaybackEnabled) return@launch
                 val recommendation = recommendationCache[index] ?: return@launch
                 val trailerSource = try {
                     withTimeoutOrNull(15_000L) {
@@ -699,7 +707,8 @@ internal class PostPlayRecommendationController(
 
     private fun startPostEndCountdown() {
         val state = _uiState.value
-        if (postEndCountdownJob?.isActive == true ||
+        if (!postPlayTrailerPlaybackEnabled ||
+            postEndCountdownJob?.isActive == true ||
             state.isTrailerPlaying ||
             state.hasAutoPlayedTrailer ||
             state.recommendation?.hasTrailer != true
@@ -717,7 +726,12 @@ internal class PostPlayRecommendationController(
 
     private fun startTrailer() {
         val state = _uiState.value
-        if (state.isTrailerPlaying || state.recommendation?.hasTrailer != true) return
+        if (!postPlayTrailerPlaybackEnabled ||
+            state.isTrailerPlaying ||
+            state.recommendation?.hasTrailer != true
+        ) {
+            return
+        }
         postEndCountdownJob?.cancel()
         postEndCountdownJob = null
         playbackController.releasePlayer()

@@ -83,6 +83,7 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.nuvio.tv.R
+import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.components.MDBListRatingsRow
@@ -283,7 +284,11 @@ fun PostPlayRecommendationOverlay(
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val buttonSpacing = NuvioTheme.spacing.md
                     val navigationButtonSize = NuvioTheme.spacing.xxxl
-                    val showTrailerButton = recommendation.hasTrailer && !state.isTrailerPlaying
+                    val showTrailerButton = shouldShowPostPlayTrailerAction(
+                        recommendation = recommendation,
+                        isTrailerPlaying = state.isTrailerPlaying,
+                        inAppTrailerPlaybackEnabled = AppFeaturePolicy.inAppTrailerPlaybackEnabled
+                    )
                     val showNavigationButtons = state.recommendationCount > 1
                     val actionButtonCount = if (showTrailerButton) 2 else 1
                     val navigationButtonCount = if (showNavigationButtons) 2 else 0

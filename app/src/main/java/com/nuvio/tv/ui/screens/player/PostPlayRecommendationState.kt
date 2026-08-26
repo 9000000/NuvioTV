@@ -111,3 +111,9 @@ internal fun resolvePostPlayContentType(
         }
     }
 }
+
+internal fun shouldShowPostPlayTrailerAction(
+    recommendation: PostPlayRecommendation,
+    isTrailerPlaying: Boolean,
+    inAppTrailerPlaybackEnabled: Boolean
+): Boolean = inAppTrailerPlaybackEnabled && recommendation.hasTrailer && !isTrailerPlaying

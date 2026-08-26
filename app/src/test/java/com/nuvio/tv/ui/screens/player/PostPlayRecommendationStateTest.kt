@@ -84,6 +84,44 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
+    fun `trailer action requires in app trailer playback`() {
+        val recommendation = recommendation(trailerVideoUrl = "https://video/trailer.m3u8")
+
+        assertTrue(
+            shouldShowPostPlayTrailerAction(
+                recommendation = recommendation,
+                isTrailerPlaying = false,
+                inAppTrailerPlaybackEnabled = true
+            )
+        )
+        assertFalse(
+            shouldShowPostPlayTrailerAction(
+                recommendation = recommendation,
+                isTrailerPlaying = false,
+                inAppTrailerPlaybackEnabled = false
+            )
+        )
+    }
+
+    @Test
+    fun `trailer action stays hidden without an idle trailer`() {
+        assertFalse(
+            shouldShowPostPlayTrailerAction(
+                recommendation = recommendation(),
+                isTrailerPlaying = false,
+                inAppTrailerPlaybackEnabled = true
+            )
+        )
+        assertFalse(
+            shouldShowPostPlayTrailerAction(
+                recommendation = recommendation(trailerVideoUrl = "https://video/trailer.m3u8"),
+                isTrailerPlaying = true,
+                inAppTrailerPlaybackEnabled = true
+            )
+        )
+    }
+
+    @Test
     fun `resolved recommendation uses detail enrichment artwork and title`() {
         val recommendation = resolvePostPlayRecommendation(
             candidate = preview(
@@ -195,6 +233,23 @@ class PostPlayRecommendationStateTest {
         assertEquals(ContentType.SERIES, resolvePostPlayContentType("series"))
         assertEquals(ContentType.SERIES, resolvePostPlayContentType("tv"))
         assertEquals(ContentType.SERIES, resolvePostPlayContentType("show"))
+    }
+
+    private fun recommendation(trailerVideoUrl: String? = null): PostPlayRecommendation {
+        return PostPlayRecommendation(
+            id = "tmdb:1",
+            contentType = "movie",
+            title = "Example",
+            poster = null,
+            backdrop = null,
+            logo = null,
+            description = null,
+            releaseInfo = null,
+            rating = null,
+            genres = emptyList(),
+            runtime = null,
+            trailerVideoUrl = trailerVideoUrl
+        )
     }
 
     private fun preview(background: String, logo: String?): MetaPreview {
