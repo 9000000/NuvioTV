@@ -51,6 +51,10 @@ class WatchedItemsSyncService @Inject constructor(
 ) {
     private val deltaSyncMutex = Mutex()
 
+    /** Serializes full pushes. Two overlapping ones would each claim a sync point for a
+     *  payload the other did not contain. */
+    private val pushMutex = Mutex()
+
     /**
      * Timestamp of the last successful push to remote.
      * Used to protect local items created after this point from being
@@ -60,11 +64,19 @@ class WatchedItemsSyncService @Inject constructor(
     var lastSuccessfulPushMs: Long = 0L
         private set
 
-    fun markPushSucceeded(profileId: Int = profileManager.activeProfileId.value) {
-        val now = System.currentTimeMillis()
-        lastSuccessfulPushMs = now
+    /**
+     * @param syncPointMs when the pushed items were read, not when the upload finished.
+     * Anything saved while the upload was in flight is missing from that payload, so
+     * stamping the finish time would mark it as already synced and the next pull would
+     * delete it for never showing up in the remote response.
+     */
+    fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
+        // Never move the point backwards. A push that read older data can still finish
+        // last, and its stamp would otherwise retract a newer push's claim.
+        val advanced = maxOf(lastSuccessfulPushMs, syncPointMs)
+        lastSuccessfulPushMs = advanced
         CoroutineScope(Dispatchers.IO).launch {
-            watchedItemsPreferences.setLastSuccessfulPushMs(now, profileId)
+            watchedItemsPreferences.setLastSuccessfulPushMs(advanced, profileId)
         }
     }
 
@@ -118,20 +130,30 @@ class WatchedItemsSyncService @Inject constructor(
     }
 
     suspend fun pushToRemote(profileId: Int = profileManager.activeProfileId.value): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val items = watchedItemsPreferences.getAllItems()
-            Log.d(TAG, "pushToRemote: ${items.size} watched items to push")
-            pushItemsToRemote(items, updateLastSuccessfulPush = true, profileId = profileId)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to push watched items to remote", e)
-            Result.failure(e)
+        pushMutex.withLock {
+            try {
+                val syncPointMs = System.currentTimeMillis()
+                // Read the same profile the sync point is stamped against. Falling back to
+                // the active profile here would stamp one profile for another's payload.
+                val items = watchedItemsPreferences.getAllItems(profileId)
+                Log.d(TAG, "pushToRemote: ${items.size} watched items to push")
+                pushItemsToRemote(items = items, profileId = profileId, syncPointMs = syncPointMs)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to push watched items to remote", e)
+                Result.failure(e)
+            }
         }
     }
 
+    /**
+     * @param syncPointMs moment [items] were read, when they are the whole local set.
+     * Passing it moves the sync point; leaving it null does not, which is what a partial
+     * batch has to do since uploading some items says nothing about the rest.
+     */
     suspend fun pushItemsToRemote(
         items: Collection<WatchedItem>,
-        updateLastSuccessfulPush: Boolean = false,
-        profileId: Int = profileManager.activeProfileId.value
+        profileId: Int = profileManager.activeProfileId.value,
+        syncPointMs: Long? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             if (items.isEmpty()) return@withContext Result.success(Unit)
@@ -159,8 +181,8 @@ class WatchedItemsSyncService @Inject constructor(
             }
 
             Log.d(TAG, "Pushed ${items.size} watched items to remote for profile $profileId")
-            if (updateLastSuccessfulPush) {
-                markPushSucceeded(profileId)
+            if (syncPointMs != null) {
+                markPushSucceeded(profileId, syncPointMs)
             }
             Result.success(Unit)
         } catch (e: Exception) {
@@ -264,7 +286,7 @@ class WatchedItemsSyncService @Inject constructor(
         return try {
             val deltaInitialized = watchedItemsPreferences.isDeltaInitialized(profileId)
             val deltaCursor = watchedItemsPreferences.getDeltaCursor(profileId)
-            val localCount = watchedItemsPreferences.getAllItems().size
+            val localCount = watchedItemsPreferences.getAllItems(profileId).size
             Log.d(
                 TAG,
                 "syncDeltaFromRemote: start profile=$profileId localCount=$localCount deltaInitialized=$deltaInitialized cursor=$deltaCursor lastPush=$lastSuccessfulPushMs"
@@ -337,7 +359,7 @@ class WatchedItemsSyncService @Inject constructor(
                 page++
             }
 
-            val finalLocalCount = watchedItemsPreferences.getAllItems().size
+            val finalLocalCount = watchedItemsPreferences.getAllItems(profileId).size
             Log.d(TAG, "syncDeltaFromRemote: finished profile=$profileId appliedUpserts=$totalUpserts appliedDeletes=$totalDeletes cursor=$cursor finalLocalCount=$finalLocalCount")
             Result.success(
                 WatchedItemsRemoteSyncResult(
@@ -367,7 +389,7 @@ class WatchedItemsSyncService @Inject constructor(
         if (resetDeltaState) {
             watchedItemsPreferences.setDeltaState(0L, initialized = false, profileId = profileId)
         }
-        val finalLocalCount = watchedItemsPreferences.getAllItems().size
+        val finalLocalCount = watchedItemsPreferences.getAllItems(profileId).size
         Log.d(TAG, "pullSnapshotFromRemote: applied ${remoteWatchedItems.size} snapshot items for profile $profileId finalLocalCount=$finalLocalCount preservedLocal=$hadUnsyncedItems resetDeltaState=$resetDeltaState")
         return WatchedItemsRemoteSyncResult(
             upsertedItems = remoteWatchedItems.size,

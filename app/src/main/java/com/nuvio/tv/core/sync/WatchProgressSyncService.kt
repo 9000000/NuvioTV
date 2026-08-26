@@ -52,6 +52,10 @@ class WatchProgressSyncService @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val deltaSyncMutex = Mutex()
 
+    /** Serializes full pushes. Two overlapping ones would each claim a sync point for a
+     *  payload the other did not contain. */
+    private val pushMutex = Mutex()
+
     /**
      * Timestamp (epoch ms) of the last successful push to remote.
      * Used by [WatchProgressPreferences.mergeRemoteEntries] to protect local entries
@@ -63,12 +67,21 @@ class WatchProgressSyncService @Inject constructor(
     var lastSuccessfulPushMs: Long = 0L
         private set
 
-    /** Called after a successful push to record the sync point. */
-    fun markPushSucceeded(profileId: Int = profileManager.activeProfileId.value) {
-        val now = System.currentTimeMillis()
-        lastSuccessfulPushMs = now
+    /**
+     * Records the sync point after a successful push.
+     *
+     * @param syncPointMs when the pushed entries were read, not when the upload finished.
+     * Anything saved while the upload was in flight is missing from that payload, so
+     * stamping the finish time would mark it as already synced and the next pull would
+     * delete it for never showing up in the remote response.
+     */
+    fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
+        // Never move the point backwards. A push that read older data can still finish
+        // last, and its stamp would otherwise retract a newer push's claim.
+        val advanced = maxOf(lastSuccessfulPushMs, syncPointMs)
+        lastSuccessfulPushMs = advanced
         scope.launch {
-            watchProgressPreferences.setLastSuccessfulPushMs(now, profileId)
+            watchProgressPreferences.setLastSuccessfulPushMs(advanced, profileId)
         }
     }
 
@@ -163,45 +176,48 @@ class WatchProgressSyncService @Inject constructor(
     suspend fun pushToRemote(
         profileId: Int = profileManager.activeProfileId.value
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val rawEntries = watchProgressPreferences.getAllRawEntries(profileId)
-            val entries = canonicalizeForRemote(rawEntries).filterValues { progress ->
-                !(progress.position <= 1L && progress.duration <= 1L && progress.duration > 0L)
-            }
-            Log.d(TAG, "pushToRemote: ${rawEntries.size} local entries, ${entries.size} canonical entries to push for profile $profileId")
-            entries.forEach { (key, progress) ->
-                Log.d(TAG, "  push entry: key=$key contentId=${progress.contentId} type=${progress.contentType} pos=${progress.position} dur=${progress.duration} lastWatched=${progress.lastWatched}")
-            }
+        pushMutex.withLock {
+            try {
+                val syncPointMs = System.currentTimeMillis()
+                val rawEntries = watchProgressPreferences.getAllRawEntries(profileId)
+                val entries = canonicalizeForRemote(rawEntries).filterValues { progress ->
+                    !(progress.position <= 1L && progress.duration <= 1L && progress.duration > 0L)
+                }
+                Log.d(TAG, "pushToRemote: ${rawEntries.size} local entries, ${entries.size} canonical entries to push for profile $profileId")
+                entries.forEach { (key, progress) ->
+                    Log.d(TAG, "  push entry: key=$key contentId=${progress.contentId} type=${progress.contentType} pos=${progress.position} dur=${progress.duration} lastWatched=${progress.lastWatched}")
+                }
 
-            val params = buildJsonObject {
-                put("p_entries", buildJsonArray {
-                    entries.forEach { (key, progress) ->
-                        addJsonObject {
-                            put("content_id", progress.contentId)
-                            put("content_type", progress.contentType)
-                            put("video_id", progress.videoId)
-                            progress.season?.let { put("season", it) }
-                            progress.episode?.let { put("episode", it) }
-                            put("position", progress.position)
-                            put("duration", progress.duration)
-                            put("last_watched", progress.lastWatched)
-                            put("progress_key", key)
+                val params = buildJsonObject {
+                    put("p_entries", buildJsonArray {
+                        entries.forEach { (key, progress) ->
+                            addJsonObject {
+                                put("content_id", progress.contentId)
+                                put("content_type", progress.contentType)
+                                put("video_id", progress.videoId)
+                                progress.season?.let { put("season", it) }
+                                progress.episode?.let { put("episode", it) }
+                                put("position", progress.position)
+                                put("duration", progress.duration)
+                                put("last_watched", progress.lastWatched)
+                                put("progress_key", key)
+                            }
                         }
-                    }
-                })
-                put("p_profile_id", profileId)
-                putSyncOriginClientId(syncClientIdentity)
-            }
-            withJwtRefreshRetry {
-                postgrest.rpc("sync_push_watch_progress", params)
-            }
+                    })
+                    put("p_profile_id", profileId)
+                    putSyncOriginClientId(syncClientIdentity)
+                }
+                withJwtRefreshRetry {
+                    postgrest.rpc("sync_push_watch_progress", params)
+                }
 
-            Log.d(TAG, "Pushed ${entries.size} watch progress entries to remote for profile $profileId")
-            markPushSucceeded(profileId)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to push watch progress to remote", e)
-            Result.failure(e)
+                Log.d(TAG, "Pushed ${entries.size} watch progress entries to remote for profile $profileId")
+                markPushSucceeded(profileId, syncPointMs)
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to push watch progress to remote", e)
+                Result.failure(e)
+            }
         }
     }
 
@@ -240,7 +256,10 @@ class WatchProgressSyncService @Inject constructor(
             }
 
             Log.d(TAG, "Pushed single watch progress entry to remote for profile $profileId (key=$key)")
-            markPushSucceeded(profileId)
+            // Deliberately does not move the sync point. One entry reaching remote says
+            // nothing about the rest, and advancing it here would mark every other local
+            // entry as synced, so the next pull would drop the ones that never made it.
+            // Only the full push in pushToRemote may move it.
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to push single watch progress to remote", e)
