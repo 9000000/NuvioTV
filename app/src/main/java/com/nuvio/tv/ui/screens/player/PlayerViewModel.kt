@@ -11,15 +11,18 @@ import com.nuvio.tv.core.cloud.CloudLibraryPlaybackSessionStore
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackProgressStore
 import com.nuvio.tv.core.cloud.CloudLibraryRepository
 import com.nuvio.tv.core.plugin.PluginManager
+import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.tracking.TrackingScrobbleCoordinator
 import com.nuvio.tv.core.torrent.TorrentService
 import com.nuvio.tv.core.torrent.TorrentSettings
 import com.nuvio.tv.data.local.AudioDelayRouteDataStore
 import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.data.local.DeviceLocalPlayerPreferences
+import com.nuvio.tv.data.local.MDBListSettingsDataStore
 import com.nuvio.tv.data.local.StreamLinkCacheDataStore
 import com.nuvio.tv.data.local.StreamBadgeSettingsDataStore
 import com.nuvio.tv.data.repository.ParentalGuideRepository
+import com.nuvio.tv.data.repository.MDBListRepository
 import com.nuvio.tv.data.repository.SkipIntroRepository
 import com.nuvio.tv.data.repository.TraktEpisodeMappingService
 import com.nuvio.tv.domain.repository.AddonRepository
@@ -37,6 +40,8 @@ import com.nuvio.tv.data.trailer.TrailerService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -68,6 +73,8 @@ class PlayerViewModel @Inject constructor(
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
+    private val mdbListRepository: MDBListRepository,
+    private val mdbListSettingsDataStore: MDBListSettingsDataStore,
     private val trailerPlayerPool: com.nuvio.tv.core.player.TrailerPlayerPool,
     private val trailerService: TrailerService,
     private val trailerSettingsDataStore: TrailerSettingsDataStore,
@@ -137,6 +144,8 @@ class PlayerViewModel @Inject constructor(
         tmdbService = tmdbService,
         tmdbMetadataService = tmdbMetadataService,
         tmdbSettingsDataStore = tmdbSettingsDataStore,
+        mdbListRepository = mdbListRepository,
+        mdbListSettingsDataStore = mdbListSettingsDataStore,
         traktRelatedService = traktRelatedService,
         traktAuthDataStore = traktAuthDataStore,
         traktSettingsDataStore = traktSettingsDataStore,
@@ -156,6 +165,10 @@ class PlayerViewModel @Inject constructor(
     val moviePostPlayUiState: StateFlow<MoviePostPlayUiState>
         get() = moviePostPlayController.uiState
 
+    val effectiveAutoplayEnabled = playerSettingsDataStore.playerSettings
+        .map(StreamAutoPlayPolicy::isEffectivelyEnabled)
+        .distinctUntilChanged()
+
     val exoPlayer: ExoPlayer?
         get() = controller.exoPlayer
 
@@ -174,6 +187,10 @@ class PlayerViewModel @Inject constructor(
 
     fun onPostPlayTrailerEnded() {
         moviePostPlayController.onTrailerEnded()
+    }
+
+    fun dismissMoviePostPlay() {
+        moviePostPlayController.dismiss()
     }
 
     fun scheduleHideControls() {

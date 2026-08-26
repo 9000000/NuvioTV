@@ -1,17 +1,29 @@
-@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
+@file:OptIn(
+    androidx.tv.material3.ExperimentalTvMaterial3Api::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class
+)
 
 package com.nuvio.tv.ui.screens.player
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.annotation.RawRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,6 +52,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -59,22 +72,30 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.nuvio.tv.R
+import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
+import com.nuvio.tv.ui.components.MDBListRatingsRow
+import com.nuvio.tv.ui.components.PlayManualOverrideDialog
 import com.nuvio.tv.ui.components.TrailerPlayer
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.localizedGenreLabel
+import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
+import java.util.Locale
 
 @Composable
 fun MoviePostPlayOverlay(
     state: MoviePostPlayUiState,
     currentTitle: String,
+    showManualPlayOption: Boolean,
+    playFocusRequester: FocusRequester,
+    playerWindowFocusRequester: FocusRequester,
     onPlay: (MoviePostPlayRecommendation) -> Unit,
+    onPlayManually: (MoviePostPlayRecommendation) -> Unit,
     onPlayTrailer: () -> Unit,
     onTrailerEnded: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val recommendation = state.recommendation ?: return
-    val playFocusRequester = remember(recommendation.id) { FocusRequester() }
     val trailerFocusRequester = remember(recommendation.id) { FocusRequester() }
     val context = LocalContext.current
     val imageLoader = context.imageLoader
@@ -82,7 +103,28 @@ fun MoviePostPlayOverlay(
     val playPainter = rememberMoviePostPlayIcon(R.raw.ic_player_play)
     val trailerPainter = rememberMoviePostPlayIcon(R.raw.trailer_play_button)
     var logoLoadFailed by remember(recommendation.logo) { mutableStateOf(false) }
+    var showPlayOptionsDialog by remember(recommendation.id) { mutableStateOf(false) }
     val showLogo = !recommendation.logo.isNullOrBlank() && !logoLoadFailed
+    val metadata = recommendation.metadataLine(context)
+    val imdbRating = recommendation.rating
+        ?.takeIf { recommendation.showStandardRatings && it > 0f }
+    val tmdbRating = recommendation.tmdbRating
+        ?.takeIf { recommendation.showStandardRatings && it > 0f }
+    val logoHeight by animateDpAsState(
+        targetValue = if (state.isTrailerPlaying) 60.dp else 92.dp,
+        animationSpec = tween(600),
+        label = "moviePostPlayLogoHeight"
+    )
+    val logoMaxWidth by animateFloatAsState(
+        targetValue = if (state.isTrailerPlaying) 0.48f else 0.76f,
+        animationSpec = tween(600),
+        label = "moviePostPlayLogoWidth"
+    )
+    val actionTopSpacing by animateDpAsState(
+        targetValue = if (state.isTrailerPlaying) NuvioTheme.spacing.md else NuvioTheme.spacing.xl,
+        animationSpec = tween(600),
+        label = "moviePostPlayActionSpacing"
+    )
     val horizontalScrim = if (isRtl) {
         Brush.horizontalGradient(
             0f to Color.Black.copy(alpha = 0.22f),
@@ -97,8 +139,13 @@ fun MoviePostPlayOverlay(
         )
     }
 
-    LaunchedEffect(recommendation.id, state.isVisible) {
-        if (!state.isVisible) return@LaunchedEffect
+    LaunchedEffect(
+        recommendation.id,
+        state.isVisible,
+        state.isTrailerPlaying,
+        showPlayOptionsDialog
+    ) {
+        if (!state.isVisible || showPlayOptionsDialog) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
         runCatching { playFocusRequester.requestFocus() }
     }
@@ -163,25 +210,34 @@ fun MoviePostPlayOverlay(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth(0.52f)
+                    .animateContentSize(animationSpec = tween(600))
                     .padding(
                         start = NuvioTheme.spacing.screen.overscanHorizontal,
                         bottom = NuvioTheme.spacing.screen.overscanVertical
                     ),
                 horizontalAlignment = Alignment.Start
             ) {
-                Text(
-                    text = if (currentTitle.isBlank()) {
-                        stringResource(R.string.player_post_play_recommended)
-                    } else {
-                        stringResource(R.string.player_post_play_because, currentTitle)
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = NuvioTheme.extendedColors.textTertiary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                AnimatedVisibility(
+                    visible = !state.isTrailerPlaying,
+                    enter = fadeIn(tween(600)) + expandVertically(expandFrom = Alignment.Bottom),
+                    exit = fadeOut(tween(240)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
+                ) {
+                    Column {
+                        Text(
+                            text = if (currentTitle.isBlank()) {
+                                stringResource(R.string.player_post_play_recommended)
+                            } else {
+                                stringResource(R.string.player_post_play_because, currentTitle)
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NuvioTheme.extendedColors.textTertiary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
 
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                    }
+                }
 
                 if (showLogo) {
                     AsyncImage(
@@ -194,101 +250,198 @@ fun MoviePostPlayOverlay(
                         contentScale = ContentScale.Fit,
                         alignment = Alignment.CenterStart,
                         modifier = Modifier
-                            .fillMaxWidth(0.76f)
-                            .heightIn(max = 92.dp)
+                            .fillMaxWidth(logoMaxWidth)
+                            .heightIn(max = logoHeight)
                     )
                 } else {
-                    Text(
-                        text = recommendation.title,
-                        style = MaterialTheme.typography.displayMedium,
-                        color = NuvioTheme.colors.TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                val metadata = recommendation.metadataLine(context)
-                val tmdbRating = recommendation.tmdbRating?.takeIf { it > 0f }
-                if (metadata.isNotBlank() || tmdbRating != null) {
-                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (metadata.isNotBlank()) {
-                            Text(
-                                text = metadata,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = NuvioTheme.extendedColors.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                        }
-                        if (metadata.isNotBlank() && tmdbRating != null) {
-                            Text(
-                                text = "•",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = NuvioTheme.extendedColors.textTertiary
-                            )
-                        }
-                        if (tmdbRating != null) {
-                            AsyncImage(
-                                model = R.raw.mdblist_tmdb,
-                                contentDescription = null,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.size(NuvioTheme.spacing.xl)
-                            )
-                            Text(
-                                text = (tmdbRating * 10).toInt().toString(),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = NuvioTheme.extendedColors.textSecondary
-                            )
-                        }
-                    }
-                }
-
-                if (!recommendation.description.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                    Text(
-                        text = recommendation.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NuvioTheme.colors.TextPrimary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(0.92f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
-
-                Column(
-                    modifier = Modifier.width(252.dp),
-                    verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-                ) {
-                    MoviePostPlayButton(
-                        label = stringResource(R.string.player_post_play_play),
-                        painter = playPainter,
-                        primary = true,
-                        onClick = { onPlay(recommendation) },
-                        focusRequester = playFocusRequester,
-                        modifier = Modifier.focusProperties {
-                            if (recommendation.hasTrailer) down = trailerFocusRequester
-                        }
-                    )
-
-                    if (recommendation.hasTrailer) {
-                        MoviePostPlayButton(
-                            label = trailerButtonLabel(state),
-                            painter = trailerPainter,
-                            primary = false,
-                            onClick = onPlayTrailer,
-                            focusRequester = trailerFocusRequester,
-                            modifier = Modifier.focusProperties { up = playFocusRequester }
+                    AnimatedContent(
+                        targetState = state.isTrailerPlaying,
+                        transitionSpec = {
+                            fadeIn(tween(600)) togetherWith fadeOut(tween(240))
+                        },
+                        label = "moviePostPlayTitleSize"
+                    ) { trailerPlaying ->
+                        Text(
+                            text = recommendation.title,
+                            style = if (trailerPlaying) {
+                                MaterialTheme.typography.headlineMedium
+                            } else {
+                                MaterialTheme.typography.displayMedium
+                            },
+                            color = NuvioTheme.colors.TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
+                AnimatedVisibility(
+                    visible = !state.isTrailerPlaying,
+                    enter = fadeIn(tween(600)) + expandVertically(expandFrom = Alignment.Bottom),
+                    exit = fadeOut(tween(240)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
+                ) {
+                    Column {
+                        if (metadata.isNotBlank() || imdbRating != null || tmdbRating != null) {
+                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (metadata.isNotBlank()) {
+                                    Text(
+                                        text = metadata,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = NuvioTheme.extendedColors.textSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                }
+                                if (metadata.isNotBlank() && (imdbRating != null || tmdbRating != null)) {
+                                    Text(
+                                        text = "•",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = NuvioTheme.extendedColors.textTertiary
+                                    )
+                                }
+                                if (imdbRating != null || tmdbRating != null) {
+                                    StandardRatingsRow(
+                                        imdbRating = imdbRating,
+                                        tmdbRating = tmdbRating
+                                    )
+                                }
+                            }
+                        }
+
+                        recommendation.mdbListRatings
+                            ?.takeUnless { it.isEmpty() }
+                            ?.let { ratings ->
+                                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                                MDBListRatingsRow(ratings = ratings)
+                            }
+
+                        if (!recommendation.description.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                            Text(
+                                text = recommendation.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NuvioTheme.colors.TextPrimary,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(0.92f)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(actionTopSpacing))
+
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth(0.92f)) {
+                    val buttonSpacing = NuvioTheme.spacing.md
+                    val buttonWidth = (maxWidth - buttonSpacing) / 2
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MoviePostPlayButton(
+                            label = stringResource(R.string.player_post_play_play),
+                            painter = playPainter,
+                            primary = true,
+                            onClick = { onPlay(recommendation) },
+                            onLongPress = if (showManualPlayOption) {
+                                { showPlayOptionsDialog = true }
+                            } else {
+                                null
+                            },
+                            focusRequester = playFocusRequester,
+                            modifier = Modifier
+                                .width(buttonWidth)
+                                .focusProperties {
+                                    if (!state.isTrailerPlaying && !state.hasAutoPlayedTrailer) {
+                                        up = playerWindowFocusRequester
+                                    }
+                                }
+                        )
+
+                        AnimatedVisibility(
+                            visible = recommendation.hasTrailer && !state.isTrailerPlaying,
+                            enter = fadeIn(tween(600)) + expandHorizontally(expandFrom = Alignment.Start),
+                            exit = fadeOut(tween(240)) + shrinkHorizontally(shrinkTowards = Alignment.Start)
+                        ) {
+                            Row {
+                                Spacer(modifier = Modifier.width(buttonSpacing))
+                                MoviePostPlayButton(
+                                    label = trailerButtonLabel(state),
+                                    painter = trailerPainter,
+                                    primary = false,
+                                    onClick = onPlayTrailer,
+                                    focusRequester = trailerFocusRequester,
+                                    modifier = Modifier
+                                        .width(buttonWidth)
+                                        .focusProperties {
+                                            if (!state.hasAutoPlayedTrailer) {
+                                                up = playerWindowFocusRequester
+                                            }
+                                        }
+                                )
+                            }
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    if (state.isVisible && showManualPlayOption && showPlayOptionsDialog) {
+        PlayManualOverrideDialog(
+            title = recommendation.title,
+            subtitle = stringResource(R.string.hero_play),
+            onDismiss = { showPlayOptionsDialog = false },
+            onPlayManually = {
+                showPlayOptionsDialog = false
+                onPlayManually(recommendation)
+            }
+        )
+    }
+}
+
+@Composable
+private fun StandardRatingsRow(
+    imdbRating: Float?,
+    tmdbRating: Float?
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        imdbRating?.let { rating ->
+            ImdbRatingSourceLabel(
+                logoModifier = Modifier.size(30.dp),
+                textStyle = MaterialTheme.typography.labelLarge,
+                textColor = NuvioTheme.extendedColors.textSecondary
+            )
+            Text(
+                text = String.format(Locale.US, "%.1f", rating),
+                style = MaterialTheme.typography.labelLarge,
+                color = NuvioTheme.extendedColors.textSecondary
+            )
+        }
+        if (imdbRating != null && tmdbRating != null) {
+            Text(
+                text = "•",
+                style = MaterialTheme.typography.labelLarge,
+                color = NuvioTheme.extendedColors.textTertiary
+            )
+        }
+        tmdbRating?.let { rating ->
+            AsyncImage(
+                model = R.raw.mdblist_tmdb,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(NuvioTheme.spacing.xl)
+            )
+            Text(
+                text = (rating * 10).toInt().toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = NuvioTheme.extendedColors.textSecondary
+            )
         }
     }
 }
@@ -311,15 +464,53 @@ private fun MoviePostPlayButton(
     painter: Painter,
     primary: Boolean,
     onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(NuvioTheme.spacing.xxl)
+    var longPressTriggered by remember { mutableStateOf(false) }
+    val longPressKeyTracker = rememberLongPressKeyTracker()
     Button(
-        onClick = onClick,
+        onClick = {
+            if (longPressTriggered) {
+                longPressTriggered = false
+            } else {
+                onClick()
+            }
+        },
         modifier = modifier
-            .fillMaxWidth()
-            .focusRequester(focusRequester),
+            .focusRequester(focusRequester)
+            .onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (onLongPress != null &&
+                    native.action == AndroidKeyEvent.ACTION_DOWN &&
+                    native.keyCode == AndroidKeyEvent.KEYCODE_MENU
+                ) {
+                    longPressTriggered = true
+                    onLongPress()
+                    return@onPreviewKeyEvent true
+                }
+                if (onLongPress != null &&
+                    longPressKeyTracker.handle(native, ::isSelectKey) {
+                        longPressTriggered = true
+                        onLongPress()
+                    }
+                ) {
+                    if (native.action == AndroidKeyEvent.ACTION_UP) {
+                        longPressTriggered = false
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                if (native.action == AndroidKeyEvent.ACTION_UP &&
+                    longPressTriggered &&
+                    isSelectOrMenuKey(native.keyCode)
+                ) {
+                    longPressTriggered = false
+                    return@onPreviewKeyEvent true
+                }
+                false
+            },
         colors = ButtonDefaults.colors(
             containerColor = if (primary) Color.White else NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = if (primary) Color.White else NuvioTheme.colors.Secondary,
@@ -378,6 +569,16 @@ private fun rememberMoviePostPlayIcon(@RawRes iconRes: Int): Painter {
             .build()
     }
     return rememberAsyncImagePainter(model = request)
+}
+
+private fun isSelectKey(keyCode: Int): Boolean {
+    return keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+        keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+        keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+}
+
+private fun isSelectOrMenuKey(keyCode: Int): Boolean {
+    return isSelectKey(keyCode) || keyCode == AndroidKeyEvent.KEYCODE_MENU
 }
 
 private fun MoviePostPlayRecommendation.metadataLine(context: android.content.Context): String {

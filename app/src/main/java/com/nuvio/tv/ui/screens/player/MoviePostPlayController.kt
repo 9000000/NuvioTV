@@ -6,11 +6,13 @@ import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.util.isUnreleased
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
+import com.nuvio.tv.data.local.MDBListSettingsDataStore
 import com.nuvio.tv.data.local.MoreLikeThisSourcePreference
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
+import com.nuvio.tv.data.repository.MDBListRepository
 import com.nuvio.tv.data.repository.TraktRelatedService
 import com.nuvio.tv.data.trailer.TrailerService
 import com.nuvio.tv.domain.model.ContentType
@@ -38,6 +40,8 @@ internal class MoviePostPlayController(
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
+    private val mdbListRepository: MDBListRepository,
+    private val mdbListSettingsDataStore: MDBListSettingsDataStore,
     private val traktRelatedService: TraktRelatedService,
     private val traktAuthDataStore: TraktAuthDataStore,
     private val traktSettingsDataStore: TraktSettingsDataStore,
@@ -56,14 +60,26 @@ internal class MoviePostPlayController(
         val durationMs: Long
     )
 
+    private data class ResolvedCandidate(
+        val recommendation: MoviePostPlayRecommendation,
+        val meta: Meta?
+    )
+
+    private data class RatingPreferences(
+        val isMdbListActive: Boolean,
+        val showStandardRatings: Boolean
+    )
+
     private val _uiState = MutableStateFlow(MoviePostPlayUiState())
     val uiState: StateFlow<MoviePostPlayUiState> = _uiState.asStateFlow()
 
     private var recommendationJob: Job? = null
     private var postEndCountdownJob: Job? = null
+    private var dismissAnimationJob: Job? = null
     private var recommendationLoadAttempted = false
     private var autoPlayTrailerEnabled = true
     private var lastSnapshot: PlaybackSnapshot? = null
+    private var dismissedForCurrentPlayback = false
 
     init {
         scope.launch {
@@ -113,13 +129,36 @@ internal class MoviePostPlayController(
         }
     }
 
+    fun dismiss() {
+        recommendationJob?.cancel()
+        recommendationJob = null
+        postEndCountdownJob?.cancel()
+        postEndCountdownJob = null
+        dismissAnimationJob?.cancel()
+        dismissedForCurrentPlayback = true
+        _uiState.update {
+            it.copy(
+                isVisible = false,
+                countdownSeconds = null
+            )
+        }
+        dismissAnimationJob = scope.launch {
+            delay(MOVIE_POST_PLAY_TRANSITION_MS.toLong())
+            _uiState.value = MoviePostPlayUiState()
+            dismissAnimationJob = null
+        }
+    }
+
     fun stop() {
         recommendationJob?.cancel()
         recommendationJob = null
         postEndCountdownJob?.cancel()
         postEndCountdownJob = null
+        dismissAnimationJob?.cancel()
+        dismissAnimationJob = null
         recommendationLoadAttempted = false
         autoPlayTrailerEnabled = true
+        dismissedForCurrentPlayback = false
         if (_uiState.value.isTrailerPlaying) {
             trailerPlayerPool.stop()
         }
@@ -136,6 +175,8 @@ internal class MoviePostPlayController(
             }
             return
         }
+
+        if (dismissedForCurrentPlayback) return
 
         val effectiveDuration = snapshot.durationMs
             .takeIf { it > 0L }
@@ -223,7 +264,11 @@ internal class MoviePostPlayController(
                 return@launch
             }
 
-            val recommendation = resolveCandidate(candidate)
+            val resolvedCandidate = resolveCandidate(candidate)
+            val ratingPreferences = loadRatingPreferences()
+            val recommendation = resolvedCandidate.recommendation.copy(
+                showStandardRatings = ratingPreferences.showStandardRatings
+            )
             autoPlayTrailerEnabled = runCatching {
                 trailerSettingsDataStore.settings.first().enabled
             }.getOrDefault(true)
@@ -236,31 +281,81 @@ internal class MoviePostPlayController(
             }
             lastSnapshot?.let(::evaluate)
 
-            val trailerSource = try {
-                withTimeoutOrNull(15_000L) {
-                    trailerService.getTrailerPlaybackSource(
-                        title = recommendation.title,
-                        year = recommendation.releaseInfo,
-                        tmdbId = recommendation.tmdbId,
-                        type = recommendation.contentType
+            val ratingsJob = launch {
+                val ratings = loadRatings(
+                    candidate = candidate,
+                    meta = resolvedCandidate.meta,
+                    enabled = ratingPreferences.isMdbListActive
+                )
+                _uiState.update { state ->
+                    state.copy(
+                        recommendation = state.recommendation?.copy(
+                            mdbListRatings = ratings
+                        )
                     )
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                null
             }
-            _uiState.update { state ->
-                state.copy(
-                    recommendation = state.recommendation?.copy(
-                        trailerVideoUrl = trailerSource?.videoUrl,
-                        trailerAudioUrl = trailerSource?.audioUrl
-                    ),
-                    isLoadingTrailer = false
-                )
+
+            val trailerJob = launch {
+                val trailerSource = try {
+                    withTimeoutOrNull(15_000L) {
+                        trailerService.getTrailerPlaybackSource(
+                            title = recommendation.title,
+                            year = recommendation.releaseInfo,
+                            tmdbId = recommendation.tmdbId,
+                            type = recommendation.contentType
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        recommendation = state.recommendation?.copy(
+                            trailerVideoUrl = trailerSource?.videoUrl,
+                            trailerAudioUrl = trailerSource?.audioUrl
+                        ),
+                        isLoadingTrailer = false
+                    )
+                }
+                lastSnapshot?.let(::evaluate)
             }
+
+            ratingsJob.join()
+            trailerJob.join()
             recommendationJob = null
-            lastSnapshot?.let(::evaluate)
+        }
+    }
+
+    private suspend fun loadRatingPreferences(): RatingPreferences {
+        val settings = mdbListSettingsDataStore.settings.first()
+        val isMdbListActive = settings.enabled && settings.apiKey.isNotBlank()
+        val visibility = layoutPreferenceDataStore.homeImdbRatingsVisibility.first()
+        return RatingPreferences(
+            isMdbListActive = isMdbListActive,
+            showStandardRatings = visibility.showStandardDetailRatings(isMdbListActive)
+        )
+    }
+
+    private suspend fun loadRatings(
+        candidate: MetaPreview,
+        meta: Meta?,
+        enabled: Boolean
+    ) = if (!enabled || meta == null) {
+        null
+    } else {
+        try {
+            mdbListRepository.getRatingsForMeta(
+                meta = meta,
+                fallbackItemId = candidate.id,
+                fallbackItemType = candidate.apiType
+            )?.ratings
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -319,7 +414,7 @@ internal class MoviePostPlayController(
             ?: filtered.firstOrNull()
     }
 
-    private suspend fun resolveCandidate(candidate: MetaPreview): MoviePostPlayRecommendation {
+    private suspend fun resolveCandidate(candidate: MetaPreview): ResolvedCandidate {
         val settings = tmdbSettingsDataStore.settings.first()
         val meta = try {
             loadCandidateMeta(candidate)
@@ -359,12 +454,15 @@ internal class MoviePostPlayController(
         } else {
             null
         }
-        return resolveMoviePostPlayRecommendation(
-            candidate = candidate,
-            meta = meta,
-            enrichment = enrichment,
-            settings = settings,
-            tmdbId = tmdbId
+        return ResolvedCandidate(
+            recommendation = resolveMoviePostPlayRecommendation(
+                candidate = candidate,
+                meta = meta,
+                enrichment = enrichment,
+                settings = settings,
+                tmdbId = tmdbId
+            ),
+            meta = meta
         )
     }
 

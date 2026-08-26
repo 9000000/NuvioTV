@@ -90,6 +90,7 @@ class MoviePostPlayStateTest {
         assertEquals("https://image/detail-backdrop.jpg", recommendation.backdrop)
         assertEquals("https://image/title-logo.png", recommendation.logo)
         assertEquals("42", recommendation.tmdbId)
+        assertEquals("en", recommendation.contentLanguage)
     }
 
     @Test

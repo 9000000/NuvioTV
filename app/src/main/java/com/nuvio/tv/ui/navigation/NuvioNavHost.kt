@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -48,6 +49,8 @@ import com.nuvio.tv.ui.screens.profile.ProfileSelectionMode
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.screens.tmdb.TmdbEntityBrowseScreen
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
+import com.nuvio.tv.core.util.parseRuntimeMinutes
+import com.nuvio.tv.ui.util.localizedGenreLabel
 
 @Composable
 fun NuvioNavHost(
@@ -55,6 +58,8 @@ fun NuvioNavHost(
     startDestination: String = Screen.Home.route,
     hideBuiltInHeaders: Boolean = false
 ) {
+    val context = LocalContext.current
+
     fun isStreamToPlayer(from: String, to: String): Boolean {
         return from.startsWith("stream/") && to.startsWith("player/")
     }
@@ -976,10 +981,13 @@ fun NuvioNavHost(
                         }
                     }
                 },
-                onPlayRecommendation = { recommendation ->
+                onPlayRecommendation = { recommendation, manualSelection ->
                     val returnToHomeOnBack = backStackEntry.arguments
                         ?.getString("returnToHomeOnBack")
                         ?.toBooleanStrictOrNull() == true
+                    val playbackRootRoute = moviePostPlayPopUpRoute(
+                        navController.previousBackStackEntry?.destination?.route
+                    )
                     val route = Screen.Stream.createRoute(
                         videoId = recommendation.id,
                         contentType = recommendation.contentType,
@@ -987,14 +995,16 @@ fun NuvioNavHost(
                         poster = recommendation.poster,
                         backdrop = recommendation.backdrop,
                         logo = recommendation.logo,
-                        genres = recommendation.genres.takeIf { it.isNotEmpty() }?.joinToString(","),
-                        year = recommendation.releaseInfo,
+                        genres = recommendation.genres
+                            .takeIf { it.isNotEmpty() }
+                            ?.joinToString(" • ") { localizedGenreLabel(context, it) },
+                        year = recommendation.releaseInfo?.trim(),
                         contentId = recommendation.id,
                         contentName = recommendation.title,
-                        runtime = recommendation.runtime
-                            ?.takeWhile { it.isDigit() }
-                            ?.toIntOrNull(),
-                        returnToHomeOnBack = returnToHomeOnBack
+                        runtime = parseRuntimeMinutes(recommendation.runtime),
+                        manualSelection = manualSelection,
+                        returnToHomeOnBack = returnToHomeOnBack,
+                        contentLanguage = recommendation.contentLanguage
                     )
                     navController.navigate(
                         Screen.Detail.createRoute(
@@ -1004,7 +1014,7 @@ fun NuvioNavHost(
                             heroBackdropUrl = recommendation.backdrop
                         )
                     ) {
-                        popUpTo(Screen.Stream.route) { inclusive = true }
+                        popUpTo(playbackRootRoute) { inclusive = true }
                         launchSingleTop = true
                     }
                     navController.navigate(route)

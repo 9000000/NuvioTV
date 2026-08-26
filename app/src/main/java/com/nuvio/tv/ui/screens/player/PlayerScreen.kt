@@ -144,10 +144,11 @@ fun PlayerScreen(
     onBackPress: (currentVideoId: String?, currentSeason: Int?, currentEpisode: Int?, autoPlayEnabled: Boolean, playbackCompleted: Boolean) -> Unit,
     onPlaybackErrorBack: () -> Unit = { onBackPress(null, null, null, false, false) },
     onPlaybackEnded: ((nextVideoId: String?, nextSeason: Int?, nextEpisode: Int?, exitReason: PlayerExitReason?) -> Unit)? = null,
-    onPlayRecommendation: (MoviePostPlayRecommendation) -> Unit = {}
+    onPlayRecommendation: (MoviePostPlayRecommendation, manualSelection: Boolean) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val moviePostPlayState by viewModel.moviePostPlayUiState.collectAsState()
+    val effectiveAutoplayEnabled by viewModel.effectiveAutoplayEnabled.collectAsState(initial = false)
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -159,6 +160,8 @@ fun PlayerScreen(
     val sourceStreamsFocusRequester = remember { FocusRequester() }
     val skipIntroFocusRequester = remember { FocusRequester() }
     val streamInfoFocusRequester = remember { FocusRequester() }
+    val moviePostPlayFocusRequester = remember { FocusRequester() }
+    val moviePostPlayPlayerWindowFocusRequester = remember { FocusRequester() }
     var skipButtonActuallyVisible by remember { mutableStateOf(false) }
     var restoreStreamInfoFocus by remember { mutableStateOf(false) }
     val nextEpisodeFocusRequester = remember { FocusRequester() }
@@ -807,75 +810,119 @@ fun PlayerScreen(
     ) {
         val moviePostPlayPlayerWidth by animateFloatAsState(
             targetValue = if (moviePostPlayState.isVisible) 0.32f else 1f,
-            animationSpec = tween(durationMillis = 420),
+            animationSpec = tween(durationMillis = MOVIE_POST_PLAY_TRANSITION_MS),
             label = "moviePostPlayPlayerWidth"
         )
         val moviePostPlayPlayerPadding by animateDpAsState(
             targetValue = if (moviePostPlayState.isVisible) NuvioTheme.spacing.xxl else 0.dp,
-            animationSpec = tween(durationMillis = 420),
+            animationSpec = tween(durationMillis = MOVIE_POST_PLAY_TRANSITION_MS),
             label = "moviePostPlayPlayerPadding"
         )
-        val playerSurfaceModifier = if (moviePostPlayState.isVisible) {
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = moviePostPlayPlayerPadding, top = moviePostPlayPlayerPadding)
-                .fillMaxWidth(moviePostPlayPlayerWidth)
-                .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
-                .border(
-                    BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                    RoundedCornerShape(12.dp)
-                )
-                .background(Color.Black)
-                .zIndex(2.2f)
-        } else {
-            Modifier.fillMaxSize()
-        }
+        val moviePostPlayPlayerCornerRadius by animateDpAsState(
+            targetValue = if (moviePostPlayState.isVisible) 12.dp else 0.dp,
+            animationSpec = tween(durationMillis = MOVIE_POST_PLAY_TRANSITION_MS),
+            label = "moviePostPlayPlayerCornerRadius"
+        )
+        val moviePostPlayPlayerBorderAlpha by animateFloatAsState(
+            targetValue = if (moviePostPlayState.isVisible) 0.2f else 0f,
+            animationSpec = tween(durationMillis = MOVIE_POST_PLAY_TRANSITION_MS),
+            label = "moviePostPlayPlayerBorderAlpha"
+        )
+        val playerSurfaceShape = RoundedCornerShape(moviePostPlayPlayerCornerRadius)
+        val playerSurfaceModifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(end = moviePostPlayPlayerPadding, top = moviePostPlayPlayerPadding)
+            .fillMaxWidth(moviePostPlayPlayerWidth)
+            .aspectRatio(16f / 9f)
+            .clip(playerSurfaceShape)
+            .border(
+                BorderStroke(1.dp, Color.White.copy(alpha = moviePostPlayPlayerBorderAlpha)),
+                playerSurfaceShape
+            )
+            .background(Color.Black)
+            .zIndex(
+                if (moviePostPlayState.isVisible || moviePostPlayPlayerWidth < 0.999f) {
+                    2.2f
+                } else {
+                    0f
+                }
+            )
 
-        if (!moviePostPlayState.isTrailerPlaying) {
-            if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
-                MpvPlayerSurface(
-                    viewModel = viewModel,
-                    isPlaying = uiState.isPlaying,
-                    isBuffering = uiState.isBuffering,
-                    aspectMode = uiState.aspectMode,
-                    subtitleStyle = uiState.subtitleStyle,
-                    modifier = playerSurfaceModifier
-                )
-            } else {
-                viewModel.exoPlayer?.let { player ->
-                    ExoPlayerSurface(
-                        player = player,
-                        controller = viewModel.controller,
+        if (!exitDispatched &&
+            !moviePostPlayState.isTrailerPlaying &&
+            (!moviePostPlayState.isVisible || !moviePostPlayState.hasAutoPlayedTrailer)
+        ) {
+            Box(modifier = playerSurfaceModifier) {
+                if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
+                    MpvPlayerSurface(
+                        viewModel = viewModel,
                         isPlaying = uiState.isPlaying,
                         isBuffering = uiState.isBuffering,
                         aspectMode = uiState.aspectMode,
-                        useLibass = uiState.useLibass,
-                        libassRenderType = uiState.libassRenderType,
                         subtitleStyle = uiState.subtitleStyle,
-                        onBindSubtitleView = viewModel::bindExoSubtitleView,
-                        modifier = playerSurfaceModifier
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    viewModel.exoPlayer?.let { player ->
+                        ExoPlayerSurface(
+                            player = player,
+                            controller = viewModel.controller,
+                            isPlaying = uiState.isPlaying,
+                            isBuffering = uiState.isBuffering,
+                            aspectMode = uiState.aspectMode,
+                            useLibass = uiState.useLibass,
+                            libassRenderType = uiState.libassRenderType,
+                            subtitleStyle = uiState.subtitleStyle,
+                            onBindSubtitleView = viewModel::bindExoSubtitleView,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                if (moviePostPlayState.isVisible) {
+                    MoviePostPlayPlayerWindow(
+                        focusRequester = moviePostPlayPlayerWindowFocusRequester,
+                        downFocusRequester = moviePostPlayFocusRequester,
+                        onClick = {
+                            viewModel.dismissMoviePostPlay()
+                            if (!uiState.showControls) {
+                                viewModel.onEvent(PlayerEvent.OnToggleControls)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
         }
 
-        MoviePostPlayOverlay(
-            state = moviePostPlayState,
-            currentTitle = uiState.contentName ?: uiState.title,
-            onPlay = { recommendation ->
-                if (!exitDispatched) {
-                    exitDispatched = true
-                    viewModel.stopAndRelease()
-                    currentOnPlayRecommendation(recommendation)
-                }
-            },
-            onPlayTrailer = viewModel::playPostPlayTrailer,
-            onTrailerEnded = viewModel::onPostPlayTrailerEnded,
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(1f)
-        )
+        if (!exitDispatched) {
+            MoviePostPlayOverlay(
+                state = moviePostPlayState,
+                currentTitle = uiState.contentName ?: uiState.title,
+                showManualPlayOption = effectiveAutoplayEnabled,
+                playFocusRequester = moviePostPlayFocusRequester,
+                playerWindowFocusRequester = moviePostPlayPlayerWindowFocusRequester,
+                onPlay = { recommendation ->
+                    if (!exitDispatched) {
+                        exitDispatched = true
+                        viewModel.stopAndRelease()
+                        currentOnPlayRecommendation(recommendation, false)
+                    }
+                },
+                onPlayManually = { recommendation ->
+                    if (!exitDispatched) {
+                        exitDispatched = true
+                        viewModel.stopAndRelease()
+                        currentOnPlayRecommendation(recommendation, true)
+                    }
+                },
+                onPlayTrailer = viewModel::playPostPlayTrailer,
+                onTrailerEnded = viewModel::onPostPlayTrailerEnded,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1f)
+            )
+        }
 
         LoadingOverlay(
             visible = uiState.showLoadingOverlay && uiState.error == null && !moviePostPlayState.isVisible,

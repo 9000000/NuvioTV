@@ -127,6 +127,7 @@ import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.MetaDetailsSkeleton
 import com.nuvio.tv.ui.components.NuvioDialog
+import com.nuvio.tv.ui.components.PlayManualOverrideDialog
 import com.nuvio.tv.ui.components.TrailerPlayer
 import com.nuvio.tv.ui.components.posteroptions.TrackingRemovalConfirmationDialog
 import com.nuvio.tv.core.tracking.LOCAL_LIBRARY_LIST_KEY
@@ -2331,60 +2332,6 @@ private fun SynopsisOverlay(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.4f)
                 )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun PlayManualOverrideDialog(
-    title: String,
-    subtitle: String?,
-    onDismiss: () -> Unit,
-    showPlayManually: Boolean = true,
-    onPlayManually: () -> Unit,
-    showStartFromBeginning: Boolean = false,
-    onStartFromBeginning: () -> Unit = {}
-) {
-    val primaryFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        primaryFocusRequester.requestFocus()
-    }
-
-    NuvioDialog(
-        onDismiss = onDismiss,
-        title = title,
-        subtitle = subtitle
-    ) {
-        if (showPlayManually) {
-            Button(
-                onClick = onPlayManually,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(primaryFocusRequester),
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioTheme.colors.BackgroundCard,
-                    contentColor = NuvioTheme.colors.TextPrimary
-                )
-            ) {
-                Text(stringResource(R.string.play_manually))
-            }
-        }
-
-        if (showStartFromBeginning) {
-            Button(
-                onClick = onStartFromBeginning,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (!showPlayManually) Modifier.focusRequester(primaryFocusRequester) else Modifier),
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioTheme.colors.BackgroundCard,
-                    contentColor = NuvioTheme.colors.TextPrimary
-                )
-            ) {
-                Text(stringResource(R.string.cw_action_start_from_beginning))
             }
         }
     }

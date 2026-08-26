@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import androidx.compose.runtime.Immutable
+import com.nuvio.tv.domain.model.MDBListRatings
 import kotlin.math.ceil
 
 @Immutable
@@ -22,6 +23,9 @@ data class MoviePostPlayRecommendation(
     val status: String? = null,
     val country: String? = null,
     val language: String? = null,
+    val contentLanguage: String? = null,
+    val mdbListRatings: MDBListRatings? = null,
+    val showStandardRatings: Boolean = true,
     val trailerVideoUrl: String? = null,
     val trailerAudioUrl: String? = null
 ) {
@@ -46,6 +50,7 @@ data class MoviePostPlayUiState(
 internal const val MOVIE_POST_PLAY_PREFETCH_PROGRESS = 0.9f
 internal const val MOVIE_POST_PLAY_PREFETCH_REMAINING_MS = 10 * 60_000L
 internal const val MOVIE_POST_PLAY_TRAILER_COUNTDOWN_SECONDS = 5
+internal const val MOVIE_POST_PLAY_TRANSITION_MS = 420
 
 internal fun shouldPrefetchMoviePostPlay(
     positionMs: Long,

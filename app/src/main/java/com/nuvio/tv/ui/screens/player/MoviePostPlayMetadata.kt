@@ -4,6 +4,8 @@ import com.nuvio.tv.core.tmdb.TmdbEnrichment
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.TmdbSettings
+import com.nuvio.tv.domain.model.countryToLanguageCode
+import com.nuvio.tv.domain.model.normalizeLanguageCode
 
 internal fun resolveMoviePostPlayRecommendation(
     candidate: MetaPreview,
@@ -27,6 +29,10 @@ internal fun resolveMoviePostPlayRecommendation(
     val useBasicInfo = settings.enabled && settings.useBasicInfo
     val useDetails = settings.enabled && settings.useDetails
     val useReleaseDates = settings.enabled && settings.useReleaseDates
+    val country = if (useDetails) enrichment?.countries?.joinToString(", ") ?: meta?.country ?: candidate.country
+    else meta?.country ?: candidate.country
+    val language = if (useDetails) enrichment?.language ?: meta?.language ?: candidate.language
+    else meta?.language ?: candidate.language
 
     return MoviePostPlayRecommendation(
         id = candidate.id,
@@ -60,9 +66,8 @@ internal fun resolveMoviePostPlayRecommendation(
         else meta?.ageRating ?: candidate.ageRating,
         status = if (useDetails) enrichment?.status ?: meta?.status ?: candidate.status
         else meta?.status ?: candidate.status,
-        country = if (useDetails) enrichment?.countries?.joinToString(", ") ?: meta?.country ?: candidate.country
-        else meta?.country ?: candidate.country,
-        language = if (useDetails) enrichment?.language ?: meta?.language ?: candidate.language
-        else meta?.language ?: candidate.language
+        country = country,
+        language = language,
+        contentLanguage = normalizeLanguageCode(language) ?: countryToLanguageCode(country)
     )
 }
