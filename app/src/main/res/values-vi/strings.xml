@@ -546,7 +546,7 @@
     <string name="advanced_section_cache">Bộ nhớ đệm</string>
     <string name="advanced_section_dv_diagnostics" translatable="false">DV Diagnostics</string>
     <string name="advanced_fast_horizontal_navigation">Điều hướng ngang nhanh</string>
-    <string name="advanced_fast_horizontal_navigation_subtitle">Tăng tốc độ lặp của D-pad trong các hàng nhưng vẫn bật tính năng giới hạn tốc độ lặp.</string>
+    <string name="advanced_fast_horizontal_navigation_subtitle">Tăng tốc độ lặp của phím điều hướng trong các hàng nhưng vẫn bật tính năng giới hạn tốc độ lặp.</string>
     <string name="advanced_nuvio_performance_mode">Bộ nhớ Tầng thấp ExoPlayer</string>
     <string name="advanced_nuvio_performance_mode_subtitle">Bật bộ cấp phát hệ thống hiệu năng cao, bộ nhớ ngoài vùng nhớ đống và tối ưu mạng để phát lại mượt hơn</string>
     <string name="buffer_device_ram_info">RAM thiết bị: %s</string>
@@ -2099,7 +2099,7 @@
 
     <string name="profile_selection_title">Ai đang xem?</string>
     <string name="profile_selection_subtitle">Chọn hồ sơ để tiếp tục</string>
-    <string name="profile_selection_hint">Dùng D-pad để chọn hồ sơ</string>
+    <string name="profile_selection_hint">Sử dụng phím điều hướng để chọn hồ sơ</string>
     <string name="profile_selection_empty">Không tìm thấy hồ sơ</string>
     <string name="profile_selection_primary_badge">CHÍNH</string>
     <string name="profile_selection_options_title">Tùy chọn hồ sơ</string>
