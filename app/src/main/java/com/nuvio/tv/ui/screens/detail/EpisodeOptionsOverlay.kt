@@ -272,11 +272,17 @@ internal fun EpisodeOptionsOverlay(
                     .drawWithCache {
                         val brush = Brush.horizontalGradient(
                             colorStops = arrayOf(
-                                0.00f to overlayColor.copy(alpha = 0.95f),
-                                0.28f to overlayColor.copy(alpha = 0.90f),
-                                0.48f to overlayColor.copy(alpha = 0.72f),
-                                0.70f to overlayColor.copy(alpha = 0.50f),
-                                1.00f to overlayColor.copy(alpha = 0.40f)
+                                0.00f to overlayColor,
+                                0.10f to overlayColor.copy(alpha = 0.97f),
+                                0.20f to overlayColor.copy(alpha = 0.93f),
+                                0.30f to overlayColor.copy(alpha = 0.87f),
+                                0.40f to overlayColor.copy(alpha = 0.78f),
+                                0.50f to overlayColor.copy(alpha = 0.67f),
+                                0.60f to overlayColor.copy(alpha = 0.55f),
+                                0.70f to overlayColor.copy(alpha = 0.45f),
+                                0.80f to overlayColor.copy(alpha = 0.38f),
+                                0.90f to overlayColor.copy(alpha = 0.34f),
+                                1.00f to overlayColor.copy(alpha = 0.30f)
                             ),
                             startX = if (isRtl) size.width else 0f,
                             endX = if (isRtl) 0f else size.width
