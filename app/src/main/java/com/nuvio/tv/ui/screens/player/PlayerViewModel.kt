@@ -189,6 +189,14 @@ class PlayerViewModel @Inject constructor(
         postPlayRecommendationController.onTrailerEnded()
     }
 
+    fun showPreviousPostPlayRecommendation() {
+        postPlayRecommendationController.showPreviousRecommendation()
+    }
+
+    fun showNextPostPlayRecommendation() {
+        postPlayRecommendationController.showNextRecommendation()
+    }
+
     fun dismissPostPlayRecommendation() {
         postPlayRecommendationController.dismiss()
     }

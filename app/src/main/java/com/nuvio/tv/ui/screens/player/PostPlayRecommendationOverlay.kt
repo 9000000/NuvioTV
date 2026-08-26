@@ -9,7 +9,7 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.annotation.RawRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -35,12 +35,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +57,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -61,12 +66,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Icon
+import androidx.tv.material3.IconButton
+import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -82,6 +90,7 @@ import com.nuvio.tv.ui.components.PlayManualOverrideDialog
 import com.nuvio.tv.ui.components.SynopsisDescription
 import com.nuvio.tv.ui.components.SynopsisOverlay
 import com.nuvio.tv.ui.components.TrailerPlayer
+import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.localizedGenreLabel
@@ -100,11 +109,15 @@ fun PostPlayRecommendationOverlay(
     onOpenDetails: (PostPlayRecommendation) -> Unit,
     onPlayTrailer: () -> Unit,
     onTrailerEnded: () -> Unit,
+    onPreviousRecommendation: () -> Unit,
+    onNextRecommendation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val recommendation = state.recommendation ?: return
     val trailerFocusRequester = remember(recommendation.id) { FocusRequester() }
     val descriptionFocusRequester = remember(recommendation.id) { FocusRequester() }
+    val previousRecommendationFocusRequester = remember { FocusRequester() }
+    val nextRecommendationFocusRequester = remember { FocusRequester() }
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -114,16 +127,10 @@ fun PostPlayRecommendationOverlay(
     val opensDetails = remember(recommendation.contentType) {
         resolvePostPlayContentType(recommendation.contentType) == ContentType.SERIES
     }
-    var logoLoadFailed by remember(recommendation.logo) { mutableStateOf(false) }
     var showPlayOptionsDialog by remember(recommendation.id) { mutableStateOf(false) }
     var descriptionTruncated by remember(recommendation.id) { mutableStateOf(false) }
     var showSynopsisOverlay by remember(recommendation.id) { mutableStateOf(false) }
-    val showLogo = !recommendation.logo.isNullOrBlank() && !logoLoadFailed
-    val metadata = recommendation.metadataLine(context)
-    val imdbRating = recommendation.rating
-        ?.takeIf { recommendation.showStandardRatings && it > 0f }
-    val tmdbRating = recommendation.tmdbRating
-        ?.takeIf { recommendation.showStandardRatings && it > 0f }
+    var pendingNavigationFocusDirection by remember { mutableIntStateOf(0) }
     val logoHeight by animateDpAsState(
         targetValue = if (state.isTrailerPlaying) 60.dp else 92.dp,
         animationSpec = tween(600),
@@ -154,7 +161,6 @@ fun PostPlayRecommendationOverlay(
     }
 
     LaunchedEffect(
-        recommendation.id,
         state.isVisible,
         state.isTrailerPlaying,
         showPlayOptionsDialog
@@ -162,6 +168,24 @@ fun PostPlayRecommendationOverlay(
         if (!state.isVisible || showPlayOptionsDialog) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
         runCatching { playFocusRequester.requestFocus() }
+    }
+
+    LaunchedEffect(state.recommendationIndex, state.isChangingRecommendation) {
+        if (state.isChangingRecommendation || pendingNavigationFocusDirection == 0) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        val requester = when {
+            pendingNavigationFocusDirection < 0 && state.canNavigatePrevious -> {
+                previousRecommendationFocusRequester
+            }
+            pendingNavigationFocusDirection > 0 && state.canNavigateNext -> {
+                nextRecommendationFocusRequester
+            }
+            state.canNavigatePrevious -> previousRecommendationFocusRequester
+            state.canNavigateNext -> nextRecommendationFocusRequester
+            else -> playFocusRequester
+        }
+        runCatching { requester.requestFocus() }
+        pendingNavigationFocusDirection = 0
     }
 
     LaunchedEffect(recommendation.id, recommendation.backdrop, recommendation.logo) {
@@ -190,13 +214,24 @@ fun PostPlayRecommendationOverlay(
         modifier = modifier
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = recommendation.backdrop ?: recommendation.poster,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.Center,
+            AnimatedContent(
+                targetState = recommendation,
+                transitionSpec = {
+                    (fadeIn(NuvioMotion.mediumTween()) togetherWith
+                        fadeOut(NuvioMotion.mediumTween())).using(null)
+                },
+                contentKey = { it.id },
+                label = "postPlayRecommendationBackdrop",
                 modifier = Modifier.fillMaxSize()
-            )
+            ) { displayedRecommendation ->
+                AsyncImage(
+                    model = displayedRecommendation.backdrop ?: displayedRecommendation.poster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
             TrailerPlayer(
                 trailerUrl = recommendation.trailerVideoUrl,
@@ -224,138 +259,50 @@ fun PostPlayRecommendationOverlay(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth(0.52f)
-                    .animateContentSize(animationSpec = tween(600))
                     .padding(
                         start = NuvioTheme.spacing.screen.overscanHorizontal,
                         bottom = NuvioTheme.spacing.screen.overscanVertical
                     ),
                 horizontalAlignment = Alignment.Start
             ) {
-                AnimatedVisibility(
-                    visible = !state.isTrailerPlaying,
-                    enter = fadeIn(tween(600)) + expandVertically(expandFrom = Alignment.Bottom),
-                    exit = fadeOut(tween(240)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
-                ) {
-                    Column {
-                        Text(
-                            text = if (currentTitle.isBlank()) {
-                                stringResource(R.string.player_post_play_recommended)
-                            } else {
-                                stringResource(R.string.player_post_play_because, currentTitle)
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = NuvioTheme.extendedColors.textTertiary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                    }
-                }
-
-                if (showLogo) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(recommendation.logo)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = recommendation.title,
-                        onError = { logoLoadFailed = true },
-                        contentScale = ContentScale.Fit,
-                        alignment = Alignment.CenterStart,
-                        modifier = Modifier
-                            .fillMaxWidth(logoMaxWidth)
-                            .heightIn(max = logoHeight)
-                    )
-                } else {
-                    AnimatedContent(
-                        targetState = state.isTrailerPlaying,
-                        transitionSpec = {
-                            fadeIn(tween(600)) togetherWith fadeOut(tween(240))
-                        },
-                        label = "postPlayRecommendationTitleSize"
-                    ) { trailerPlaying ->
-                        Text(
-                            text = recommendation.title,
-                            style = if (trailerPlaying) {
-                                MaterialTheme.typography.headlineMedium
-                            } else {
-                                MaterialTheme.typography.displayMedium
-                            },
-                            color = NuvioTheme.colors.TextPrimary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = !state.isTrailerPlaying,
-                    enter = fadeIn(tween(600)) + expandVertically(expandFrom = Alignment.Bottom),
-                    exit = fadeOut(tween(240)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
-                ) {
-                    Column {
-                        if (metadata.isNotBlank() || imdbRating != null || tmdbRating != null) {
-                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (metadata.isNotBlank()) {
-                                    Text(
-                                        text = metadata,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = NuvioTheme.extendedColors.textSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                }
-                                if (metadata.isNotBlank() && (imdbRating != null || tmdbRating != null)) {
-                                    Text(
-                                        text = "•",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = NuvioTheme.extendedColors.textTertiary
-                                    )
-                                }
-                                if (imdbRating != null || tmdbRating != null) {
-                                    StandardRatingsRow(
-                                        imdbRating = imdbRating,
-                                        tmdbRating = tmdbRating
-                                    )
-                                }
-                            }
-                        }
-
-                        recommendation.mdbListRatings
-                            ?.takeUnless { it.isEmpty() }
-                            ?.let { ratings ->
-                                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                                MDBListRatingsRow(ratings = ratings)
-                            }
-
-                        if (!recommendation.description.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                            SynopsisDescription(
-                                description = recommendation.description,
-                                onShowFullDescription = { showSynopsisOverlay = true },
-                                maxLines = 3,
-                                focusRequester = descriptionFocusRequester,
-                                upFocusRequester = playerWindowFocusRequester,
-                                downFocusRequester = playFocusRequester,
-                                onTruncationChanged = { descriptionTruncated = it },
-                                modifier = Modifier.fillMaxWidth(0.92f)
-                            )
-                        }
-                    }
-                }
+                PostPlayRecommendationSummary(
+                    recommendation = recommendation,
+                    currentTitle = currentTitle,
+                    isTrailerPlaying = state.isTrailerPlaying,
+                    logoHeight = logoHeight,
+                    logoMaxWidth = logoMaxWidth,
+                    descriptionFocusRequester = descriptionFocusRequester,
+                    playerWindowFocusRequester = playerWindowFocusRequester,
+                    playFocusRequester = playFocusRequester,
+                    onShowSynopsis = { showSynopsisOverlay = true },
+                    onDescriptionTruncationChanged = { descriptionTruncated = it }
+                )
 
                 Spacer(modifier = Modifier.height(actionTopSpacing))
 
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth(0.92f)) {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val buttonSpacing = NuvioTheme.spacing.md
-                    val buttonWidth = (maxWidth - buttonSpacing) / 2
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    val navigationButtonSize = NuvioTheme.spacing.xxxl
+                    val showTrailerButton = recommendation.hasTrailer && !state.isTrailerPlaying
+                    val showNavigationButtons = state.recommendationCount > 1
+                    val actionButtonCount = if (showTrailerButton) 2 else 1
+                    val navigationButtonCount = if (showNavigationButtons) 2 else 0
+                    val itemCount = actionButtonCount + navigationButtonCount
+                    val availableActionWidth = maxWidth -
+                        navigationButtonSize * navigationButtonCount -
+                        buttonSpacing * (itemCount - 1)
+                    val targetButtonWidth = minOf(
+                        (maxWidth - buttonSpacing) / 2,
+                        availableActionWidth / actionButtonCount
+                    )
+                    val buttonWidth by animateDpAsState(
+                        targetValue = targetButtonWidth,
+                        animationSpec = NuvioMotion.mediumTween(),
+                        label = "postPlayRecommendationButtonWidth"
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         PostPlayRecommendationButton(
                             label = stringResource(
                                 if (opensDetails) R.string.tmdb_details_title
@@ -386,9 +333,15 @@ fun PostPlayRecommendationOverlay(
                         )
 
                         AnimatedVisibility(
-                            visible = recommendation.hasTrailer && !state.isTrailerPlaying,
-                            enter = fadeIn(tween(600)) + expandHorizontally(expandFrom = Alignment.Start),
-                            exit = fadeOut(tween(240)) + shrinkHorizontally(shrinkTowards = Alignment.Start)
+                            visible = showTrailerButton,
+                            enter = fadeIn(NuvioMotion.mediumTween()) + expandHorizontally(
+                                animationSpec = NuvioMotion.mediumTween(),
+                                expandFrom = Alignment.Start
+                            ),
+                            exit = fadeOut(NuvioMotion.mediumTween()) + shrinkHorizontally(
+                                animationSpec = NuvioMotion.mediumTween(),
+                                shrinkTowards = Alignment.Start
+                            )
                         ) {
                             Row {
                                 Spacer(modifier = Modifier.width(buttonSpacing))
@@ -408,6 +361,47 @@ fun PostPlayRecommendationOverlay(
                                         }
                                 )
                             }
+                        }
+
+                        if (showNavigationButtons) {
+                            Spacer(modifier = Modifier.width(buttonSpacing))
+                            PostPlayRecommendationNavigationButton(
+                                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = stringResource(
+                                    R.string.player_post_play_previous_recommendation
+                                ),
+                                enabled = state.canNavigatePrevious,
+                                focusRequester = previousRecommendationFocusRequester,
+                                onClick = {
+                                    pendingNavigationFocusDirection = -1
+                                    onPreviousRecommendation()
+                                },
+                                modifier = Modifier.focusProperties {
+                                    when {
+                                        descriptionTruncated -> up = descriptionFocusRequester
+                                        !state.hasAutoPlayedTrailer -> up = playerWindowFocusRequester
+                                    }
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(buttonSpacing))
+                            PostPlayRecommendationNavigationButton(
+                                icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = stringResource(
+                                    R.string.player_post_play_next_recommendation
+                                ),
+                                enabled = state.canNavigateNext,
+                                focusRequester = nextRecommendationFocusRequester,
+                                onClick = {
+                                    pendingNavigationFocusDirection = 1
+                                    onNextRecommendation()
+                                },
+                                modifier = Modifier.focusProperties {
+                                    when {
+                                        descriptionTruncated -> up = descriptionFocusRequester
+                                        !state.hasAutoPlayedTrailer -> up = playerWindowFocusRequester
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -436,6 +430,185 @@ fun PostPlayRecommendationOverlay(
                 onDismiss = { showSynopsisOverlay = false }
             )
         }
+}
+
+@Composable
+private fun PostPlayRecommendationSummary(
+    recommendation: PostPlayRecommendation,
+    currentTitle: String,
+    isTrailerPlaying: Boolean,
+    logoHeight: Dp,
+    logoMaxWidth: Float,
+    descriptionFocusRequester: FocusRequester,
+    playerWindowFocusRequester: FocusRequester,
+    playFocusRequester: FocusRequester,
+    onShowSynopsis: () -> Unit,
+    onDescriptionTruncationChanged: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    val headerVisibility = remember {
+        MutableTransitionState(!isTrailerPlaying)
+    }
+    val detailsVisibility = remember {
+        MutableTransitionState(!isTrailerPlaying)
+    }
+
+    LaunchedEffect(isTrailerPlaying) {
+        headerVisibility.targetState = !isTrailerPlaying
+        detailsVisibility.targetState = !isTrailerPlaying
+    }
+
+    Column {
+        AnimatedVisibility(
+            visibleState = headerVisibility,
+            enter = fadeIn(tween(600)) + expandVertically(expandFrom = Alignment.Bottom),
+            exit = fadeOut(tween(240)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
+        ) {
+            Column {
+                Text(
+                    text = if (currentTitle.isBlank()) {
+                        stringResource(R.string.player_post_play_recommended)
+                    } else {
+                        stringResource(R.string.player_post_play_because, currentTitle)
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NuvioTheme.extendedColors.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+            }
+        }
+
+        AnimatedContent(
+            targetState = recommendation,
+            transitionSpec = {
+                (fadeIn(NuvioMotion.mediumTween()) togetherWith
+                    fadeOut(NuvioMotion.mediumTween())).using(null)
+            },
+            contentKey = { it.id },
+            label = "postPlayRecommendationTitle"
+        ) { displayedRecommendation ->
+            var logoLoadFailed by remember(displayedRecommendation.logo) { mutableStateOf(false) }
+            val showLogo = !displayedRecommendation.logo.isNullOrBlank() && !logoLoadFailed
+            if (showLogo) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(displayedRecommendation.logo)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = displayedRecommendation.title,
+                    onError = { logoLoadFailed = true },
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.CenterStart,
+                    modifier = Modifier
+                        .fillMaxWidth(logoMaxWidth)
+                        .heightIn(max = logoHeight)
+                )
+            } else {
+                AnimatedContent(
+                    targetState = isTrailerPlaying,
+                    transitionSpec = {
+                        fadeIn(tween(600)) togetherWith fadeOut(tween(240))
+                    },
+                    label = "postPlayRecommendationTitleSize"
+                ) { trailerPlaying ->
+                    Text(
+                        text = displayedRecommendation.title,
+                        style = if (trailerPlaying) {
+                            MaterialTheme.typography.headlineMedium
+                        } else {
+                            MaterialTheme.typography.displayMedium
+                        },
+                        color = NuvioTheme.colors.TextPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visibleState = detailsVisibility,
+            enter = fadeIn(tween(600)) + expandVertically(expandFrom = Alignment.Bottom),
+            exit = fadeOut(tween(240)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
+        ) {
+            AnimatedContent(
+                targetState = recommendation,
+                transitionSpec = {
+                    (fadeIn(NuvioMotion.mediumTween()) togetherWith
+                        fadeOut(NuvioMotion.mediumTween())).using(null)
+                },
+                contentKey = { it.id },
+                label = "postPlayRecommendationDetails"
+            ) { displayedRecommendation ->
+                val metadata = displayedRecommendation.metadataLine(context)
+                val imdbRating = displayedRecommendation.rating
+                    ?.takeIf { displayedRecommendation.showStandardRatings && it > 0f }
+                val tmdbRating = displayedRecommendation.tmdbRating
+                    ?.takeIf { displayedRecommendation.showStandardRatings && it > 0f }
+
+                Column {
+                    if (metadata.isNotBlank() || imdbRating != null || tmdbRating != null) {
+                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (metadata.isNotBlank()) {
+                                Text(
+                                    text = metadata,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = NuvioTheme.extendedColors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                            }
+                            if (metadata.isNotBlank() && (imdbRating != null || tmdbRating != null)) {
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = NuvioTheme.extendedColors.textTertiary
+                                )
+                            }
+                            if (imdbRating != null || tmdbRating != null) {
+                                StandardRatingsRow(
+                                    imdbRating = imdbRating,
+                                    tmdbRating = tmdbRating
+                                )
+                            }
+                        }
+                    }
+
+                    displayedRecommendation.mdbListRatings
+                        ?.takeUnless { it.isEmpty() }
+                        ?.let { ratings ->
+                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                            MDBListRatingsRow(ratings = ratings)
+                        }
+
+                    if (!displayedRecommendation.description.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                        SynopsisDescription(
+                            description = displayedRecommendation.description,
+                            onShowFullDescription = onShowSynopsis,
+                            maxLines = 3,
+                            focusRequester = descriptionFocusRequester,
+                            upFocusRequester = playerWindowFocusRequester,
+                            downFocusRequester = playFocusRequester,
+                            onTruncationChanged = { truncated ->
+                                if (displayedRecommendation.id == recommendation.id) {
+                                    onDescriptionTruncationChanged(truncated)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(0.92f)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -491,6 +664,43 @@ private fun trailerButtonLabel(state: PostPlayRecommendationUiState): String {
             state.countdownSeconds
         )
         else -> stringResource(R.string.hero_play_trailer)
+    }
+}
+
+@Composable
+private fun PostPlayRecommendationNavigationButton(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    focusRequester: FocusRequester,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .size(NuvioTheme.spacing.xxxl)
+            .focusRequester(focusRequester),
+        colors = IconButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.Secondary,
+            contentColor = NuvioTheme.colors.TextPrimary,
+            focusedContentColor = NuvioTheme.colors.OnSecondary
+        ),
+        border = IconButtonDefaults.border(
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = CircleShape
+            )
+        ),
+        shape = IconButtonDefaults.shape(shape = CircleShape)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(NuvioTheme.spacing.xxl)
+        )
     }
 }
 
@@ -561,7 +771,7 @@ private fun PostPlayRecommendationButton(
             )
         ),
         contentPadding = PaddingValues(
-            horizontal = NuvioTheme.spacing.xl,
+            horizontal = NuvioTheme.spacing.lg,
             vertical = 14.dp
         )
     ) {

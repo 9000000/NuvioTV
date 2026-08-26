@@ -38,13 +38,22 @@ data class PostPlayRecommendation(
 @Immutable
 data class PostPlayRecommendationUiState(
     val recommendation: PostPlayRecommendation? = null,
+    val recommendationIndex: Int = 0,
+    val recommendationCount: Int = 0,
     val isLoadingRecommendation: Boolean = false,
+    val isChangingRecommendation: Boolean = false,
     val isLoadingTrailer: Boolean = false,
     val isVisible: Boolean = false,
     val countdownSeconds: Int? = null,
     val isTrailerPlaying: Boolean = false,
     val hasAutoPlayedTrailer: Boolean = false
 ) {
+    val canNavigatePrevious: Boolean
+        get() = !isChangingRecommendation && recommendationIndex > 0
+
+    val canNavigateNext: Boolean
+        get() = !isChangingRecommendation && recommendationIndex < recommendationCount - 1
+
     val blocksNaturalCompletion: Boolean
         get() = recommendation != null || isVisible || isLoadingRecommendation
 }

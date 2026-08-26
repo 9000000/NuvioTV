@@ -927,6 +927,8 @@ fun PlayerScreen(
                 },
                 onPlayTrailer = viewModel::playPostPlayTrailer,
                 onTrailerEnded = viewModel::onPostPlayTrailerEnded,
+                onPreviousRecommendation = viewModel::showPreviousPostPlayRecommendation,
+                onNextRecommendation = viewModel::showNextPostPlayRecommendation,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1f)

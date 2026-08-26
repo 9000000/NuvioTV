@@ -1768,6 +1768,8 @@
     <string name="player_post_play_because">Because you watched %1$s</string>
     <string name="player_post_play_recommended">Recommended for you</string>
     <string name="player_post_play_play">Play</string>
+    <string name="player_post_play_previous_recommendation">Previous recommendation</string>
+    <string name="player_post_play_next_recommendation">Next recommendation</string>
     <string name="player_post_play_return_to_player">Return to player</string>
     <string name="player_post_play_trailer_countdown">Trailer in %1$d</string>
     <string name="player_post_play_trailer_playing">Trailer playing</string>

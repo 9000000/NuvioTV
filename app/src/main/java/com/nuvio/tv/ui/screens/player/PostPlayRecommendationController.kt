@@ -21,7 +21,9 @@ import com.nuvio.tv.domain.repository.MetaRepository
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -84,8 +86,15 @@ internal class PostPlayRecommendationController(
     val uiState: StateFlow<PostPlayRecommendationUiState> = _uiState.asStateFlow()
 
     private var recommendationJob: Job? = null
+    private var recommendationSelectionJob: Job? = null
+    private var recommendationPrefetchJob: Job? = null
     private var postEndCountdownJob: Job? = null
     private var dismissAnimationJob: Job? = null
+    private var recommendationCandidates = emptyList<MetaPreview>()
+    private var ratingPreferences: RatingPreferences? = null
+    private val candidateResolutionJobs = mutableMapOf<Int, Deferred<ResolvedCandidate?>>()
+    private val recommendationDetailJobs = mutableMapOf<Int, Job>()
+    private val recommendationCache = mutableMapOf<Int, PostPlayRecommendation>()
     private var recommendationLoadAttempted = false
     private var autoPlayTrailerEnabled = true
     private var lastSnapshot: PlaybackSnapshot? = null
@@ -153,9 +162,18 @@ internal class PostPlayRecommendationController(
         }
     }
 
+    fun showPreviousRecommendation() {
+        selectRecommendation(-1)
+    }
+
+    fun showNextRecommendation() {
+        selectRecommendation(1)
+    }
+
     fun dismiss() {
         recommendationJob?.cancel()
         recommendationJob = null
+        clearRecommendationPipeline()
         postEndCountdownJob?.cancel()
         postEndCountdownJob = null
         dismissAnimationJob?.cancel()
@@ -182,6 +200,7 @@ internal class PostPlayRecommendationController(
     private fun clearRecommendationState() {
         recommendationJob?.cancel()
         recommendationJob = null
+        clearRecommendationPipeline()
         postEndCountdownJob?.cancel()
         postEndCountdownJob = null
         dismissAnimationJob?.cancel()
@@ -193,6 +212,20 @@ internal class PostPlayRecommendationController(
             trailerPlayerPool.stop()
         }
         _uiState.value = PostPlayRecommendationUiState()
+    }
+
+    private fun clearRecommendationPipeline() {
+        recommendationSelectionJob?.cancel()
+        recommendationSelectionJob = null
+        recommendationPrefetchJob?.cancel()
+        recommendationPrefetchJob = null
+        candidateResolutionJobs.values.forEach { it.cancel() }
+        candidateResolutionJobs.clear()
+        recommendationDetailJobs.values.forEach { it.cancel() }
+        recommendationDetailJobs.clear()
+        recommendationCandidates = emptyList()
+        recommendationCache.clear()
+        ratingPreferences = null
     }
 
     private fun evaluate(snapshot: PlaybackSnapshot) {
@@ -287,52 +320,161 @@ internal class PostPlayRecommendationController(
         recommendationLoadAttempted = true
         recommendationJob = scope.launch {
             _uiState.update { it.copy(isLoadingRecommendation = true) }
-            val candidate = try {
-                loadCurrentMeta()?.let { loadCandidate(it) }
+            val candidates = try {
+                loadCurrentMeta()?.let { loadCandidates(it) }.orEmpty()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                null
+                emptyList()
             }
-            if (candidate == null) {
+            if (candidates.isEmpty()) {
                 _uiState.update { it.copy(isLoadingRecommendation = false) }
                 recommendationJob = null
                 return@launch
             }
 
-            val resolvedCandidate = resolveCandidate(candidate)
-            val ratingPreferences = loadRatingPreferences()
-            val recommendation = resolvedCandidate.recommendation.copy(
-                showStandardRatings = ratingPreferences.showStandardRatings
-            )
+            recommendationCandidates = candidates
+            val preferences = loadRatingPreferences()
+            ratingPreferences = preferences
             autoPlayTrailerEnabled = runCatching {
                 trailerSettingsDataStore.settings.first().enabled
             }.getOrDefault(true)
+            candidates.indices.forEach(::startCandidateResolution)
+            val resolvedCandidate = awaitCandidateResolution(0)
+            if (resolvedCandidate == null) {
+                clearRecommendationPipeline()
+                _uiState.update { it.copy(isLoadingRecommendation = false) }
+                recommendationJob = null
+                return@launch
+            }
+            val recommendation = cacheRecommendation(0, resolvedCandidate, preferences)
             _uiState.update {
                 it.copy(
                     recommendation = recommendation,
+                    recommendationIndex = 0,
+                    recommendationCount = candidates.size,
                     isLoadingRecommendation = false,
                     isLoadingTrailer = true
                 )
             }
             lastSnapshot?.let(::evaluate)
+            prefetchRecommendationDetails(preferences)
+            recommendationJob = null
+        }
+    }
 
+    private fun prefetchRecommendationDetails(preferences: RatingPreferences) {
+        recommendationPrefetchJob?.cancel()
+        recommendationPrefetchJob = scope.launch {
+            recommendationCandidates.indices.forEach { index ->
+                launch {
+                    val resolvedCandidate = awaitCandidateResolution(index) ?: return@launch
+                    cacheRecommendation(index, resolvedCandidate, preferences)
+                    loadRecommendationDetails(index, resolvedCandidate, preferences)
+                }
+            }
+        }
+    }
+
+    private fun startCandidateResolution(index: Int) {
+        if (index !in recommendationCandidates.indices || candidateResolutionJobs.containsKey(index)) return
+        val candidate = recommendationCandidates[index]
+        candidateResolutionJobs[index] = scope.async {
+            try {
+                resolveCandidate(candidate)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    private suspend fun awaitCandidateResolution(index: Int): ResolvedCandidate? {
+        startCandidateResolution(index)
+        return candidateResolutionJobs[index]?.await()
+    }
+
+    private fun cacheRecommendation(
+        index: Int,
+        resolvedCandidate: ResolvedCandidate,
+        preferences: RatingPreferences
+    ): PostPlayRecommendation {
+        return recommendationCache.getOrPut(index) {
+            resolvedCandidate.recommendation.copy(
+                showStandardRatings = preferences.showStandardRatings
+            )
+        }
+    }
+
+    private fun selectRecommendation(offset: Int) {
+        val state = _uiState.value
+        if (!state.isVisible || state.isChangingRecommendation) return
+        val targetIndex = state.recommendationIndex + offset
+        if (targetIndex !in recommendationCandidates.indices) return
+
+        postEndCountdownJob?.cancel()
+        postEndCountdownJob = null
+        if (state.isTrailerPlaying) {
+            trailerPlayerPool.stop()
+        }
+        autoPlayTrailerEnabled = false
+        _uiState.update {
+            it.copy(
+                isChangingRecommendation = true,
+                countdownSeconds = null,
+                isTrailerPlaying = false
+            )
+        }
+        recommendationSelectionJob?.cancel()
+        recommendationSelectionJob = scope.launch {
+            try {
+                val resolvedCandidate = awaitCandidateResolution(targetIndex)
+                val preferences = ratingPreferences
+                if (resolvedCandidate == null || preferences == null) {
+                    _uiState.update { it.copy(isChangingRecommendation = false) }
+                    return@launch
+                }
+                val recommendation = cacheRecommendation(targetIndex, resolvedCandidate, preferences)
+                _uiState.update {
+                    it.copy(
+                        recommendation = recommendation,
+                        recommendationIndex = targetIndex,
+                        isChangingRecommendation = false,
+                        isLoadingTrailer = recommendationDetailJobs[targetIndex]?.isCompleted != true
+                    )
+                }
+                loadRecommendationDetails(targetIndex, resolvedCandidate, preferences)
+            } finally {
+                recommendationSelectionJob = null
+            }
+        }
+    }
+
+    private fun loadRecommendationDetails(
+        index: Int,
+        resolvedCandidate: ResolvedCandidate,
+        preferences: RatingPreferences
+    ) {
+        if (index !in recommendationCandidates.indices || recommendationDetailJobs.containsKey(index)) return
+        val candidate = recommendationCandidates[index]
+        recommendationDetailJobs[index] = scope.launch {
+            _uiState.update { state ->
+                if (state.recommendationIndex == index) state.copy(isLoadingTrailer = true) else state
+            }
             val ratingsJob = launch {
                 val ratings = loadRatings(
                     candidate = candidate,
                     meta = resolvedCandidate.meta,
-                    enabled = ratingPreferences.isMdbListActive
+                    enabled = preferences.isMdbListActive
                 )
-                _uiState.update { state ->
-                    state.copy(
-                        recommendation = state.recommendation?.copy(
-                            mdbListRatings = ratings
-                        )
-                    )
+                updateCachedRecommendation(index) {
+                    it.copy(mdbListRatings = ratings)
                 }
             }
 
             val trailerJob = launch {
+                val recommendation = recommendationCache[index] ?: return@launch
                 val trailerSource = try {
                     withTimeoutOrNull(15_000L) {
                         trailerService.getTrailerPlaybackSource(
@@ -347,21 +489,40 @@ internal class PostPlayRecommendationController(
                 } catch (_: Exception) {
                     null
                 }
-                _uiState.update { state ->
-                    state.copy(
-                        recommendation = state.recommendation?.copy(
-                            trailerVideoUrl = trailerSource?.videoUrl,
-                            trailerAudioUrl = trailerSource?.audioUrl
-                        ),
-                        isLoadingTrailer = false
+                updateCachedRecommendation(index) {
+                    it.copy(
+                        trailerVideoUrl = trailerSource?.videoUrl,
+                        trailerAudioUrl = trailerSource?.audioUrl
                     )
                 }
-                lastSnapshot?.let(::evaluate)
+                _uiState.update { state ->
+                    if (state.recommendationIndex == index) state.copy(isLoadingTrailer = false) else state
+                }
+                if (_uiState.value.recommendationIndex == index) {
+                    lastSnapshot?.let(::evaluate)
+                }
             }
 
             ratingsJob.join()
             trailerJob.join()
-            recommendationJob = null
+            _uiState.update { state ->
+                if (state.recommendationIndex == index) state.copy(isLoadingTrailer = false) else state
+            }
+        }
+    }
+
+    private fun updateCachedRecommendation(
+        index: Int,
+        transform: (PostPlayRecommendation) -> PostPlayRecommendation
+    ) {
+        val recommendation = recommendationCache[index]?.let(transform) ?: return
+        recommendationCache[index] = recommendation
+        _uiState.update { state ->
+            if (state.recommendationIndex == index) {
+                state.copy(recommendation = recommendation)
+            } else {
+                state
+            }
         }
     }
 
@@ -410,11 +571,11 @@ internal class PostPlayRecommendationController(
         }
     }
 
-    private suspend fun loadCandidate(meta: Meta): MetaPreview? {
+    private suspend fun loadCandidates(meta: Meta): List<MetaPreview> {
         val tmdbContentType = resolvePostPlayContentType(
             apiType = playbackController.contentType,
             fallback = meta.type
-        ) ?: return null
+        ) ?: return emptyList()
         val candidates = withTimeoutOrNull(10_000L) {
             val sourcePreference = traktSettingsDataStore.moreLikeThisSource.first()
             val traktAuthenticated = traktAuthDataStore.isAuthenticated.first()
@@ -438,7 +599,7 @@ internal class PostPlayRecommendationController(
                         tmdbId = tmdbId,
                         contentType = tmdbContentType,
                         language = settings.language,
-                        maxItems = 4
+                        maxItems = MAX_POST_PLAY_RECOMMENDATIONS
                     )
                 }.getOrDefault(emptyList())
             }
@@ -450,9 +611,18 @@ internal class PostPlayRecommendationController(
             .asSequence()
             .filterNot { it.id.normalizedId() in currentIds }
             .filterNot { hideUnreleased && it.isUnreleased(LocalDate.now()) }
+            .distinctBy { it.apiType.normalizedId() to it.id.normalizedId() }
             .toList()
-        return filtered.firstOrNull { !it.backdropUrl.isNullOrBlank() }
+        val first = filtered.firstOrNull { !it.backdropUrl.isNullOrBlank() }
             ?: filtered.firstOrNull()
+            ?: return emptyList()
+        return buildList {
+            add(first)
+            filtered.asSequence()
+                .filterNot { it === first }
+                .take(MAX_POST_PLAY_RECOMMENDATIONS - 1)
+                .forEach(::add)
+        }
     }
 
     private suspend fun resolveCandidate(candidate: MetaPreview): ResolvedCandidate {
@@ -562,5 +732,7 @@ internal class PostPlayRecommendationController(
         }
     }
 }
+
+private const val MAX_POST_PLAY_RECOMMENDATIONS = 4
 
 private fun String.normalizedId(): String = trim().lowercase()

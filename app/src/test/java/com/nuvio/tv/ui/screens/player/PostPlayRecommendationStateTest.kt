@@ -64,6 +64,26 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
+    fun `recommendation navigation follows pipeline bounds`() {
+        val first = PostPlayRecommendationUiState(
+            recommendationIndex = 0,
+            recommendationCount = 3
+        )
+        val middle = first.copy(recommendationIndex = 1)
+        val last = first.copy(recommendationIndex = 2)
+        val changing = middle.copy(isChangingRecommendation = true)
+
+        assertFalse(first.canNavigatePrevious)
+        assertTrue(first.canNavigateNext)
+        assertTrue(middle.canNavigatePrevious)
+        assertTrue(middle.canNavigateNext)
+        assertTrue(last.canNavigatePrevious)
+        assertFalse(last.canNavigateNext)
+        assertFalse(changing.canNavigatePrevious)
+        assertFalse(changing.canNavigateNext)
+    }
+
+    @Test
     fun `resolved recommendation uses detail enrichment artwork and title`() {
         val recommendation = resolvePostPlayRecommendation(
             candidate = preview(
