@@ -58,6 +58,21 @@ data class PostPlayRecommendationUiState(
         get() = recommendation != null || isVisible || isLoadingRecommendation
 }
 
+internal fun PlayerUiState.blocksPostPlayRecommendation(): Boolean {
+    return pendingPreviewSeekPosition != null ||
+        showPauseOverlay ||
+        showStreamInfoOverlay ||
+        showEpisodesPanel ||
+        showSourcesPanel ||
+        showAudioOverlay ||
+        showSubtitleOverlay ||
+        showSubtitleStylePanel ||
+        showSubtitleDelayOverlay ||
+        showSubtitleTimingDialog ||
+        showSpeedDialog ||
+        showMoreDialog
+}
+
 internal const val POST_PLAY_RECOMMENDATION_PREFETCH_PROGRESS = 0.9f
 internal const val POST_PLAY_RECOMMENDATION_PREFETCH_REMAINING_MS = 10 * 60_000L
 internal const val POST_PLAY_RECOMMENDATION_TRAILER_COUNTDOWN_SECONDS = 5

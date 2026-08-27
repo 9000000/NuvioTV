@@ -67,7 +67,7 @@ internal class PostPlayRecommendationController(
         val isNextEpisodeMetadataResolved: Boolean,
         val nextEpisodeHasAired: Boolean?,
         val hasError: Boolean,
-        val hasBlockingOverlay: Boolean,
+        val hasBlockingInteraction: Boolean,
         val playbackEnded: Boolean,
         val positionMs: Long,
         val durationMs: Long
@@ -121,17 +121,7 @@ internal class PostPlayRecommendationController(
                     isNextEpisodeMetadataResolved = playerState.isNextEpisodeMetadataResolved,
                     nextEpisodeHasAired = playerState.nextEpisode?.hasAired,
                     hasError = !playerState.error.isNullOrBlank(),
-                    hasBlockingOverlay = playerState.showPauseOverlay ||
-                        playerState.showStreamInfoOverlay ||
-                        playerState.showEpisodesPanel ||
-                        playerState.showSourcesPanel ||
-                        playerState.showAudioOverlay ||
-                        playerState.showSubtitleOverlay ||
-                        playerState.showSubtitleStylePanel ||
-                        playerState.showSubtitleDelayOverlay ||
-                        playerState.showSubtitleTimingDialog ||
-                        playerState.showSpeedDialog ||
-                        playerState.showMoreDialog,
+                    hasBlockingInteraction = playerState.blocksPostPlayRecommendation(),
                     playbackEnded = playerState.playbackEnded,
                     positionMs = timeline.currentPosition,
                     durationMs = timeline.duration
@@ -272,7 +262,7 @@ internal class PostPlayRecommendationController(
         ) || snapshot.playbackEnded
 
         if (!shouldShow) return
-        if (!state.isVisible && snapshot.hasBlockingOverlay) return
+        if (!state.isVisible && snapshot.hasBlockingInteraction) return
 
         if (!state.isVisible) {
             val needsPostEndCountdown = snapshot.playbackEnded &&

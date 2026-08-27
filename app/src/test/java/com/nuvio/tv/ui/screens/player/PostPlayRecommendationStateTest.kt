@@ -64,6 +64,16 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
+    fun `active seek preview blocks the recommendation until release`() {
+        val seeking = PlayerUiState(pendingPreviewSeekPosition = 95_000L)
+
+        assertTrue(seeking.blocksPostPlayRecommendation())
+        assertFalse(
+            seeking.copy(pendingPreviewSeekPosition = null).blocksPostPlayRecommendation()
+        )
+    }
+
+    @Test
     fun `recommendation navigation follows pipeline bounds`() {
         val first = PostPlayRecommendationUiState(
             recommendationIndex = 0,
