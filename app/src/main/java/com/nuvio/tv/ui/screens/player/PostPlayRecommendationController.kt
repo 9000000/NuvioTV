@@ -13,12 +13,14 @@ import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
+import com.nuvio.tv.data.local.WatchedSeriesStateHolder
 import com.nuvio.tv.data.repository.MDBListRepository
 import com.nuvio.tv.data.repository.TraktRelatedService
 import com.nuvio.tv.data.trailer.TrailerService
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.repository.MetaRepository
+import com.nuvio.tv.domain.repository.WatchProgressRepository
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +50,8 @@ internal class PostPlayRecommendationController(
     private val traktAuthDataStore: TraktAuthDataStore,
     private val traktSettingsDataStore: TraktSettingsDataStore,
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
+    private val watchProgressRepository: WatchProgressRepository,
+    private val watchedSeriesStateHolder: WatchedSeriesStateHolder,
     private val trailerService: TrailerService,
     private val trailerSettingsDataStore: TrailerSettingsDataStore,
     private val trailerPlayerPool: TrailerPlayerPool,
@@ -599,10 +603,21 @@ internal class PostPlayRecommendationController(
         }.orEmpty()
 
         val hideUnreleased = layoutPreferenceDataStore.hideUnreleasedContent.first()
+        val watchedIds = combine(
+            watchProgressRepository.observeWatchedMovieIds(),
+            watchedSeriesStateHolder.fullyWatchedSeriesIds
+        ) { movieIds, seriesIds -> movieIds to seriesIds }.first()
         val currentIds = setOfNotNull(meta.id.normalizedId(), playbackController.contentId?.normalizedId())
         val filtered = candidates
             .asSequence()
             .filterNot { it.id.normalizedId() in currentIds }
+            .filterNot { candidate ->
+                isPostPlayCandidateWatched(
+                    candidate = candidate,
+                    watchedMovieIds = watchedIds.first,
+                    watchedSeriesIds = watchedIds.second
+                )
+            }
             .filterNot { hideUnreleased && it.isUnreleased(LocalDate.now()) }
             .distinctBy { it.apiType.normalizedId() to it.id.normalizedId() }
             .toList()

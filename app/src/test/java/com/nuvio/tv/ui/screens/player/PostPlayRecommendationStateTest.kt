@@ -259,6 +259,51 @@ class PostPlayRecommendationStateTest {
         assertEquals(ContentType.SERIES, resolvePostPlayContentType("show"))
     }
 
+    @Test
+    fun `post play candidates use watched status for their content type`() {
+        val movie = preview(id = "tmdb:42", type = ContentType.MOVIE)
+        val series = preview(id = "tmdb:84", type = ContentType.SERIES)
+
+        assertTrue(
+            isPostPlayCandidateWatched(
+                candidate = movie,
+                watchedMovieIds = setOf(movie.id),
+                watchedSeriesIds = emptySet()
+            )
+        )
+        assertTrue(
+            isPostPlayCandidateWatched(
+                candidate = series,
+                watchedMovieIds = emptySet(),
+                watchedSeriesIds = setOf(series.id)
+            )
+        )
+        assertFalse(
+            isPostPlayCandidateWatched(
+                candidate = series,
+                watchedMovieIds = setOf(series.id),
+                watchedSeriesIds = emptySet()
+            )
+        )
+    }
+
+    @Test
+    fun `post play candidates recognize watched imdb aliases`() {
+        val movie = preview(
+            id = "tmdb:42",
+            type = ContentType.MOVIE,
+            imdbId = "tt0000042"
+        )
+
+        assertTrue(
+            isPostPlayCandidateWatched(
+                candidate = movie,
+                watchedMovieIds = setOf("tt0000042"),
+                watchedSeriesIds = emptySet()
+            )
+        )
+    }
+
     private fun recommendation(trailerVideoUrl: String? = null): PostPlayRecommendation {
         return PostPlayRecommendation(
             id = "tmdb:1",
@@ -276,10 +321,16 @@ class PostPlayRecommendationStateTest {
         )
     }
 
-    private fun preview(background: String, logo: String?): MetaPreview {
+    private fun preview(
+        background: String = "https://image/candidate-backdrop.jpg",
+        logo: String? = null,
+        id: String = "tmdb:42",
+        type: ContentType = ContentType.MOVIE,
+        imdbId: String? = null
+    ): MetaPreview {
         return MetaPreview(
-            id = "tmdb:42",
-            type = ContentType.MOVIE,
+            id = id,
+            type = type,
             name = "Candidate title",
             poster = "https://image/poster.jpg",
             posterShape = PosterShape.LANDSCAPE,
@@ -289,7 +340,8 @@ class PostPlayRecommendationStateTest {
             releaseInfo = "2025",
             imdbRating = 7.5f,
             genres = listOf("Drama"),
-            runtime = "120"
+            runtime = "120",
+            imdbId = imdbId
         )
     }
 

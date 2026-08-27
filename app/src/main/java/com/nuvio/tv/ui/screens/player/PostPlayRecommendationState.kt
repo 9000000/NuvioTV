@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import androidx.compose.runtime.Immutable
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.MDBListRatings
+import com.nuvio.tv.domain.model.MetaPreview
 import kotlin.math.ceil
 
 @Immutable
@@ -138,6 +139,19 @@ internal fun resolvePostPlayContentType(
             else -> null
         }
     }
+}
+
+internal fun isPostPlayCandidateWatched(
+    candidate: MetaPreview,
+    watchedMovieIds: Set<String>,
+    watchedSeriesIds: Set<String>
+): Boolean {
+    val watchedIds = when (resolvePostPlayContentType(candidate.apiType, candidate.type)) {
+        ContentType.MOVIE -> watchedMovieIds
+        ContentType.SERIES -> watchedSeriesIds
+        else -> return false
+    }
+    return candidate.id in watchedIds || candidate.imdbId?.let(watchedIds::contains) == true
 }
 
 internal fun shouldShowPostPlayTrailerAction(
