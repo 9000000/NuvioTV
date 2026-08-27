@@ -1776,6 +1776,7 @@
     <string name="player_post_play_return_to_player">Return to player</string>
     <string name="player_post_play_trailer_countdown">Trailer in %1$d</string>
     <string name="player_post_play_trailer_playing">Trailer playing</string>
+    <string name="player_post_play_trailer">Trailer</string>
     <string name="next_episode_unaired">Unaired</string>
     <string name="next_episode_not_aired_yet">Next episode hasn\'t aired yet</string>
     <string name="still_watching_title">Are you still watching?</string>

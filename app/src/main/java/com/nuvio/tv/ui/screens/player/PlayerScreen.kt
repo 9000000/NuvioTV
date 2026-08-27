@@ -256,7 +256,7 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
-        if (postPlayRecommendationState.canReturnToPlayer) {
+        if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
         } else if (postPlayRecommendationState.isVisible || postPlayRecommendationState.isLoadingRecommendation) {
@@ -891,6 +891,7 @@ fun PlayerScreen(
                     PostPlayRecommendationPlayerWindow(
                         focusRequester = postPlayRecommendationPlayerWindowFocusRequester,
                         downFocusRequester = postPlayRecommendationFocusRequester,
+                        onBack = handleBackPress,
                         onClick = {
                             returnToPlayerFromPostPlay()
                             if (!uiState.showControls) {
@@ -910,6 +911,8 @@ fun PlayerScreen(
                 showManualPlayOption = effectiveAutoplayEnabled,
                 playFocusRequester = postPlayRecommendationFocusRequester,
                 playerWindowFocusRequester = postPlayRecommendationPlayerWindowFocusRequester,
+                onBack = handleBackPress,
+                onStopTrailer = viewModel::onPostPlayTrailerEnded,
                 onPlay = { recommendation ->
                     if (!exitDispatched) {
                         exitDispatched = true

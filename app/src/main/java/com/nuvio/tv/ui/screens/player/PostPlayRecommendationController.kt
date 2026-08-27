@@ -484,7 +484,8 @@ internal class PostPlayRecommendationController(
                             title = recommendation.title,
                             year = recommendation.releaseInfo,
                             tmdbId = recommendation.tmdbId,
-                            type = recommendation.contentType
+                            type = recommendation.contentType,
+                            ignoreUseTrailersGate = true
                         )
                     }
                 } catch (cancelled: CancellationException) {
@@ -601,8 +602,7 @@ internal class PostPlayRecommendationController(
                     tmdbMetadataService.fetchMoreLikeThis(
                         tmdbId = tmdbId,
                         contentType = tmdbContentType,
-                        language = settings.language,
-                        maxItems = MAX_POST_PLAY_RECOMMENDATIONS
+                        language = settings.language
                     )
                 }.getOrDefault(emptyList())
             }

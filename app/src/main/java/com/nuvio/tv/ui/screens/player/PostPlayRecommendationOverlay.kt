@@ -107,6 +107,8 @@ fun PostPlayRecommendationOverlay(
     showManualPlayOption: Boolean,
     playFocusRequester: FocusRequester,
     playerWindowFocusRequester: FocusRequester,
+    onBack: () -> Unit,
+    onStopTrailer: () -> Unit,
     onPlay: (PostPlayRecommendation) -> Unit,
     onPlayManually: (PostPlayRecommendation) -> Unit,
     onOpenDetails: (PostPlayRecommendation) -> Unit,
@@ -216,7 +218,21 @@ fun PostPlayRecommendationOverlay(
         exit = fadeOut(animationSpec = tween(220)),
         modifier = modifier
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    if (native.keyCode == AndroidKeyEvent.KEYCODE_BACK && native.action == AndroidKeyEvent.ACTION_UP) {
+                        if (state.isTrailerPlaying) onStopTrailer() else onBack()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (native.keyCode == AndroidKeyEvent.KEYCODE_BACK && native.action == AndroidKeyEvent.ACTION_DOWN) {
+                        return@onPreviewKeyEvent true
+                    }
+                    false
+                }
+        ) {
             AnimatedContent(
                 targetState = recommendation,
                 transitionSpec = {
@@ -672,7 +688,7 @@ private fun trailerButtonLabel(state: PostPlayRecommendationUiState): String {
             R.string.player_post_play_trailer_countdown,
             state.countdownSeconds
         )
-        else -> stringResource(R.string.hero_play_trailer)
+        else -> stringResource(R.string.player_post_play_trailer)
     }
 }
 
