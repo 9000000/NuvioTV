@@ -77,8 +77,9 @@ class WatchedItemsSyncService @Inject constructor(
      * delete it for never showing up in the remote response.
      */
     fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
-        // Never move the point backwards. A push that read older data can still finish
-        // last, and its stamp would otherwise retract a newer push's claim.
+        // A push never moves its own profile's point backwards: one that read older data
+        // can still finish last, and its stamp would otherwise retract a newer push's
+        // claim. This is about competing pushes only. Restore below is exempt.
         val advanced = maxOf(syncPointFor(profileId), syncPointMs)
         syncPoints[profileId] = advanced
         CoroutineScope(Dispatchers.IO).launch {
@@ -86,6 +87,17 @@ class WatchedItemsSyncService @Inject constructor(
         }
     }
 
+    /**
+     * Loads the persisted point for [profileId] into memory.
+     *
+     * Deliberately an assignment rather than a max. This is the persisted record of what
+     * the profile has pushed, and it has to be able to move the in-memory copy down.
+     * Profile ids get reused (ProfileManager picks the lowest free one) and deleting a
+     * profile clears its stored point, so a recreated profile relies on this to drop the
+     * previous occupant's value. A stored zero is not an older boundary, it means this id
+     * has no push boundary at all, so a max would let the new profile inherit one it
+     * never earned and delete its own unsynced entries on first pull.
+     */
     suspend fun restoreLastPushTimestamp(profileId: Int = profileManager.activeProfileId.value) {
         syncPoints[profileId] = watchedItemsPreferences.getLastSuccessfulPushMs(profileId)
     }
