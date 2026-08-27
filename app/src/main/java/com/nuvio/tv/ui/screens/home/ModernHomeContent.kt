@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
@@ -251,9 +252,12 @@ fun ModernHomeContent(
 
     // Improved Back navigation: when focused item is not the first in a row,
     // scroll the row to the start and focus the first item instead of opening the sidebar.
+    // Disabled when the sidebar owns focus (expanded) so Back can exit the app.
     val backScrollScope = rememberCoroutineScope()
+    val contentHasFocus = remember { mutableStateOf(false) }
     val shouldInterceptBack = remember {
         derivedStateOf {
+            if (!contentHasFocus.value) return@derivedStateOf false
             val rowKey = activeRowKey.value ?: return@derivedStateOf false
             val itemIndex = focusedItemByRow[rowKey] ?: 0
             itemIndex > 0
@@ -1170,7 +1174,9 @@ fun ModernHomeContent(
                 onExpansionInteractionNonceChange = onExpansionInteractionNonceChangeLambda,
                 blockLeftOnFirstExpandedItem = blockLeftOnFirstExpandedItem,
                 isVerticalRowsScrollingState = isVerticalRowsScrollingState,
-                modifier = Modifier.align(Alignment.BottomStart)
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .onFocusChanged { contentHasFocus.value = it.hasFocus }
             )
     }
 

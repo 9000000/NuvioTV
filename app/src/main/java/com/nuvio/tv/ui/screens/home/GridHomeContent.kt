@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.State
 import androidx.compose.foundation.lazy.grid.items
 import com.nuvio.tv.LocalContentFocusRequester
@@ -119,6 +120,28 @@ fun GridHomeContent(
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
     val cwFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    val cwListState = remember { androidx.compose.foundation.lazy.LazyListState() }
+    val upcomingListState = remember { androidx.compose.foundation.lazy.LazyListState() }
+
+    // Improved Back navigation for CW/Upcoming rows: scroll to first item
+    val contentHasFocus = remember { mutableStateOf(false) }
+    val activeCwRowKey = remember { mutableStateOf<String?>(null) }
+    val cwPendingScrollToStart = remember { mutableIntStateOf(0) }
+    val upcomingPendingScrollToStart = remember { mutableIntStateOf(0) }
+    BackHandler(enabled = contentHasFocus.value && run {
+        val key = activeCwRowKey.value ?: return@run false
+        val idx = if (key == "continue_watching") lastFocusedCwIndex.intValue else lastFocusedUpcomingIndex.intValue
+        idx > 0
+    }) {
+        val key = activeCwRowKey.value ?: return@BackHandler
+        if (key == "continue_watching") {
+            lastFocusedCwIndex.intValue = 0
+            cwPendingScrollToStart.intValue++
+        } else {
+            lastFocusedUpcomingIndex.intValue = 0
+            upcomingPendingScrollToStart.intValue++
+        }
+    }
 
     // Scroll to top when triggered from sidebar Home button.
     LaunchedEffect(scrollToTopTrigger) {
@@ -345,6 +368,7 @@ fun GridHomeContent(
             columns = GridCells.Adaptive(minSize = posterCardStyle.width),
             modifier = Modifier
                 .fillMaxSize()
+                .onFocusChanged { contentHasFocus.value = it.hasFocus }
                 .focusRequester(contentFocusRequester)
                 .focusRestorer()
                 .dpadRepeatThrottle(),
@@ -413,6 +437,12 @@ fun GridHomeContent(
                     span = { GridItemSpan(maxLineSpan) },
                     contentType = "continue_watching"
                 ) {
+                    LaunchedEffect(cwPendingScrollToStart.intValue) {
+                        if (cwPendingScrollToStart.intValue > 0) {
+                            cwListState.scrollToItem(0, 0)
+                            cwFocusRequesters[0]?.let { runCatching { it.requestFocus() } }
+                        }
+                    }
                     GridContinueWatchingSection(
                         modifier = Modifier.fillMaxWidth(),
                         fullWidth = gridWidth,
@@ -420,7 +450,8 @@ fun GridHomeContent(
                         focusedItemIndex = if (shouldRequestInitialFocus && !hasHero) 0 else -1,
                         lastFocusedIndex = lastFocusedCwIndex,
                         focusRequesters = cwFocusRequesters,
-                        onItemFocused = { lastFocusedCwIndex.intValue = it },
+                        listState = cwListState,
+                        onItemFocused = { lastFocusedCwIndex.intValue = it; activeCwRowKey.value = "continue_watching" },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
                         showManualPlayOption = showContinueWatchingManualPlayOption,
@@ -469,6 +500,12 @@ fun GridHomeContent(
                     span = { GridItemSpan(maxLineSpan) },
                     contentType = "upcoming_section"
                 ) {
+                    LaunchedEffect(upcomingPendingScrollToStart.intValue) {
+                        if (upcomingPendingScrollToStart.intValue > 0) {
+                            upcomingListState.scrollToItem(0, 0)
+                            upcomingFocusRequesters[0]?.let { runCatching { it.requestFocus() } }
+                        }
+                    }
                     GridContinueWatchingSection(
                         modifier = Modifier.fillMaxWidth(),
                         fullWidth = gridWidth,
@@ -476,7 +513,8 @@ fun GridHomeContent(
                         title = stringResource(R.string.upcoming_section_title),
                         lastFocusedIndex = lastFocusedUpcomingIndex,
                         focusRequesters = upcomingFocusRequesters,
-                        onItemFocused = { lastFocusedUpcomingIndex.intValue = it },
+                        listState = upcomingListState,
+                        onItemFocused = { lastFocusedUpcomingIndex.intValue = it; activeCwRowKey.value = "upcoming_section" },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
                         showManualPlayOption = showContinueWatchingManualPlayOption,

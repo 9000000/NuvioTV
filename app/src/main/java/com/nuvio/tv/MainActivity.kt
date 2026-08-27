@@ -56,6 +56,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -936,6 +937,7 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.fillMaxSize()) {
                             if (modernSidebarEnabled) {
                                 ModernSidebarScaffold(
+                                    longPressBackHeld = longPressBackHeld,
                                     navController = navController,
                                     startDestination = startDestination,
                                     currentRoute = currentRoute,
@@ -959,6 +961,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             } else {
                                 LegacySidebarScaffold(
+                                    longPressBackHeld = longPressBackHeld,
                                     navController = navController,
                                     startDestination = startDestination,
                                     currentRoute = currentRoute,
@@ -1055,7 +1058,19 @@ class MainActivity : ComponentActivity() {
     // Intercept Back at the Activity level, before any Compose BackHandler, so the auto-next loader
     // can always be dismissed. Compose back-dispatch ordering kept putting the destination screen's
     // handler above the loader's, so Back never reached it.
+    // Tracks whether a long-press Back sequence is in progress. When true, all Back
+    // key events are consumed at the Activity level so that repeated DOWN events from a
+    // held Back key don't cascade through Compose BackHandlers (e.g. opening the sidebar
+    // and then immediately exiting the app).
+    val longPressBackHeld = mutableStateOf(false)
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (longPressBackHeld.value) {
+                if (event.action == KeyEvent.ACTION_UP) longPressBackHeld.value = false
+                return true
+            }
+        }
         if (event.keyCode == KeyEvent.KEYCODE_BACK &&
             externalPlaybackTracker.autoNextOverlay.value != null
         ) {
@@ -1118,6 +1133,7 @@ private fun SidebarFocusRecoveryEffect(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun LegacySidebarScaffold(
+    longPressBackHeld: MutableState<Boolean>,
     navController: NavHostController,
     startDestination: String,
     currentRoute: String?,
@@ -1140,6 +1156,7 @@ private fun LegacySidebarScaffold(
     val showSidebar = currentRoute in rootRoutes
 
     LaunchedEffect(currentRoute) {
+        longPressBackHeld.value = false
         drawerState.setValue(DrawerValue.Closed)
     }
 
@@ -1164,6 +1181,7 @@ private fun LegacySidebarScaffold(
     }
 
     BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Open) {
+        if (longPressBackHeld.value) return@BackHandler
         onExitApp()
     }
 
@@ -1344,7 +1362,6 @@ private fun LegacySidebarScaffold(
             animationSpec = tween(NuvioMotion.tokens.durations.medium),
             label = "contentStartPadding"
         )
-        var longPressBackConsumed by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1355,18 +1372,20 @@ private fun LegacySidebarScaffold(
                     if (keyEvent.key == Key.Back) {
                         if (
                             keyEvent.type == KeyEventType.KeyDown &&
-                            keyEvent.nativeKeyEvent.isLongPress &&
                             showSidebar &&
                             drawerState.currentValue == DrawerValue.Closed &&
-                            currentRoute in rootRoutes
+                            currentRoute in rootRoutes &&
+                            keyEvent.nativeKeyEvent.isLongPress
                         ) {
-                            longPressBackConsumed = true
-                            pendingSidebarFocusRequest = true
-                            drawerState.setValue(DrawerValue.Open)
+                            if (!longPressBackHeld.value) {
+                                longPressBackHeld.value = true
+                                pendingSidebarFocusRequest = true
+                                drawerState.setValue(DrawerValue.Open)
+                            }
                             return@onPreviewKeyEvent true
                         }
-                        if (longPressBackConsumed) {
-                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackConsumed = false
+                        if (longPressBackHeld.value) {
+                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackHeld.value = false
                             return@onPreviewKeyEvent true
                         }
                     }
@@ -1507,6 +1526,7 @@ private fun LegacySidebarButton(
 
 @Composable
 private fun ModernSidebarScaffold(
+    longPressBackHeld: MutableState<Boolean>,
     navController: NavHostController,
     startDestination: String,
     currentRoute: String?,
@@ -1571,6 +1591,7 @@ private fun ModernSidebarScaffold(
     }
 
     BackHandler(enabled = currentRoute in rootRoutes && isSidebarExpanded && !sidebarCollapsePending) {
+        if (longPressBackHeld.value) return@BackHandler
         onExitApp()
     }
 
@@ -1747,9 +1768,19 @@ private fun ModernSidebarScaffold(
         sidebarOwnsFocus = showSidebar && isSidebarExpanded
     )
 
-    var longPressBackConsumed by remember { mutableStateOf(false) }
-
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { keyEvent ->
+                // Consume all Back key events after long-press until released,
+                // preventing the exit-app BackHandler from firing during the hold.
+                if (longPressBackHeld.value && keyEvent.key == Key.Back) {
+                    if (keyEvent.type == KeyEventType.KeyUp) longPressBackHeld.value = false
+                    return@onPreviewKeyEvent true
+                }
+                false
+            }
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1759,20 +1790,22 @@ private fun ModernSidebarScaffold(
                     if (keyEvent.key == Key.Back) {
                         if (
                             keyEvent.type == KeyEventType.KeyDown &&
-                            keyEvent.nativeKeyEvent.isLongPress &&
                             showSidebar &&
                             !isSidebarExpanded &&
                             !sidebarCollapsePending &&
-                            currentRoute in rootRoutes
+                            currentRoute in rootRoutes &&
+                            keyEvent.nativeKeyEvent.isLongPress
                         ) {
-                            longPressBackConsumed = true
-                            isSidebarExpanded = true
-                            sidebarCollapsePending = false
-                            pendingSidebarFocusRequest = true
+                            if (!longPressBackHeld.value) {
+                                longPressBackHeld.value = true
+                                isSidebarExpanded = true
+                                sidebarCollapsePending = false
+                                pendingSidebarFocusRequest = true
+                            }
                             return@onPreviewKeyEvent true
                         }
-                        if (longPressBackConsumed) {
-                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackConsumed = false
+                        if (longPressBackHeld.value) {
+                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackHeld.value = false
                             return@onPreviewKeyEvent true
                         }
                     }

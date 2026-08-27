@@ -53,6 +53,9 @@ fun GridContinueWatchingSection(
     focusedItemIndex: Int = -1,
     lastFocusedIndex: MutableIntState = remember { mutableIntStateOf(-1) },
     focusRequesters: MutableMap<Int, FocusRequester> = remember { mutableMapOf() },
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = (lastFocusedIndex.intValue - 1).coerceAtLeast(0)
+    ),
     onItemFocused: (Int) -> Unit = {},
     blurUnwatchedEpisodes: Boolean = false,
     useEpisodeThumbnails: Boolean = true,
@@ -64,9 +67,6 @@ fun GridContinueWatchingSection(
     var optionsItem by remember { mutableStateOf<ContinueWatchingItem?>(null) }
     var lastRequestedFocusIndex by remember { mutableIntStateOf(-1) }
     var pendingFocusIndex by remember { mutableStateOf<Int?>(null) }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
-        initialFirstVisibleItemIndex = (lastFocusedIndex.intValue - 1).coerceAtLeast(0)
-    )
 
     LaunchedEffect(focusedItemIndex) {
         if (focusedItemIndex >= 0 && focusedItemIndex < items.size) {

@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
 import com.nuvio.tv.ui.util.dpadVerticalFastScroll
 import com.nuvio.tv.ui.util.asStable
@@ -216,18 +217,32 @@ fun ClassicHomeContent(
 
     // Improved Back navigation: when focused item is not the first in a row,
     // scroll the row to the start and focus the first item instead of opening the sidebar.
-    BackHandler(enabled = run {
+    // Disabled when content doesn't have focus (e.g. sidebar is open).
+    val contentHasFocus = remember { mutableStateOf(false) }
+    val cwFocusedIndex = remember { mutableIntStateOf(-1) }
+    val cwPendingScrollToStart = remember { mutableIntStateOf(0) }
+    val upcomingPendingScrollToStart = remember { mutableIntStateOf(0) }
+    BackHandler(enabled = contentHasFocus.value && run {
         val rowKey = currentFocusSnapshot.rowKey ?: return@run false
-        val itemIndex = rowFocusedItemIndex[rowKey] ?: 0
+        val isCwRow = rowKey == "continue_watching" || rowKey == "upcoming_section"
+        val itemIndex = if (isCwRow) cwFocusedIndex.intValue else (rowFocusedItemIndex[rowKey] ?: 0)
         itemIndex > 0
     }) {
         val rowKey = currentFocusSnapshot.rowKey ?: return@BackHandler
-        val listState = rowStates[rowKey]
-        rowFocusedItemIndex[rowKey] = 0
-        currentFocusSnapshot.itemIndex = 0
-        scope.launch {
-            listState?.scrollToItem(0, 0)
-            rowFocusRequesters[rowKey]?.let { runCatching { it.requestFocus() } }
+        val isCw = rowKey == "continue_watching"
+        val isUpcoming = rowKey == "upcoming_section"
+        if (isCw || isUpcoming) {
+            cwFocusedIndex.intValue = 0
+            currentFocusSnapshot.itemIndex = 0
+            if (isCw) cwPendingScrollToStart.intValue++ else upcomingPendingScrollToStart.intValue++
+        } else {
+            val listState = rowStates[rowKey]
+            rowFocusedItemIndex[rowKey] = 0
+            currentFocusSnapshot.itemIndex = 0
+            scope.launch {
+                listState?.scrollToItem(0, 0)
+                rowFocusRequesters[rowKey]?.let { runCatching { it.requestFocus() } }
+            }
         }
     }
 
@@ -472,6 +487,7 @@ fun ClassicHomeContent(
         state = columnListState,
         modifier = Modifier
             .fillMaxSize()
+            .onFocusChanged { contentHasFocus.value = it.hasFocus }
             .focusRequester(contentFocusRequester)
             .focusRestorer()
             .dpadVerticalFastScroll(
@@ -557,6 +573,13 @@ fun ClassicHomeContent(
 
         if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) {
             item(key = "continue_watching", contentType = "continue_watching") {
+                val cwListState = rowStates.getOrPut("continue_watching") { LazyListState() }
+                LaunchedEffect(cwPendingScrollToStart.intValue) {
+                    if (cwPendingScrollToStart.intValue > 0) {
+                        cwListState.scrollToItem(0, 0)
+                        cwItemFocusRequesters[0]?.let { runCatching { it.requestFocus() } }
+                    }
+                }
                 ContinueWatchingSection(
                     items = uiState.continueWatchingItems,
                     onItemClick = { item ->
@@ -603,6 +626,7 @@ fun ClassicHomeContent(
                         currentFocusSnapshot.rowIndex = -1
                         currentFocusSnapshot.itemIndex = itemIndex
                         currentFocusSnapshot.rowKey = "continue_watching"
+                        cwFocusedIndex.intValue = itemIndex
                         onFocusedRowKeyChanged(null)
                         if (uiState.classicFocusGradientEnabled) {
                             focusedArtwork = uiState.continueWatchingItems.getOrNull(itemIndex)
@@ -616,13 +640,21 @@ fun ClassicHomeContent(
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,
                     cornerRadius = posterCardStyle.cornerRadius,
-                    posterTitleOverride = classicPosterTitleStyle
+                    posterTitleOverride = classicPosterTitleStyle,
+                    listState = cwListState
                 )
             }
         }
 
         if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
             item(key = "upcoming_section", contentType = "upcoming_section") {
+                val upcomingListState = rowStates.getOrPut("upcoming_section") { LazyListState() }
+                LaunchedEffect(upcomingPendingScrollToStart.intValue) {
+                    if (upcomingPendingScrollToStart.intValue > 0) {
+                        upcomingListState.scrollToItem(0, 0)
+                        upcomingItemFocusRequesters[0]?.let { runCatching { it.requestFocus() } }
+                    }
+                }
                 ContinueWatchingSection(
                     items = uiState.upcomingItems,
                     title = stringResource(R.string.upcoming_section_title),
@@ -665,11 +697,18 @@ fun ClassicHomeContent(
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = upcomingItemFocusRequesters,
                     lastFocusedIndexState = lastFocusedUpcomingIndex,
+                    onItemFocused = { itemIndex ->
+                        currentFocusSnapshot.rowIndex = -1
+                        currentFocusSnapshot.itemIndex = itemIndex
+                        currentFocusSnapshot.rowKey = "upcoming_section"
+                        cwFocusedIndex.intValue = itemIndex
+                    },
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,
                     cornerRadius = posterCardStyle.cornerRadius,
-                    posterTitleOverride = classicPosterTitleStyle
+                    posterTitleOverride = classicPosterTitleStyle,
+                    listState = upcomingListState
                 )
             }
         }
