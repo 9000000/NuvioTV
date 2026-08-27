@@ -517,8 +517,11 @@ fun PlayerScreen(
                     return@onPreviewKeyEvent true
                 }
 
-                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
+                val postPlayHandlesBack = postPlayRecommendationState.isVisible ||
+                    postPlayRecommendationState.isLoadingRecommendation ||
+                    postPlayRecommendationState.isTrailerPlaying
+                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE ||
+                    (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK && !postPlayHandlesBack)
                 ) {
                     return@onPreviewKeyEvent when (keyEvent.nativeKeyEvent.action) {
                         KeyEvent.ACTION_DOWN -> true
