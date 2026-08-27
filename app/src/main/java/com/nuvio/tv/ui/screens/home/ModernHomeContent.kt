@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -88,6 +89,7 @@ import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 // Height of the wide card as a fraction of its width, matching the 2.5:1 shape of the mobile card.
@@ -247,6 +249,27 @@ fun ModernHomeContent(
     var endedCollectionHeroVideoPlaybackKey by remember { mutableStateOf<String?>(null) }
     val expansionInteractionNonce = remember { mutableIntStateOf(0) }
 
+    // Improved Back navigation: when focused item is not the first in a row,
+    // scroll the row to the start and focus the first item instead of opening the sidebar.
+    val backScrollScope = rememberCoroutineScope()
+    val shouldInterceptBack = remember {
+        derivedStateOf {
+            val rowKey = activeRowKey.value ?: return@derivedStateOf false
+            val itemIndex = focusedItemByRow[rowKey] ?: 0
+            itemIndex > 0
+        }
+    }
+    BackHandler(enabled = shouldInterceptBack.value) {
+        val rowKey = activeRowKey.value ?: return@BackHandler
+        val listState = rowListStates[rowKey]
+        focusedItemByRow[rowKey] = 0
+        pendingRowFocusKey.value = rowKey
+        pendingRowFocusIndex.value = 0
+        pendingRowFocusNonce.intValue++
+        backScrollScope.launch {
+            listState?.scrollToItem(0, 0)
+        }
+    }
 
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) {

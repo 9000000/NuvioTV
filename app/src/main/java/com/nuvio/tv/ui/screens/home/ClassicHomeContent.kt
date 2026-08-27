@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import androidx.activity.compose.BackHandler
 import com.nuvio.tv.LocalContentFocusRequester
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.foundation.background
@@ -212,6 +213,23 @@ fun ClassicHomeContent(
     val cwItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
+
+    // Improved Back navigation: when focused item is not the first in a row,
+    // scroll the row to the start and focus the first item instead of opening the sidebar.
+    BackHandler(enabled = run {
+        val rowKey = currentFocusSnapshot.rowKey ?: return@run false
+        val itemIndex = rowFocusedItemIndex[rowKey] ?: 0
+        itemIndex > 0
+    }) {
+        val rowKey = currentFocusSnapshot.rowKey ?: return@BackHandler
+        val listState = rowStates[rowKey]
+        rowFocusedItemIndex[rowKey] = 0
+        currentFocusSnapshot.itemIndex = 0
+        scope.launch {
+            listState?.scrollToItem(0, 0)
+            rowFocusRequesters[rowKey]?.let { runCatching { it.requestFocus() } }
+        }
+    }
 
     var restoringFocus by remember { mutableStateOf(focusState.hasSavedFocus) }
     val heroFocusRequester = remember { FocusRequester() }

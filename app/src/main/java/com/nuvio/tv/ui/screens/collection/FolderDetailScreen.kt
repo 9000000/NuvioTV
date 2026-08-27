@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.collection
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -262,6 +263,12 @@ private fun TabbedGridContent(
     onItemLongPress: (MetaPreview, String) -> Unit = { _, _ -> }
 ) {
     val tabFocusRequesters = remember(uiState.tabs.size) { uiState.tabs.indices.map { FocusRequester() } }
+    var gridHasFocus by remember { mutableStateOf(false) }
+
+    // Grid Back: focus on grid -> move focus to active tab. Focus on tab -> let onBack handle it.
+    BackHandler(enabled = gridHasFocus) {
+        tabFocusRequesters.getOrNull(uiState.selectedTabIndex)?.let { runCatching { it.requestFocus() } }
+    }
 
     Row(
         modifier = Modifier
@@ -436,6 +443,7 @@ private fun TabbedGridContent(
                 columns = GridCells.Adaptive(minSize = posterCardStyle.width),
                 modifier = Modifier
                     .fillMaxSize()
+                    .onFocusChanged { gridHasFocus = it.hasFocus }
                     .focusRestorer {
                         lastFocusedItemKey?.let { itemFocusRequesters[it] } ?: FocusRequester.Default
                     }

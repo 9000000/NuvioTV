@@ -1344,10 +1344,34 @@ private fun LegacySidebarScaffold(
             animationSpec = tween(NuvioMotion.tokens.durations.medium),
             label = "contentStartPadding"
         )
+        var longPressBackConsumed by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = contentStartPadding)
+                .onPreviewKeyEvent { keyEvent ->
+                    // Long-press Back on a root route directly opens the sidebar,
+                    // bypassing the "scroll row to start" BackHandler in home content.
+                    if (keyEvent.key == Key.Back) {
+                        if (
+                            keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.nativeKeyEvent.isLongPress &&
+                            showSidebar &&
+                            drawerState.currentValue == DrawerValue.Closed &&
+                            currentRoute in rootRoutes
+                        ) {
+                            longPressBackConsumed = true
+                            pendingSidebarFocusRequest = true
+                            drawerState.setValue(DrawerValue.Open)
+                            return@onPreviewKeyEvent true
+                        }
+                        if (longPressBackConsumed) {
+                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackConsumed = false
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                    false
+                }
                 .onKeyEvent { keyEvent ->
                     val openKey = if (isRtl) Key.DirectionRight else Key.DirectionLeft
                     if (
@@ -1723,11 +1747,35 @@ private fun ModernSidebarScaffold(
         sidebarOwnsFocus = showSidebar && isSidebarExpanded
     )
 
+    var longPressBackConsumed by remember { mutableStateOf(false) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .onPreviewKeyEvent { keyEvent ->
+                    // Long-press Back on a root route directly opens the sidebar,
+                    // bypassing the "scroll row to start" BackHandler in home content.
+                    if (keyEvent.key == Key.Back) {
+                        if (
+                            keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.nativeKeyEvent.isLongPress &&
+                            showSidebar &&
+                            !isSidebarExpanded &&
+                            !sidebarCollapsePending &&
+                            currentRoute in rootRoutes
+                        ) {
+                            longPressBackConsumed = true
+                            isSidebarExpanded = true
+                            sidebarCollapsePending = false
+                            pendingSidebarFocusRequest = true
+                            return@onPreviewKeyEvent true
+                        }
+                        if (longPressBackConsumed) {
+                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackConsumed = false
+                            return@onPreviewKeyEvent true
+                        }
+                    }
                     if (
                         isSidebarExpanded &&
                         !sidebarCollapsePending &&
