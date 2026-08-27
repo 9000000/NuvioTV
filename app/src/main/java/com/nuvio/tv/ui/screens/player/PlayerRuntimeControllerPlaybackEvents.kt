@@ -1747,7 +1747,7 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
         }
         PlayerEvent.OnTogglePlayerStatsHud -> {
             val enable = !_uiState.value.playerStatsHudEnabled
-            scope.launch { playerSettingsDataStore.setPlayerStatsHudEnabled(enable) }
+            scope.launch { deviceLocalPlayerPreferences.setPlayerStatsHudEnabled(enable) }
         }
     }
 }

@@ -306,7 +306,6 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
                     },
                     pauseOverlayEnabled = settings.pauseOverlayEnabled,
                     osdClockEnabled = settings.osdClockEnabled,
-                    playerStatsHudEnabled = settings.playerStatsHudEnabled,
                     internalPlayerEngine = resolvedInternalPlayerEngine,
                     frameRateMatchingMode = settings.frameRateMatchingMode,
                     tunnelingEnabled = settings.effectiveTunnelingEnabled &&
@@ -882,6 +881,16 @@ internal fun PlayerRuntimeController.scheduleDeferredPlayerReinitialize(
                 )
             }
         }
+    }
+}
+
+internal fun PlayerRuntimeController.observePlayerStatsHud() {
+    scope.launch {
+        deviceLocalPlayerPreferences.playerStatsHudEnabled
+            .distinctUntilChanged()
+            .collect { enabled ->
+                _uiState.update { it.copy(playerStatsHudEnabled = enabled) }
+            }
     }
 }
 

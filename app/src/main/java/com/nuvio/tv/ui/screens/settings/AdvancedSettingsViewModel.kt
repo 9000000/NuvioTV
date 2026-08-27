@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.data.local.DeviceLocalPlayerPreferences
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.data.local.SentrySettingsDataStore
@@ -36,6 +37,7 @@ sealed class AdvancedSettingsEvent {
 class AdvancedSettingsViewModel @Inject constructor(
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
     private val playerSettingsDataStore: PlayerSettingsDataStore,
+    private val deviceLocalPlayerPreferences: DeviceLocalPlayerPreferences,
     private val sentrySettingsDataStore: SentrySettingsDataStore
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AdvancedSettingsUiState())
@@ -59,12 +61,12 @@ class AdvancedSettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             playerSettingsDataStore.playerSettings.collectLatest { settings ->
-                _uiState.update {
-                    it.copy(
-                        playbackIssueReportsEnabled = settings.playbackIssueReportsEnabled,
-                        playerStatsHudEnabled = settings.playerStatsHudEnabled
-                    )
-                }
+                _uiState.update { it.copy(playbackIssueReportsEnabled = settings.playbackIssueReportsEnabled) }
+            }
+        }
+        viewModelScope.launch {
+            deviceLocalPlayerPreferences.playerStatsHudEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(playerStatsHudEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -98,7 +100,7 @@ class AdvancedSettingsViewModel @Inject constructor(
             }
             is AdvancedSettingsEvent.SetPlayerStatsHudEnabled -> {
                 viewModelScope.launch {
-                    playerSettingsDataStore.setPlayerStatsHudEnabled(event.enabled)
+                    deviceLocalPlayerPreferences.setPlayerStatsHudEnabled(event.enabled)
                 }
             }
             is AdvancedSettingsEvent.SetSentryEnabled -> {
