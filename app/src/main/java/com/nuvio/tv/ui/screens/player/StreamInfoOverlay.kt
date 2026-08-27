@@ -51,7 +51,8 @@ fun StreamInfoOverlay(
     visible: Boolean,
     onClose: () -> Unit,
     data: StreamInfoData?,
-    hudEnabled: Boolean,
+    hudAvailable: Boolean,
+    hudVisible: Boolean,
     onToggleHud: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -73,19 +74,22 @@ fun StreamInfoOverlay(
                 KeyEvent.KEYCODE_DPAD_RIGHT -> true
                 else -> false
             }
-            if (!isDirection || hudFocused) return@onPreviewKeyEvent false
+            if (!isDirection || hudFocused || !hudAvailable) return@onPreviewKeyEvent false
             runCatching { hudFocusRequester.requestFocus() }.isSuccess
         },
         dismissOnCenter = true,
         contentPadding = PaddingValues(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, top = 36.dp, bottom = 36.dp)
     ) {
-        StreamInfoHudButton(
-            enabled = hudEnabled,
-            onClick = onToggleHud,
-            focusRequester = hudFocusRequester,
-            onFocusChanged = { hudFocused = it },
-            modifier = Modifier.align(Alignment.BottomEnd)
-        )
+        // Someone who never turned the overlay on has no use for a control they cannot interpret.
+        if (hudAvailable) {
+            StreamInfoHudButton(
+                enabled = hudVisible,
+                onClick = onToggleHud,
+                focusRequester = hudFocusRequester,
+                onFocusChanged = { hudFocused = it },
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
         if (data != null) {
             Column(
                 modifier = Modifier.align(Alignment.BottomStart),
