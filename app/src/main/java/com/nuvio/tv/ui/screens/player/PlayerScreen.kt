@@ -912,6 +912,7 @@ fun PlayerScreen(
                 playFocusRequester = postPlayRecommendationFocusRequester,
                 playerWindowFocusRequester = postPlayRecommendationPlayerWindowFocusRequester,
                 onBack = handleBackPress,
+                onStopTrailer = viewModel::onPostPlayTrailerEnded,
                 onPlay = { recommendation ->
                     if (!exitDispatched) {
                         exitDispatched = true

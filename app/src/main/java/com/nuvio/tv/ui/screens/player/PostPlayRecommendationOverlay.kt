@@ -108,6 +108,7 @@ fun PostPlayRecommendationOverlay(
     playFocusRequester: FocusRequester,
     playerWindowFocusRequester: FocusRequester,
     onBack: () -> Unit,
+    onStopTrailer: () -> Unit,
     onPlay: (PostPlayRecommendation) -> Unit,
     onPlayManually: (PostPlayRecommendation) -> Unit,
     onOpenDetails: (PostPlayRecommendation) -> Unit,
@@ -223,7 +224,7 @@ fun PostPlayRecommendationOverlay(
                 .onPreviewKeyEvent { event ->
                     val native = event.nativeKeyEvent
                     if (native.keyCode == AndroidKeyEvent.KEYCODE_BACK && native.action == AndroidKeyEvent.ACTION_UP) {
-                        onBack()
+                        if (state.isTrailerPlaying) onStopTrailer() else onBack()
                         return@onPreviewKeyEvent true
                     }
                     if (native.keyCode == AndroidKeyEvent.KEYCODE_BACK && native.action == AndroidKeyEvent.ACTION_DOWN) {
@@ -687,7 +688,7 @@ private fun trailerButtonLabel(state: PostPlayRecommendationUiState): String {
             R.string.player_post_play_trailer_countdown,
             state.countdownSeconds
         )
-        else -> stringResource(R.string.hero_play_trailer)
+        else -> stringResource(R.string.player_post_play_trailer)
     }
 }
 

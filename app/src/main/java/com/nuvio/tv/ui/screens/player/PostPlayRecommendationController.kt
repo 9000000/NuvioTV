@@ -484,7 +484,8 @@ internal class PostPlayRecommendationController(
                             title = recommendation.title,
                             year = recommendation.releaseInfo,
                             tmdbId = recommendation.tmdbId,
-                            type = recommendation.contentType
+                            type = recommendation.contentType,
+                            ignoreUseTrailersGate = true
                         )
                     }
                 } catch (cancelled: CancellationException) {
