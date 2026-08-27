@@ -601,8 +601,7 @@ internal class PostPlayRecommendationController(
                     tmdbMetadataService.fetchMoreLikeThis(
                         tmdbId = tmdbId,
                         contentType = tmdbContentType,
-                        language = settings.language,
-                        maxItems = MAX_POST_PLAY_RECOMMENDATIONS
+                        language = settings.language
                     )
                 }.getOrDefault(emptyList())
             }

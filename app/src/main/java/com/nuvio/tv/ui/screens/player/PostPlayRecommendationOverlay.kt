@@ -107,6 +107,7 @@ fun PostPlayRecommendationOverlay(
     showManualPlayOption: Boolean,
     playFocusRequester: FocusRequester,
     playerWindowFocusRequester: FocusRequester,
+    onBack: () -> Unit,
     onPlay: (PostPlayRecommendation) -> Unit,
     onPlayManually: (PostPlayRecommendation) -> Unit,
     onOpenDetails: (PostPlayRecommendation) -> Unit,
@@ -216,7 +217,21 @@ fun PostPlayRecommendationOverlay(
         exit = fadeOut(animationSpec = tween(220)),
         modifier = modifier
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    if (native.keyCode == AndroidKeyEvent.KEYCODE_BACK && native.action == AndroidKeyEvent.ACTION_UP) {
+                        onBack()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (native.keyCode == AndroidKeyEvent.KEYCODE_BACK && native.action == AndroidKeyEvent.ACTION_DOWN) {
+                        return@onPreviewKeyEvent true
+                    }
+                    false
+                }
+        ) {
             AnimatedContent(
                 targetState = recommendation,
                 transitionSpec = {
