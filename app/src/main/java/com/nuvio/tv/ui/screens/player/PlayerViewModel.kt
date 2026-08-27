@@ -142,6 +142,7 @@ class PlayerViewModel @Inject constructor(
 
     private val postPlayRecommendationController = PostPlayRecommendationController(
         playbackController = controller,
+        playerSettingsDataStore = playerSettingsDataStore,
         metaRepository = metaRepository,
         tmdbService = tmdbService,
         tmdbMetadataService = tmdbMetadataService,

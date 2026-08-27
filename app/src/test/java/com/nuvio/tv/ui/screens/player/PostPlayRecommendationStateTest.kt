@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import com.nuvio.tv.core.tmdb.TmdbEnrichment
+import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
@@ -204,6 +205,19 @@ class PostPlayRecommendationStateTest {
                 contentType = "movie",
                 isNextEpisodeMetadataResolved = false,
                 nextEpisodeHasAired = null
+            )
+        )
+    }
+
+    @Test
+    fun `post play recommendations default on and respect the setting`() {
+        assertTrue(PlayerSettings().postPlayRecommendationsEnabled)
+        assertFalse(
+            shouldUsePostPlayRecommendation(
+                contentType = "movie",
+                isNextEpisodeMetadataResolved = false,
+                nextEpisodeHasAired = null,
+                enabled = false
             )
         )
     }

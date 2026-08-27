@@ -9,6 +9,7 @@ import com.nuvio.tv.core.util.isUnreleased
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.MDBListSettingsDataStore
 import com.nuvio.tv.data.local.MoreLikeThisSourcePreference
+import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
@@ -40,6 +41,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal class PostPlayRecommendationController(
     private val playbackController: PlayerRuntimeController,
+    private val playerSettingsDataStore: PlayerSettingsDataStore,
     private val metaRepository: MetaRepository,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
@@ -68,6 +70,7 @@ internal class PostPlayRecommendationController(
     private data class PlaybackSnapshot(
         val identity: PlaybackIdentity,
         val contentType: String?,
+        val postPlayRecommendationsEnabled: Boolean,
         val isNextEpisodeMetadataResolved: Boolean,
         val nextEpisodeHasAired: Boolean?,
         val hasError: Boolean,
@@ -110,8 +113,9 @@ internal class PostPlayRecommendationController(
         scope.launch {
             combine(
                 playbackController.uiState,
-                playbackController.playbackTimeline
-            ) { playerState, timeline ->
+                playbackController.playbackTimeline,
+                playerSettingsDataStore.playerSettings
+            ) { playerState, timeline, playerSettings ->
                 PlaybackSnapshot(
                     identity = PlaybackIdentity(
                         contentType = playerState.contentType?.trim()?.lowercase(),
@@ -121,6 +125,7 @@ internal class PostPlayRecommendationController(
                         episode = playerState.currentEpisode
                     ),
                     contentType = playerState.contentType,
+                    postPlayRecommendationsEnabled = playerSettings.postPlayRecommendationsEnabled,
                     isNextEpisodeMetadataResolved = playerState.isNextEpisodeMetadataResolved,
                     nextEpisodeHasAired = playerState.nextEpisode?.hasAired,
                     hasError = !playerState.error.isNullOrBlank(),
@@ -223,7 +228,8 @@ internal class PostPlayRecommendationController(
         val shouldUseRecommendation = shouldUsePostPlayRecommendation(
             contentType = snapshot.contentType,
             isNextEpisodeMetadataResolved = snapshot.isNextEpisodeMetadataResolved,
-            nextEpisodeHasAired = snapshot.nextEpisodeHasAired
+            nextEpisodeHasAired = snapshot.nextEpisodeHasAired,
+            enabled = snapshot.postPlayRecommendationsEnabled
         )
         if (!shouldUseRecommendation || snapshot.hasError) {
             if (_uiState.value.recommendation != null ||

@@ -850,6 +850,8 @@
     <string name="autoplay_mode_first">Auto-play first source</string>
     <string name="autoplay_mode_regex">Auto-play regex match</string>
     <string name="autoplay_stream_selection">Auto Stream Selection</string>
+    <string name="autoplay_post_play_recommendations">Post-play Recommendations</string>
+    <string name="autoplay_post_play_recommendations_sub">Show recommended movies and series when playback reaches the end.</string>
     <string name="autoplay_next_episode">Auto-play Next Episode</string>
     <string name="autoplay_next_episode_sub">Start next episode automatically when prompt appears.</string>
     <string name="autoplay_next_episode_fallback">Fallback when binge group fails</string>

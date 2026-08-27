@@ -119,8 +119,9 @@ internal fun postPlayRecommendationCountdownSeconds(
 internal fun shouldUsePostPlayRecommendation(
     contentType: String?,
     isNextEpisodeMetadataResolved: Boolean,
-    nextEpisodeHasAired: Boolean?
-): Boolean = when (resolvePostPlayContentType(contentType)) {
+    nextEpisodeHasAired: Boolean?,
+    enabled: Boolean = true
+): Boolean = enabled && when (resolvePostPlayContentType(contentType)) {
     ContentType.MOVIE -> true
     ContentType.SERIES -> isNextEpisodeMetadataResolved && nextEpisodeHasAired != true
     else -> false
