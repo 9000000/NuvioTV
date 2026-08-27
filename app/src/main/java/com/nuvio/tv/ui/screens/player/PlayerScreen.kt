@@ -12,6 +12,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import androidx.annotation.RawRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -1587,12 +1588,15 @@ private fun MpvPlayerSurface(
     val context = LocalContext.current
     val latestAspectMode by rememberUpdatedState(aspectMode)
     val mpvView = remember(context) {
-        NuvioMpvSurfaceView(context)
+        NuvioMpvSurfaceView(context).apply {
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
     }
 
     AndroidView(
         factory = { mpvView },
-        modifier = modifier
+        modifier = modifier.focusProperties { canFocus = false }
     )
 
     DisposableEffect(viewModel, mpvView) {
@@ -1648,6 +1652,9 @@ private fun ExoPlayerSurface(
     val playerView = remember(context, player) {
         PlayerView(context).apply {
             useController = false
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             keepScreenOn = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
@@ -1658,7 +1665,7 @@ private fun ExoPlayerSurface(
 
     AndroidView(
         factory = { playerView },
-        modifier = modifier,
+        modifier = modifier.focusProperties { canFocus = false },
         update = {
             it.syncLibassOverlay(
                 player = player,
