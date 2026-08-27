@@ -1745,6 +1745,10 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
         PlayerEvent.OnDismissStreamInfo -> {
             _uiState.update { it.copy(showStreamInfoOverlay = false) }
         }
+        PlayerEvent.OnTogglePlayerStatsHud -> {
+            val enable = !_uiState.value.playerStatsHudEnabled
+            scope.launch { playerSettingsDataStore.setPlayerStatsHudEnabled(enable) }
+        }
     }
 }
 
@@ -1783,6 +1787,10 @@ internal fun PlayerRuntimeController.buildStreamInfoData(): StreamInfoData {
         videoHeight = videoHeight,
         videoFrameRate = state.detectedFrameRate.takeIf { it > 0f },
         videoBitrate = videoBitrate,
+        fileBitrate = PlayerBitrateEstimator.fileBitrateBps(
+            currentVideoSize,
+            playbackTimeline.value.duration
+        ),
         audioCodec = selectedAudio?.codec,
         audioChannels = selectedAudio?.channelCount?.let {
             CustomDefaultTrackNameProvider.getChannelLayoutName(it)

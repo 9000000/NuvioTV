@@ -19,6 +19,7 @@ data class AdvancedSettingsUiState(
     val smoothBringIntoViewEnabled: Boolean = true,
     val composeHighlighterEnabled: Boolean = false,
     val playbackIssueReportsEnabled: Boolean = false,
+    val playerStatsHudEnabled: Boolean = false,
     val sentryEnabled: Boolean = true
 )
 
@@ -27,6 +28,7 @@ sealed class AdvancedSettingsEvent {
     data class SetSmoothBringIntoViewEnabled(val enabled: Boolean) : AdvancedSettingsEvent()
     data class SetComposeHighlighterEnabled(val enabled: Boolean) : AdvancedSettingsEvent()
     data class SetPlaybackIssueReportsEnabled(val enabled: Boolean) : AdvancedSettingsEvent()
+    data class SetPlayerStatsHudEnabled(val enabled: Boolean) : AdvancedSettingsEvent()
     data class SetSentryEnabled(val enabled: Boolean) : AdvancedSettingsEvent()
 }
 
@@ -57,7 +59,12 @@ class AdvancedSettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             playerSettingsDataStore.playerSettings.collectLatest { settings ->
-                _uiState.update { it.copy(playbackIssueReportsEnabled = settings.playbackIssueReportsEnabled) }
+                _uiState.update {
+                    it.copy(
+                        playbackIssueReportsEnabled = settings.playbackIssueReportsEnabled,
+                        playerStatsHudEnabled = settings.playerStatsHudEnabled
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -87,6 +94,11 @@ class AdvancedSettingsViewModel @Inject constructor(
             is AdvancedSettingsEvent.SetPlaybackIssueReportsEnabled -> {
                 viewModelScope.launch {
                     playerSettingsDataStore.setPlaybackIssueReportsEnabled(event.enabled)
+                }
+            }
+            is AdvancedSettingsEvent.SetPlayerStatsHudEnabled -> {
+                viewModelScope.launch {
+                    playerSettingsDataStore.setPlayerStatsHudEnabled(event.enabled)
                 }
             }
             is AdvancedSettingsEvent.SetSentryEnabled -> {
