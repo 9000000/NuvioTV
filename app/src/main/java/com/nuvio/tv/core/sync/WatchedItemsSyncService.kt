@@ -11,10 +11,8 @@ import com.nuvio.tv.data.remote.supabase.SupabaseWatchedItem
 import com.nuvio.tv.data.remote.supabase.SupabaseWatchedItemEvent
 import com.nuvio.tv.domain.model.WatchedItem
 import io.github.jan.supabase.postgrest.Postgrest
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -76,15 +74,20 @@ class WatchedItemsSyncService @Inject constructor(
      * stamping the finish time would mark it as already synced and the next pull would
      * delete it for never showing up in the remote response.
      */
-    fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
+    suspend fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
         // A push never moves its own profile's point backwards: one that read older data
         // can still finish last, and its stamp would otherwise retract a newer push's
         // claim. This is about competing pushes only. Restore below is exempt.
-        val advanced = maxOf(syncPointFor(profileId), syncPointMs)
-        syncPoints[profileId] = advanced
-        CoroutineScope(Dispatchers.IO).launch {
-            watchedItemsPreferences.setLastSuccessfulPushMs(advanced, profileId)
-        }
+        // Both halves are monotonic on their own terms, so this holds without callers
+        // being serialized elsewhere: merge compares and writes memory in one atomic
+        // step, and the store does the same for the durable copy.
+        val advanced = syncPoints.merge(profileId, syncPointMs) { current, candidate ->
+            maxOf(current, candidate)
+        } ?: syncPointMs
+        // Awaited rather than fired off: the stored point is the durable half of a
+        // successful push, and losing it to a process death leaves the next start
+        // re-claiming ground the push already covered.
+        watchedItemsPreferences.advanceLastSuccessfulPushMs(advanced, profileId)
     }
 
     /**

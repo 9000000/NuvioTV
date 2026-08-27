@@ -11,9 +11,7 @@ import com.nuvio.tv.data.remote.supabase.SupabaseWatchProgress
 import com.nuvio.tv.data.remote.supabase.SupabaseWatchProgressEvent
 import com.nuvio.tv.domain.model.WatchProgress
 import io.github.jan.supabase.postgrest.Postgrest
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -50,7 +48,6 @@ class WatchProgressSyncService @Inject constructor(
     private val profileManager: ProfileManager,
     private val syncClientIdentity: SyncClientIdentity
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val deltaSyncMutex = Mutex()
 
     /** Serializes full pushes. Two overlapping ones would each claim a sync point for a
@@ -79,15 +76,20 @@ class WatchProgressSyncService @Inject constructor(
      * stamping the finish time would mark it as already synced and the next pull would
      * delete it for never showing up in the remote response.
      */
-    fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
+    suspend fun markPushSucceeded(profileId: Int, syncPointMs: Long) {
         // A push never moves its own profile's point backwards: one that read older data
         // can still finish last, and its stamp would otherwise retract a newer push's
         // claim. This is about competing pushes only. Restore below is exempt.
-        val advanced = maxOf(syncPointFor(profileId), syncPointMs)
-        syncPoints[profileId] = advanced
-        scope.launch {
-            watchProgressPreferences.setLastSuccessfulPushMs(advanced, profileId)
-        }
+        // Both halves are monotonic on their own terms, so this holds without callers
+        // being serialized elsewhere: merge compares and writes memory in one atomic
+        // step, and the store does the same for the durable copy.
+        val advanced = syncPoints.merge(profileId, syncPointMs) { current, candidate ->
+            maxOf(current, candidate)
+        } ?: syncPointMs
+        // Awaited rather than fired off: the stored point is the durable half of a
+        // successful push, and losing it to a process death leaves the next start
+        // re-claiming ground the push already covered.
+        watchProgressPreferences.advanceLastSuccessfulPushMs(advanced, profileId)
     }
 
     /**
