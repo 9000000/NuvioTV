@@ -57,6 +57,7 @@ fun GridContinueWatchingSection(
         initialFirstVisibleItemIndex = (lastFocusedIndex.intValue - 1).coerceAtLeast(0)
     ),
     onItemFocused: (Int) -> Unit = {},
+    rowFocusRequester: FocusRequester = remember { FocusRequester() },
     blurUnwatchedEpisodes: Boolean = false,
     useEpisodeThumbnails: Boolean = true,
     cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
@@ -110,6 +111,7 @@ fun GridContinueWatchingSection(
                     else
                         Modifier.fillMaxWidth()
                 )
+                .focusRequester(rowFocusRequester)
                 .focusRestorer {
                     val idx = if (lastFocusedIndex.intValue >= 0) lastFocusedIndex.intValue else 0
                     focusRequesters[idx]
@@ -149,8 +151,10 @@ fun GridContinueWatchingSection(
                     modifier = focusModifier
                         .onFocusChanged { focusState ->
                             isCardFocused = focusState.isFocused
-                            if (focusState.isFocused && lastFocusedIndex.intValue != index) {
-                                lastFocusedIndex.intValue = index
+                            if (focusState.isFocused) {
+                                if (lastFocusedIndex.intValue != index) {
+                                    lastFocusedIndex.intValue = index
+                                }
                                 onItemFocused(index)
                             }
                         },

@@ -213,6 +213,8 @@ fun ClassicHomeContent(
     val previousRowItemKeys = remember { mutableMapOf<String, List<String>>() }
     val cwItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    val cwRowFocusRequester = remember { FocusRequester() }
+    val upcomingRowFocusRequester = remember { FocusRequester() }
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
 
     // Improved Back navigation: when focused item is not the first in a row,
@@ -220,15 +222,18 @@ fun ClassicHomeContent(
     // Disabled when content doesn't have focus (e.g. sidebar is open).
     val contentHasFocus = remember { mutableStateOf(false) }
     val cwFocusedIndex = remember { mutableIntStateOf(-1) }
+    // Observable version of currentFocusSnapshot.rowKey so BackHandler recomposes
+    // when focus moves between CW/Upcoming and catalog rows.
+    val activeRowKeyState = remember { mutableStateOf<String?>(null) }
     val cwPendingScrollToStart = remember { mutableIntStateOf(0) }
     val upcomingPendingScrollToStart = remember { mutableIntStateOf(0) }
     BackHandler(enabled = contentHasFocus.value && run {
-        val rowKey = currentFocusSnapshot.rowKey ?: return@run false
+        val rowKey = activeRowKeyState.value ?: return@run false
         val isCwRow = rowKey == "continue_watching" || rowKey == "upcoming_section"
         val itemIndex = if (isCwRow) cwFocusedIndex.intValue else (rowFocusedItemIndex[rowKey] ?: 0)
         itemIndex > 0
     }) {
-        val rowKey = currentFocusSnapshot.rowKey ?: return@BackHandler
+        val rowKey = activeRowKeyState.value ?: return@BackHandler
         val isCw = rowKey == "continue_watching"
         val isUpcoming = rowKey == "upcoming_section"
         if (isCw || isUpcoming) {
@@ -577,7 +582,7 @@ fun ClassicHomeContent(
                 LaunchedEffect(cwPendingScrollToStart.intValue) {
                     if (cwPendingScrollToStart.intValue > 0) {
                         cwListState.scrollToItem(0, 0)
-                        cwItemFocusRequesters[0]?.let { runCatching { it.requestFocus() } }
+                        cwRowFocusRequester.let { runCatching { it.requestFocus() } }
                     }
                 }
                 ContinueWatchingSection(
@@ -626,6 +631,7 @@ fun ClassicHomeContent(
                         currentFocusSnapshot.rowIndex = -1
                         currentFocusSnapshot.itemIndex = itemIndex
                         currentFocusSnapshot.rowKey = "continue_watching"
+                        activeRowKeyState.value = "continue_watching"
                         cwFocusedIndex.intValue = itemIndex
                         onFocusedRowKeyChanged(null)
                         if (uiState.classicFocusGradientEnabled) {
@@ -636,6 +642,7 @@ fun ClassicHomeContent(
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = cwItemFocusRequesters,
+                    rowFocusRequester = cwRowFocusRequester,
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,
@@ -652,7 +659,7 @@ fun ClassicHomeContent(
                 LaunchedEffect(upcomingPendingScrollToStart.intValue) {
                     if (upcomingPendingScrollToStart.intValue > 0) {
                         upcomingListState.scrollToItem(0, 0)
-                        upcomingItemFocusRequesters[0]?.let { runCatching { it.requestFocus() } }
+                        upcomingRowFocusRequester.let { runCatching { it.requestFocus() } }
                     }
                 }
                 ContinueWatchingSection(
@@ -696,11 +703,13 @@ fun ClassicHomeContent(
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = upcomingItemFocusRequesters,
+                    rowFocusRequester = upcomingRowFocusRequester,
                     lastFocusedIndexState = lastFocusedUpcomingIndex,
                     onItemFocused = { itemIndex ->
                         currentFocusSnapshot.rowIndex = -1
                         currentFocusSnapshot.itemIndex = itemIndex
                         currentFocusSnapshot.rowKey = "upcoming_section"
+                        activeRowKeyState.value = "upcoming_section"
                         cwFocusedIndex.intValue = itemIndex
                     },
                     cardWidth = classicContinueWatchingCardWidth,
@@ -806,6 +815,7 @@ fun ClassicHomeContent(
                                 currentFocusSnapshot.rowIndex = index
                                 currentFocusSnapshot.itemIndex = itemIndex
                                 currentFocusSnapshot.rowKey = catalogKey
+                                activeRowKeyState.value = catalogKey
                                 onFocusedRowKeyChanged(catalogKey)
                                 rowFocusedItemIndex[catalogKey] = itemIndex
                             }
@@ -841,6 +851,7 @@ fun ClassicHomeContent(
                             currentFocusSnapshot.rowIndex = index
                             currentFocusSnapshot.itemIndex = itemIndex
                             currentFocusSnapshot.rowKey = collectionKey
+                            activeRowKeyState.value = collectionKey
                             onFocusedRowKeyChanged(null)
                             rowFocusedItemIndex[collectionKey] = itemIndex
                             if (uiState.classicFocusGradientEnabled) {

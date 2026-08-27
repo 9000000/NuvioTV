@@ -140,6 +140,7 @@ fun ContinueWatchingSection(
     downFocusRequester: FocusRequester? = null,
     entryFocusRequester: FocusRequester? = null,
     focusRequesters: MutableMap<Int, FocusRequester> = remember { mutableMapOf() },
+    rowFocusRequester: FocusRequester = remember { FocusRequester() },
     listState: LazyListState = rememberLazyListState(),
     lastFocusedIndexState: MutableIntState = remember { mutableIntStateOf(-1) },
     cardWidth: Dp = 288.dp,
@@ -227,6 +228,7 @@ fun ContinueWatchingSection(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusRequester(rowFocusRequester)
                 .focusRestorer {
                     val visibleIndices = listState.layoutInfo.visibleItemsInfo
                         .map { it.index }
@@ -273,8 +275,10 @@ fun ContinueWatchingSection(
                     modifier = Modifier
                         .onFocusChanged { focusState ->
                             isCardFocused = focusState.isFocused
-                            if (focusState.isFocused && lastFocusedIndex != index) {
-                                lastFocusedIndex = index
+                            if (focusState.isFocused) {
+                                if (lastFocusedIndex != index) {
+                                    lastFocusedIndex = index
+                                }
                                 onItemFocused(index)
                             }
                         }
