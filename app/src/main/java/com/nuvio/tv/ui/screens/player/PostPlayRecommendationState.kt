@@ -44,6 +44,7 @@ data class PostPlayRecommendationUiState(
     val isChangingRecommendation: Boolean = false,
     val isLoadingTrailer: Boolean = false,
     val isVisible: Boolean = false,
+    val hasReturnedToPlayer: Boolean = false,
     val countdownSeconds: Int? = null,
     val isTrailerPlaying: Boolean = false,
     val hasAutoPlayedTrailer: Boolean = false
@@ -54,8 +55,20 @@ data class PostPlayRecommendationUiState(
     val canNavigateNext: Boolean
         get() = !isChangingRecommendation && recommendationIndex < recommendationCount - 1
 
+    val canReturnToPlayer: Boolean
+        get() = isVisible && !isTrailerPlaying && !hasAutoPlayedTrailer
+
     val blocksNaturalCompletion: Boolean
-        get() = recommendation != null || isVisible || isLoadingRecommendation
+        get() = recommendation != null || isVisible || hasReturnedToPlayer || isLoadingRecommendation
+}
+
+internal fun PostPlayRecommendationUiState.returnToPlayer(): PostPlayRecommendationUiState {
+    if (!canReturnToPlayer) return this
+    return copy(
+        isVisible = false,
+        hasReturnedToPlayer = true,
+        countdownSeconds = null
+    )
 }
 
 internal fun PlayerUiState.blocksPostPlayRecommendation(): Boolean {

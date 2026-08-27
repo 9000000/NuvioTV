@@ -197,8 +197,8 @@ class PlayerViewModel @Inject constructor(
         postPlayRecommendationController.showNextRecommendation()
     }
 
-    fun dismissPostPlayRecommendation() {
-        postPlayRecommendationController.dismiss()
+    fun returnToPlayerFromPostPlay() {
+        postPlayRecommendationController.returnToPlayer()
     }
 
     fun scheduleHideControls() {

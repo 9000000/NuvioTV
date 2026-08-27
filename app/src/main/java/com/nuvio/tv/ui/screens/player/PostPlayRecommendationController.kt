@@ -90,7 +90,7 @@ internal class PostPlayRecommendationController(
     private var recommendationSelectionJob: Job? = null
     private var recommendationPrefetchJob: Job? = null
     private var postEndCountdownJob: Job? = null
-    private var dismissAnimationJob: Job? = null
+    private var returnToPlayerAnimationJob: Job? = null
     private var recommendationCandidates = emptyList<MetaPreview>()
     private var ratingPreferences: RatingPreferences? = null
     private val candidateResolutionJobs = mutableMapOf<Int, Deferred<ResolvedCandidate?>>()
@@ -101,7 +101,6 @@ internal class PostPlayRecommendationController(
     private var autoPlayTrailerEnabled = postPlayTrailerPlaybackEnabled
     private var lastSnapshot: PlaybackSnapshot? = null
     private var lastPlaybackIdentity: PlaybackIdentity? = null
-    private var dismissedForCurrentPlayback = false
 
     init {
         scope.launch {
@@ -162,24 +161,21 @@ internal class PostPlayRecommendationController(
         selectRecommendation(1)
     }
 
-    fun dismiss() {
+    fun returnToPlayer() {
+        val state = _uiState.value
+        val returnedState = state.returnToPlayer()
+        if (returnedState == state) return
         recommendationJob?.cancel()
         recommendationJob = null
         clearRecommendationPipeline()
         postEndCountdownJob?.cancel()
         postEndCountdownJob = null
-        dismissAnimationJob?.cancel()
-        dismissedForCurrentPlayback = true
-        _uiState.update {
-            it.copy(
-                isVisible = false,
-                countdownSeconds = null
-            )
-        }
-        dismissAnimationJob = scope.launch {
+        returnToPlayerAnimationJob?.cancel()
+        _uiState.value = returnedState
+        returnToPlayerAnimationJob = scope.launch {
             delay(POST_PLAY_RECOMMENDATION_TRANSITION_MS.toLong())
-            _uiState.value = PostPlayRecommendationUiState()
-            dismissAnimationJob = null
+            _uiState.value = PostPlayRecommendationUiState(hasReturnedToPlayer = true)
+            returnToPlayerAnimationJob = null
         }
     }
 
@@ -195,11 +191,10 @@ internal class PostPlayRecommendationController(
         clearRecommendationPipeline()
         postEndCountdownJob?.cancel()
         postEndCountdownJob = null
-        dismissAnimationJob?.cancel()
-        dismissAnimationJob = null
+        returnToPlayerAnimationJob?.cancel()
+        returnToPlayerAnimationJob = null
         recommendationLoadAttempted = false
         autoPlayTrailerEnabled = postPlayTrailerPlaybackEnabled
-        dismissedForCurrentPlayback = false
         if (_uiState.value.isTrailerPlaying) {
             trailerPlayerPool.stop()
         }
@@ -237,7 +232,7 @@ internal class PostPlayRecommendationController(
             return
         }
 
-        if (dismissedForCurrentPlayback) return
+        if (_uiState.value.hasReturnedToPlayer) return
 
         val effectiveDuration = snapshot.durationMs
             .takeIf { it > 0L }

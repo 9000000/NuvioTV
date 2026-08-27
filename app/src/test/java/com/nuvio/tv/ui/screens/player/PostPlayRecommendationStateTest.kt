@@ -74,6 +74,20 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
+    fun `post play returns to player only while its window is available`() {
+        val state = PostPlayRecommendationUiState(isVisible = true)
+        val returned = state.returnToPlayer()
+
+        assertTrue(state.canReturnToPlayer)
+        assertFalse(state.copy(isTrailerPlaying = true).canReturnToPlayer)
+        assertFalse(state.copy(hasAutoPlayedTrailer = true).canReturnToPlayer)
+        assertFalse(state.copy(isVisible = false).canReturnToPlayer)
+        assertFalse(returned.isVisible)
+        assertTrue(returned.hasReturnedToPlayer)
+        assertTrue(returned.blocksNaturalCompletion)
+    }
+
+    @Test
     fun `recommendation navigation follows pipeline bounds`() {
         val first = PostPlayRecommendationUiState(
             recommendationIndex = 0,

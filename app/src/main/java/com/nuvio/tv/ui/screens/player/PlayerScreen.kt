@@ -194,6 +194,9 @@ fun PlayerScreen(
     val dismissStreamInfoOverlay = {
         viewModel.onEvent(PlayerEvent.OnDismissStreamInfo)
     }
+    val returnToPlayerFromPostPlay = {
+        viewModel.returnToPlayerFromPostPlay()
+    }
 
     val currentOnPlaybackEnded by rememberUpdatedState(onPlaybackEnded)
     val currentOnBackPress by rememberUpdatedState(onBackPress)
@@ -252,7 +255,10 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
-        if (postPlayRecommendationState.isVisible || postPlayRecommendationState.isLoadingRecommendation) {
+        if (postPlayRecommendationState.canReturnToPlayer) {
+            returnToPlayerFromPostPlay()
+            viewModel.hideControls()
+        } else if (postPlayRecommendationState.isVisible || postPlayRecommendationState.isLoadingRecommendation) {
             exitPlayer()
         } else if (shouldConfirmNextEpisodeOnEnd) {
             returnToDetailsFromEndPrompt()
@@ -510,9 +516,7 @@ fun PlayerScreen(
                     return@onPreviewKeyEvent true
                 }
 
-                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
-                ) {
+                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE) {
                     return@onPreviewKeyEvent when (keyEvent.nativeKeyEvent.action) {
                         KeyEvent.ACTION_DOWN -> true
                         KeyEvent.ACTION_UP -> {
@@ -882,12 +886,12 @@ fun PlayerScreen(
                     }
                 }
 
-                if (postPlayRecommendationState.isVisible) {
+                if (postPlayRecommendationState.canReturnToPlayer) {
                     PostPlayRecommendationPlayerWindow(
                         focusRequester = postPlayRecommendationPlayerWindowFocusRequester,
                         downFocusRequester = postPlayRecommendationFocusRequester,
                         onClick = {
-                            viewModel.dismissPostPlayRecommendation()
+                            returnToPlayerFromPostPlay()
                             if (!uiState.showControls) {
                                 viewModel.onEvent(PlayerEvent.OnToggleControls)
                             }
