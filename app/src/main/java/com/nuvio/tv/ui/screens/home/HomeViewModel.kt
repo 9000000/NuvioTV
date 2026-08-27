@@ -94,7 +94,7 @@ class HomeViewModel @Inject constructor(
         private const val MAX_CATALOG_LOAD_CONCURRENCY = 3
 
         /** How long a home catalog is left alone before a return to Home re-requests it. */
-        private const val HOME_CATALOG_REFRESH_TTL_MS = 30L * 60L * 1000L
+        private const val HOME_CATALOG_REFRESH_TTL_MS = 15L * 60L * 1000L
         internal const val EXTERNAL_META_PREFETCH_FOCUS_DEBOUNCE_MS = 220L
         internal const val EXTERNAL_META_PREFETCH_ADJACENT_DEBOUNCE_MS = 120L
         private const val MAX_ENRICHMENT_CACHE_SIZE = 64
