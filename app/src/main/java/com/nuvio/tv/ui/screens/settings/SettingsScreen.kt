@@ -53,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
@@ -133,6 +134,12 @@ private const val SETTINGS_DETAIL_FOCUS_DELAY_MS = 120L
 private const val SETTINGS_TAB_FOCUS_SELECT_DELAY_MS = 140L
 private const val SETTINGS_DETAIL_ANIM_IN_DURATION_MS = 200
 private const val SETTINGS_DETAIL_ANIM_OUT_DURATION_MS = 180
+
+// How long the pane gets to lay out, on top of the delay above, before focus falls back to a
+// directional move. Taken from the enter animation so the two cannot drift apart: the window
+// opens partway through it and closes well after it, which is what the request needs to stop
+// failing. Timed rather than counted in frames, since a frame count assumes a refresh rate.
+private const val SETTINGS_DETAIL_FOCUS_RETRY_WINDOW_MS = SETTINGS_DETAIL_ANIM_IN_DURATION_MS
 
 private sealed interface ExperienceModeLoadState {
     data object Loading : ExperienceModeLoadState
@@ -341,11 +348,16 @@ fun SettingsScreen(
     LaunchedEffect(pendingContentFocusRequestId) {
         val category = pendingContentFocusCategory ?: return@LaunchedEffect
         delay(SETTINGS_DETAIL_FOCUS_DELAY_MS)
-        val requester = contentFocusRequesters[category]
-        val requested = if (requester != null) {
-            runCatching { requester.requestFocus() }.isSuccess
-        } else {
-            false
+        // Asked once per frame until the pane takes focus or the window closes, rather than
+        // betting on one fixed delay. The pane is not always laid out when the delay expires,
+        // and the fallback below moves by direction, which lands wherever is nearest the rail
+        // row the user came from, usually the middle of the options.
+        var requested = false
+        val deadline = System.nanoTime() + SETTINGS_DETAIL_FOCUS_RETRY_WINDOW_MS * 1_000_000L
+        while (!requested && System.nanoTime() < deadline) {
+            requested = contentFocusRequesters[category]
+                ?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
+            if (!requested) withFrameNanos { }
         }
         if (!requested) {
             focusManager.moveFocus(if (isHorizonStyle) FocusDirection.Down else FocusDirection.Right)
@@ -454,7 +466,7 @@ fun SettingsScreen(
                                     if (justGainedFocus) {
                                         val requester = railFocusRequesters[selectedCategory]
                                         val requested = if (requester != null) {
-                                            runCatching { requester.requestFocus() }.isSuccess
+                                            runCatching { requester.requestFocus() }.getOrDefault(false)
                                         } else {
                                             false
                                         }
@@ -613,7 +625,7 @@ fun SettingsScreen(
                                 if (justGainedFocus) {
                                     val requester = railFocusRequesters[selectedCategory]
                                     val requested = if (requester != null) {
-                                        runCatching { requester.requestFocus() }.isSuccess
+                                        runCatching { requester.requestFocus() }.getOrDefault(false)
                                     } else {
                                         false
                                     }
@@ -670,7 +682,7 @@ fun SettingsScreen(
                                 if (!movedLeft) {
                                     allowDetailAutofocus = false
                                     val requested = railFocusRequesters[selectedCategory]?.let { requester ->
-                                        runCatching { requester.requestFocus() }.isSuccess
+                                        runCatching { requester.requestFocus() }.getOrDefault(false)
                                     } ?: false
                                     if (!requested) {
                                         runCatching { railContainerFocusRequester.requestFocus() }
