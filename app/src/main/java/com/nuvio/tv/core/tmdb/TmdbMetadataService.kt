@@ -238,17 +238,37 @@ class TmdbMetadataService(
                 // If TMDB returned the original title because no translation
                 // exists for the user's language, treat as no localized title
                 // so the caller keeps the addon-provided title instead.
-                val localizedTitle = if (
-                    rawLocalizedTitle != null &&
+                val droppedUntranslatedTitle = rawLocalizedTitle != null &&
                     originalTitle != null &&
                     rawLocalizedTitle == originalTitle &&
                     !normalizedLanguage.startsWith("en") &&
                     language != null &&
                     !normalizedLanguage.startsWith(language)
+                var localizedTitle = if (droppedUntranslatedTitle) null else rawLocalizedTitle
+                val isCjkLanguage = normalizedLanguage.startsWith("ja") ||
+                    normalizedLanguage.startsWith("ko") ||
+                    normalizedLanguage.startsWith("zh")
+                if (
+                    normalizedLanguage != "en" &&
+                    !isCjkLanguage &&
+                    containsCjkOrHangul(localizedTitle ?: originalTitle ?: "")
                 ) {
-                    null
-                } else {
-                    rawLocalizedTitle
+                    val englishTitle = runCatching {
+                        when (tmdbType) {
+                            "tv" -> tmdbApi.getTvDetails(numericId, TMDB_API_KEY, "en").body()
+                            else -> tmdbApi.getMovieDetails(numericId, TMDB_API_KEY, "en").body()
+                        }?.let { englishDetails ->
+                            (englishDetails.title ?: englishDetails.name)
+                                ?.trim()
+                                ?.takeIf { it.isNotBlank() && !containsCjkOrHangul(it) }
+                        }
+                    }.getOrNull()
+                    localizedTitle = resolvePersonName(
+                        localizedName = rawLocalizedTitle,
+                        originalName = originalTitle,
+                        fallbackEnglishName = englishTitle,
+                        preferredLanguage = normalizedLanguage
+                    )
                 }
                 val productionCompanies = details?.productionCompanies
                     .orEmpty()

@@ -643,6 +643,68 @@ class TmdbMetadataServiceTest {
     }
 
     @Test
+    fun `fetchEnrichment falls back CJK movie title to English`() = runTest {
+        val api = mockk<TmdbApi>()
+        coEvery { api.getMovieDetails(10, any(), "tr-TR") } returns Response.success(
+            TmdbDetailsResponse(
+                id = 10,
+                title = "チェンソーマン総集篇 後篇",
+                originalTitle = "チェンソーマン総集篇 後篇",
+                originalLanguage = "ja"
+            )
+        )
+        coEvery { api.getMovieDetails(10, any(), "en") } returns Response.success(
+            TmdbDetailsResponse(
+                id = 10,
+                title = "Chainsaw Man - The Compilation Movie",
+                originalTitle = "チェンソーマン総集篇 後篇",
+                originalLanguage = "ja"
+            )
+        )
+        coEvery { api.getMovieCredits(any(), any(), any()) } returns Response.success(TmdbCreditsResponse())
+        coEvery { api.getMovieImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
+        coEvery { api.getMovieReleaseDates(any(), any()) } returns Response.success(TmdbMovieReleaseDatesResponse())
+        coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 10))
+
+        val service = TmdbMetadataService(api)
+        val enrichment = service.fetchEnrichment(
+            tmdbId = "10",
+            contentType = ContentType.MOVIE,
+            language = "tr-TR"
+        )
+
+        assertEquals("Chainsaw Man - The Compilation Movie", enrichment?.localizedTitle)
+        coVerify(exactly = 1) { api.getMovieDetails(10, any(), "en") }
+    }
+
+    @Test
+    fun `fetchEnrichment keeps CJK movie title when language is Japanese`() = runTest {
+        val api = mockk<TmdbApi>()
+        coEvery { api.getMovieDetails(10, any(), "ja-JP") } returns Response.success(
+            TmdbDetailsResponse(
+                id = 10,
+                title = "チェンソーマン総集篇 後篇",
+                originalTitle = "チェンソーマン総集篇 後篇",
+                originalLanguage = "ja"
+            )
+        )
+        coEvery { api.getMovieCredits(any(), any(), any()) } returns Response.success(TmdbCreditsResponse())
+        coEvery { api.getMovieImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
+        coEvery { api.getMovieReleaseDates(any(), any()) } returns Response.success(TmdbMovieReleaseDatesResponse())
+        coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 10))
+
+        val service = TmdbMetadataService(api)
+        val enrichment = service.fetchEnrichment(
+            tmdbId = "10",
+            contentType = ContentType.MOVIE,
+            language = "ja-JP"
+        )
+
+        assertEquals("チェンソーマン総集篇 後篇", enrichment?.localizedTitle)
+        coVerify(exactly = 0) { api.getMovieDetails(10, any(), "en") }
+    }
+
+    @Test
     fun `fetchEnrichment falls back TV aggregate credits cast and creator names to English for Polish locale`() = runTest {
         val api = mockk<TmdbApi>()
         coEvery { api.getTvDetails(255358, any(), "pl-PL") } returns Response.success(
