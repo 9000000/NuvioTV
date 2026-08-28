@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
@@ -117,14 +118,17 @@ fun GridHomeContent(
     )
     val focusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val lastFocusedGridItemKey = remember { mutableStateOf(gridFocusState.focusedItemKey) }
-    val lastFocusedCwIndex = remember { mutableIntStateOf(-1) }
-    val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
+    // Saveable so the rows come back where they were left after navigating away and
+    // returning. The restorer falls back to the first card when the remembered one is
+    // off screen, so the scroll has to survive too, not just the index.
+    val lastFocusedCwIndex = rememberSaveable { mutableIntStateOf(-1) }
+    val lastFocusedUpcomingIndex = rememberSaveable { mutableIntStateOf(-1) }
     val cwFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val cwRowFocusRequester = remember { FocusRequester() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
-    val cwListState = remember { androidx.compose.foundation.lazy.LazyListState() }
-    val upcomingListState = remember { androidx.compose.foundation.lazy.LazyListState() }
+    val cwListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val upcomingListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // Improved Back navigation for CW/Upcoming rows: scroll to first item
     val contentHasFocus = remember { mutableStateOf(false) }
