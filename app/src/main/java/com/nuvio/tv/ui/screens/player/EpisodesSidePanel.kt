@@ -532,10 +532,16 @@ private fun EpisodesListView(
         }
 
         else -> {
+            val sortedSeasons = remember(uiState.episodesAvailableSeasons) {
+                val regular = uiState.episodesAvailableSeasons.filter { it > 0 }.sorted()
+                val specials = uiState.episodesAvailableSeasons.filter { it == 0 }
+                regular + specials
+            }
+
             Column(modifier = Modifier.fillMaxHeight()) {
-                if (uiState.episodesAvailableSeasons.isNotEmpty()) {
+                if (sortedSeasons.isNotEmpty()) {
                     EpisodesSeasonTabs(
-                        seasons = uiState.episodesAvailableSeasons,
+                        seasons = sortedSeasons,
                         selectedSeason = uiState.episodesSelectedSeason,
                         selectedTabFocusRequester = seasonTabFocusRequester,
                         onSeasonSelected = onSeasonSelected
@@ -574,7 +580,7 @@ private fun EpisodesListView(
                             blurUnwatched = uiState.blurUnwatchedEpisodes,
                             focusRequester = episodesFocusRequester,
                             requestInitialFocus = requestInitialFocus,
-                            availableSeasons = uiState.episodesAvailableSeasons,
+                            availableSeasons = sortedSeasons,
                             currentSeason = uiState.episodesSelectedSeason,
                             onSeasonNavigate = onSeasonSelected,
                             onClick = { onEpisodeSelected(episode) }
@@ -594,20 +600,24 @@ private fun EpisodesSeasonTabs(
     selectedTabFocusRequester: FocusRequester,
     onSeasonSelected: (Int) -> Unit
 ) {
-    val sortedSeasons = remember(seasons) {
-        val regular = seasons.filter { it > 0 }.sorted()
-        val specials = seasons.filter { it == 0 }
-        regular + specials
+    val seasonTabsListState = rememberLazyListState()
+
+    LaunchedEffect(selectedSeason, seasons) {
+        val targetIndex = seasons.indexOf(selectedSeason)
+        if (targetIndex >= 0) {
+            runCatching { seasonTabsListState.animateScrollToItem(targetIndex) }
+        }
     }
 
     LazyRow(
+        state = seasonTabsListState,
         modifier = Modifier
             .fillMaxWidth()
             .focusRestorer(),
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
         contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xs, vertical = NuvioTheme.spacing.xs)
     ) {
-        items(sortedSeasons, key = { it }) { season ->
+        items(seasons, key = { it }) { season ->
             val isSelected = selectedSeason == season
             var isFocused by remember { mutableStateOf(false) }
 
@@ -662,6 +672,7 @@ private fun EpisodeItem(
     onClick: () -> Unit
 ) {
     val shouldBlur = blurUnwatched && !isWatched
+    val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val context = LocalContext.current
     val episodeTitle = episode.title.localizeEpisodeTitle(context).ifBlank { context.getString(R.string.episodes_episode) }
     val formattedDate = remember(episode.released) {
@@ -684,27 +695,37 @@ private fun EpisodeItem(
             .then(if (requestInitialFocus) Modifier.focusRequester(focusRequester) else Modifier)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                    when (keyEvent.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            // Navigate to previous season
-                            if (currentSeason != null && availableSeasons.isNotEmpty()) {
-                                val currentIndex = availableSeasons.indexOf(currentSeason)
-                                if (currentIndex > 0) {
-                                    val previousSeason = availableSeasons[currentIndex - 1]
-                                    onSeasonNavigate(previousSeason)
-                                    return@onPreviewKeyEvent true
-                                }
+                    // In RTL, DPAD_LEFT visually moves toward later items and
+                    // DPAD_RIGHT toward earlier items (mirrors the season tabs row).
+                    val isPreviousKey = if (isRtl) {
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                    } else {
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    }
+                    val isNextKey = if (isRtl) {
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    } else {
+                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                    }
+
+                    if (isPreviousKey) {
+                        // Navigate to previous season
+                        if (currentSeason != null && availableSeasons.isNotEmpty()) {
+                            val currentIndex = availableSeasons.indexOf(currentSeason)
+                            if (currentIndex > 0) {
+                                val previousSeason = availableSeasons[currentIndex - 1]
+                                onSeasonNavigate(previousSeason)
+                                return@onPreviewKeyEvent true
                             }
                         }
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            // Navigate to next season
-                            if (currentSeason != null && availableSeasons.isNotEmpty()) {
-                                val currentIndex = availableSeasons.indexOf(currentSeason)
-                                if (currentIndex < availableSeasons.size - 1) {
-                                    val nextSeason = availableSeasons[currentIndex + 1]
-                                    onSeasonNavigate(nextSeason)
-                                    return@onPreviewKeyEvent true
-                                }
+                    } else if (isNextKey) {
+                        // Navigate to next season
+                        if (currentSeason != null && availableSeasons.isNotEmpty()) {
+                            val currentIndex = availableSeasons.indexOf(currentSeason)
+                            if (currentIndex < availableSeasons.size - 1) {
+                                val nextSeason = availableSeasons[currentIndex + 1]
+                                onSeasonNavigate(nextSeason)
+                                return@onPreviewKeyEvent true
                             }
                         }
                     }
