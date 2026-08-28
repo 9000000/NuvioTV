@@ -591,6 +591,7 @@ fun ClassicHomeContent(
                     if (cwPendingScrollToStart.intValue > 0) {
                         cwListState.scrollToItem(0, 0)
                         cwRowFocusRequester.let { runCatching { it.requestFocus() } }
+                        cwPendingScrollToStart.intValue = 0
                     }
                 }
                 ContinueWatchingSection(
@@ -668,6 +669,7 @@ fun ClassicHomeContent(
                     if (upcomingPendingScrollToStart.intValue > 0) {
                         upcomingListState.scrollToItem(0, 0)
                         upcomingRowFocusRequester.let { runCatching { it.requestFocus() } }
+                        upcomingPendingScrollToStart.intValue = 0
                     }
                 }
                 ContinueWatchingSection(

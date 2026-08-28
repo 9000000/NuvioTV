@@ -461,6 +461,7 @@ fun GridHomeContent(
                         if (cwPendingScrollToStart.intValue > 0) {
                             cwListState.scrollToItem(0, 0)
                             cwRowFocusRequester.let { runCatching { it.requestFocus() } }
+                            cwPendingScrollToStart.intValue = 0
                         }
                     }
                     GridContinueWatchingSection(
@@ -525,6 +526,7 @@ fun GridHomeContent(
                         if (upcomingPendingScrollToStart.intValue > 0) {
                             upcomingListState.scrollToItem(0, 0)
                             upcomingRowFocusRequester.let { runCatching { it.requestFocus() } }
+                            upcomingPendingScrollToStart.intValue = 0
                         }
                     }
                     GridContinueWatchingSection(
