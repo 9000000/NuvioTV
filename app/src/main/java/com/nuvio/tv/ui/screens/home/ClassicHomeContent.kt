@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -216,10 +217,13 @@ fun ClassicHomeContent(
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val cwRowFocusRequester = remember { FocusRequester() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
-    val cwListState = remember { LazyListState() }
-    val upcomingListState = remember { LazyListState() }
-    val lastFocusedCwIndex = remember { mutableIntStateOf(-1) }
-    val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
+    // Saveable so the rows come back where they were left after navigating away and
+    // returning. The restorer picks the first visible card when the remembered one is
+    // off screen, so the scroll has to survive too, not just the index.
+    val cwListState = rememberLazyListState()
+    val upcomingListState = rememberLazyListState()
+    val lastFocusedCwIndex = rememberSaveable { mutableIntStateOf(-1) }
+    val lastFocusedUpcomingIndex = rememberSaveable { mutableIntStateOf(-1) }
 
     // Improved Back navigation: when focused item is not the first in a row,
     // scroll the row to the start and focus the first item instead of opening the sidebar.
