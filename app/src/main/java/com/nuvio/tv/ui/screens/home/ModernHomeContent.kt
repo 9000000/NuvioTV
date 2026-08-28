@@ -358,18 +358,26 @@ fun ModernHomeContent(
     // guarded by an inequality, so it settles after one extra pass.
     previousItemKeysByRow.keys.retainAll(activeRowKeys)
     carouselRows.list.forEach { row ->
-        val currentKeys = row.items.list.map { it.key }
+        // Use item identity (from payload) for relocation instead of composable key,
+        // because composable keys are index-based for shimmer→real stability.
+        val currentIdentities = row.items.list.map { item ->
+            when (val p = item.payload) {
+                is ModernPayload.Catalog -> "${p.itemType}:${p.itemId}"
+                is ModernPayload.CollectionFolder -> "folder:${p.folderId}"
+                is ModernPayload.ContinueWatching -> "cw:${p.item.hashCode()}"
+            }
+        }
         val storedIdx = focusedItemByRow[row.key]
         val relocated = if (storedIdx != null) {
             previousItemKeysByRow[row.key]
                 ?.getOrNull(storedIdx)
-                ?.let { currentKeys.indexOf(it) }
+                ?.let { currentIdentities.indexOf(it) }
                 ?.takeIf { it >= 0 }
         } else null
         if (relocated != null && relocated != storedIdx) {
             focusedItemByRow[row.key] = relocated
         }
-        previousItemKeysByRow[row.key] = currentKeys
+        previousItemKeysByRow[row.key] = currentIdentities
     }
 
     LaunchedEffect(carouselRows, focusState.hasSavedFocus) {
@@ -957,14 +965,9 @@ fun ModernHomeContent(
                 object : BringIntoViewSpec {
                     override val scrollAnimationSpec: AnimationSpec<Float> = defaultBringIntoViewSpec.scrollAnimationSpec
                     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-                        // Relaxed vertical scroll: only scroll if the leading edge of the row header
-                        // is not at the target inset.
                         val currentLeadingEdge = offset
                         if (abs(currentLeadingEdge - topInsetPx) < 1f) return 0f
                         val distance = currentLeadingEdge - topInsetPx
-                        // When the list can't scroll backwards and the requested distance
-                        // is negative, clamp to 0 to avoid fighting the scroll bounds
-                        // (prevents first-row jank from impossible scroll-up attempts).
                         if (distance < 0f && !verticalRowListState.canScrollBackward) return 0f
                         return distance
                     }
