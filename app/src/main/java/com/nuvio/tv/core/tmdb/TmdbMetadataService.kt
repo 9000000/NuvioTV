@@ -5,6 +5,7 @@ import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.data.remote.api.TmdbAggregateCreditsResponse
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbCastMember
+import com.nuvio.tv.data.remote.api.TmdbCollectionPart
 import com.nuvio.tv.data.remote.api.TmdbCreditsResponse
 import com.nuvio.tv.data.remote.api.TmdbCrewMember
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
@@ -755,12 +756,12 @@ class TmdbMetadataService(
         }
     }
 
-    private val collectionCache = ConcurrentHashMap<String, List<MetaPreview>>()
+    private val collectionCache = ConcurrentHashMap<String, TmdbMovieCollection>()
 
     suspend fun fetchMovieCollection(
         collectionId: Int,
         language: String = "en"
-    ): List<MetaPreview> = withContext(ioDispatcher) {
+    ): TmdbMovieCollection = withContext(ioDispatcher) {
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val cacheKey = "$collectionId:$normalizedLanguage:collection"
         collectionCache[cacheKey]?.let { return@withContext it }
@@ -768,6 +769,30 @@ class TmdbMetadataService(
         try {
             val collectionResponse = tmdbApi.getCollectionDetails(collectionId, TMDB_API_KEY, normalizedLanguage).body()
             val rawParts = collectionResponse?.parts.orEmpty()
+            val isCjkLanguage = normalizedLanguage.startsWith("ja") ||
+                normalizedLanguage.startsWith("ko") ||
+                normalizedLanguage.startsWith("zh")
+            val englishCollection = if (
+                normalizedLanguage != "en" &&
+                !isCjkLanguage &&
+                (
+                    containsCjkOrHangul(collectionResponse?.name ?: "") ||
+                    collectionPartsContainCjkTitles(rawParts)
+                )
+            ) {
+                runCatching {
+                    tmdbApi.getCollectionDetails(collectionId, TMDB_API_KEY, "en").body()
+                }.getOrNull()
+            } else {
+                null
+            }
+            val englishTitlesById = englishCollectionTitlesById(englishCollection?.parts.orEmpty())
+            val resolvedCollectionName = resolvePersonName(
+                localizedName = collectionResponse?.name,
+                originalName = null,
+                fallbackEnglishName = englishCollection?.name,
+                preferredLanguage = normalizedLanguage
+            )
 
             // Show in release order
             val sortedParts = rawParts.sortedBy { it.releaseDate ?: "9999" }
@@ -782,7 +807,12 @@ class TmdbMetadataService(
             val items = coroutineScope {
                 sortedParts.map { part ->
                     async {
-                        val title = part.title ?: return@async null
+                        val title = resolvePersonName(
+                            localizedName = part.title,
+                            originalName = part.originalTitle,
+                            fallbackEnglishName = englishTitlesById[part.id],
+                            preferredLanguage = normalizedLanguage
+                        ) ?: return@async null
 
                         val localizedBackdropPath = runCatching {
                             tmdbApi.getMovieImages(part.id, TMDB_API_KEY, includeImageLanguage).body()
@@ -815,11 +845,15 @@ class TmdbMetadataService(
                     }
                 }.awaitAll().filterNotNull()
             }
-            collectionCache[cacheKey] = items
-            items
+            val collection = TmdbMovieCollection(
+                name = resolvedCollectionName,
+                items = items
+            )
+            collectionCache[cacheKey] = collection
+            collection
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch collection for $collectionId: ${e.message}")
-            emptyList()
+            TmdbMovieCollection(name = null, items = emptyList())
         }
     }
 
@@ -1581,6 +1615,11 @@ private fun selectTvAgeRating(
         .firstOrNull { it.isNotBlank() }
 }
 
+data class TmdbMovieCollection(
+    val name: String?,
+    val items: List<MetaPreview>
+)
+
 data class TmdbEnrichment(
     val localizedTitle: String?,
     val description: String?,
@@ -1721,6 +1760,21 @@ private fun englishCreditTitlesById(credits: TmdbPersonCreditsResponse?): Map<In
     }
     credits.cast.orEmpty().forEach { putTitle(it.id, it.title, it.name) }
     credits.crew.orEmpty().forEach { putTitle(it.id, it.title, it.name) }
+    return titles
+}
+
+private fun collectionPartsContainCjkTitles(parts: List<TmdbCollectionPart>): Boolean {
+    return parts.any { containsCjkOrHangul(it.title ?: return@any false) }
+}
+
+private fun englishCollectionTitlesById(parts: List<TmdbCollectionPart>): Map<Int, String> {
+    val titles = LinkedHashMap<Int, String>()
+    parts.forEach { part ->
+        val text = part.title?.trim()?.takeIf { it.isNotBlank() } ?: return@forEach
+        if (!containsCjkOrHangul(text)) {
+            titles.putIfAbsent(part.id, text)
+        }
+    }
     return titles
 }
 
