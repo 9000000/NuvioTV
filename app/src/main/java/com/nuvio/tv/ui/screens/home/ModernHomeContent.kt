@@ -255,15 +255,22 @@ fun ModernHomeContent(
     // Disabled when the sidebar owns focus (expanded) so Back can exit the app.
     val backScrollScope = rememberCoroutineScope()
     val contentHasFocus = remember { mutableStateOf(false) }
+    val fullscreenTrailerPlaying = remember { mutableStateOf(false) }
+    val fullscreenTrailerDismiss = remember { mutableStateOf<(() -> Unit)?>(null) }
     val shouldInterceptBack = remember {
         derivedStateOf {
             if (!contentHasFocus.value) return@derivedStateOf false
+            if (fullscreenTrailerPlaying.value) return@derivedStateOf true
             val rowKey = activeRowKey.value ?: return@derivedStateOf false
             val itemIndex = focusedItemByRow[rowKey] ?: 0
             itemIndex > 0
         }
     }
     BackHandler(enabled = shouldInterceptBack.value) {
+        if (fullscreenTrailerPlaying.value) {
+            fullscreenTrailerDismiss.value?.invoke()
+            return@BackHandler
+        }
         val rowKey = activeRowKey.value ?: return@BackHandler
         val listState = rowListStates[rowKey]
         focusedItemByRow[rowKey] = 0
@@ -826,9 +833,14 @@ fun ModernHomeContent(
                         heroTrailerFirstFrameRendered
                 }
             }
-            BackHandler(enabled = isTrailerPlayingFullscreenState.value) {
-                focusedCatalogSelection.value = null
-                expandedCatalogFocusKey.value = null
+            // Keep the top-level flag in sync so the row-scroll BackHandler
+            // stays disabled while a fullscreen trailer is visible.
+            fullscreenTrailerPlaying.value = isTrailerPlayingFullscreenState.value
+            fullscreenTrailerDismiss.value = remember(focusedCatalogSelection, expandedCatalogFocusKey) {
+                {
+                    focusedCatalogSelection.value = null
+                    expandedCatalogFocusKey.value = null
+                }
             }
             val liveHeroSceneState = remember(
                 resolvedHeroState,
