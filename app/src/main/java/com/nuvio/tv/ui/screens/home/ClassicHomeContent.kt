@@ -216,6 +216,8 @@ fun ClassicHomeContent(
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val cwRowFocusRequester = remember { FocusRequester() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
+    val cwListState = remember { LazyListState() }
+    val upcomingListState = remember { LazyListState() }
     val lastFocusedCwIndex = remember { mutableIntStateOf(-1) }
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
 
@@ -278,12 +280,7 @@ fun ClassicHomeContent(
     }
 
     LaunchedEffect(visibleRowKeys) {
-        // Keep CW/upcoming row states alive — they use rowStates.getOrPut but aren't
-        // part of visibleRowKeys (which only tracks catalog/collection rows).
-        val keysToRetain = visibleRowKeys.toMutableSet()
-        if (rowStates.containsKey("continue_watching")) keysToRetain.add("continue_watching")
-        if (rowStates.containsKey("upcoming_section")) keysToRetain.add("upcoming_section")
-        rowStates.keys.retainAll(keysToRetain)
+        rowStates.keys.retainAll(visibleRowKeys)
         rowFocusRequesters.keys.retainAll(visibleRowKeys)
     }
 
@@ -586,7 +583,6 @@ fun ClassicHomeContent(
 
         if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) {
             item(key = "continue_watching", contentType = "continue_watching") {
-                val cwListState = rowStates.getOrPut("continue_watching") { LazyListState() }
                 LaunchedEffect(cwPendingScrollToStart.intValue) {
                     if (cwPendingScrollToStart.intValue > 0) {
                         cwListState.scrollToItem(0, 0)
@@ -664,7 +660,6 @@ fun ClassicHomeContent(
 
         if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
             item(key = "upcoming_section", contentType = "upcoming_section") {
-                val upcomingListState = rowStates.getOrPut("upcoming_section") { LazyListState() }
                 LaunchedEffect(upcomingPendingScrollToStart.intValue) {
                     if (upcomingPendingScrollToStart.intValue > 0) {
                         upcomingListState.scrollToItem(0, 0)
