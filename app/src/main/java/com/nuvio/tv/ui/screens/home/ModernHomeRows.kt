@@ -1476,8 +1476,7 @@ private fun shouldResetBackdropTimer(key: Key): Boolean {
         Key.DirectionUp,
         Key.DirectionDown,
         Key.DirectionLeft,
-        Key.DirectionRight,
-        Key.Back -> true
+        Key.DirectionRight -> true
         else -> false
     }
 }
