@@ -311,6 +311,20 @@ fun SettingsScreen(
     var pendingContentFocusCategory by remember { mutableStateOf<SettingsCategory?>(null) }
     var pendingContentFocusRequestId by remember { mutableLongStateOf(0L) }
     var allowDetailAutofocus by remember { mutableStateOf(false) }
+    var detailHasFocus by remember { mutableStateOf(false) }
+
+    // Back inside the options pane returns to the category rail before it leaves settings, the
+    // way back inside a row returns to the start of that row. Anything the pane declares itself,
+    // such as the integrations sub sections, composes later and so is asked first.
+    BackHandler(enabled = detailHasFocus) {
+        // Cleared up front rather than after the request. The rail reports its own focus a frame
+        // later, and until it does a second quick press would be consumed here again instead of
+        // reaching the sidebar. If the request fails this also leaves the next press free.
+        detailHasFocus = false
+        railFocusRequesters[selectedCategory]?.let { requester ->
+            runCatching { requester.requestFocus() }
+        }
+    }
 
     val focusManager = LocalFocusManager.current
 
@@ -491,6 +505,7 @@ fun SettingsScreen(
                             .weight(1f)
                             .fillMaxWidth()
                             .onFocusChanged { state ->
+                                detailHasFocus = state.hasFocus
                                 if (state.hasFocus && !allowDetailAutofocus) {
                                     railFocusRequesters[selectedCategory]?.let { requester ->
                                         runCatching { requester.requestFocus() }
@@ -667,6 +682,7 @@ fun SettingsScreen(
                             }
                         }
                         .onFocusChanged { state ->
+                            detailHasFocus = state.hasFocus
                             if (state.hasFocus && !allowDetailAutofocus) {
                                 railFocusRequesters[selectedCategory]?.let { requester ->
                                     runCatching { requester.requestFocus() }
