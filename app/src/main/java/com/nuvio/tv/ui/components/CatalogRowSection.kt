@@ -63,6 +63,8 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.CatalogRow
+import com.nuvio.tv.domain.model.stableKey
+import com.nuvio.tv.domain.model.stableItemKeys
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.stableItemKey
