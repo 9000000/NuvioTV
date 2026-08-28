@@ -263,10 +263,10 @@ class TmdbMetadataService(
                                 ?.takeIf { it.isNotBlank() && !containsCjkOrHangul(it) }
                         }
                     }.getOrNull()
-                    localizedTitle = resolvePersonName(
-                        localizedName = rawLocalizedTitle,
-                        originalName = originalTitle,
-                        fallbackEnglishName = englishTitle,
+                    localizedTitle = resolveDisplayLabel(
+                        localized = rawLocalizedTitle,
+                        original = originalTitle,
+                        fallbackEnglish = englishTitle,
                         preferredLanguage = normalizedLanguage
                     )
                 }
@@ -305,10 +305,10 @@ class TmdbMetadataService(
                 val castMembers = credits?.cast
                     .orEmpty()
                     .mapNotNull { member ->
-                        val name = resolvePersonName(
-                            localizedName = member.name,
-                            originalName = member.originalName,
-                            fallbackEnglishName = member.id?.let { englishFallbackNames[it] },
+                        val name = resolveDisplayLabel(
+                            localized = member.name,
+                            original = member.originalName,
+                            fallbackEnglish = member.id?.let { englishFallbackNames[it] },
                             preferredLanguage = normalizedLanguage
                         )?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         MetaCastMember(
@@ -324,10 +324,10 @@ class TmdbMetadataService(
                         .orEmpty()
                         .mapNotNull { creatorItem ->
                             val tmdbPersonId = creatorItem.id ?: return@mapNotNull null
-                            val name = resolvePersonName(
-                                localizedName = creatorItem.name,
-                                originalName = creatorItem.originalName,
-                                fallbackEnglishName = englishFallbackNames[tmdbPersonId],
+                            val name = resolveDisplayLabel(
+                                localized = creatorItem.name,
+                                original = creatorItem.originalName,
+                                fallbackEnglish = englishFallbackNames[tmdbPersonId],
                                 preferredLanguage = normalizedLanguage
                             )?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                             MetaCastMember(
@@ -346,10 +346,10 @@ class TmdbMetadataService(
                     details?.createdBy
                         .orEmpty()
                         .mapNotNull { creatorItem ->
-                            resolvePersonName(
-                                localizedName = creatorItem.name,
-                                originalName = creatorItem.originalName,
-                                fallbackEnglishName = creatorItem.id?.let { englishFallbackNames[it] },
+                            resolveDisplayLabel(
+                                localized = creatorItem.name,
+                                original = creatorItem.originalName,
+                                fallbackEnglish = creatorItem.id?.let { englishFallbackNames[it] },
                                 preferredLanguage = normalizedLanguage
                             )?.takeIf { it.isNotBlank() }
                         }
@@ -364,10 +364,10 @@ class TmdbMetadataService(
                 val directorMembers = directorCrew
                     .mapNotNull { member ->
                         val tmdbPersonId = member.id ?: return@mapNotNull null
-                        val name = resolvePersonName(
-                            localizedName = member.name,
-                            originalName = member.originalName,
-                            fallbackEnglishName = englishFallbackNames[tmdbPersonId],
+                        val name = resolveDisplayLabel(
+                            localized = member.name,
+                            original = member.originalName,
+                            fallbackEnglish = englishFallbackNames[tmdbPersonId],
                             preferredLanguage = normalizedLanguage
                         )?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         MetaCastMember(
@@ -381,10 +381,10 @@ class TmdbMetadataService(
 
                 val director = directorCrew
                     .mapNotNull { member ->
-                        resolvePersonName(
-                            localizedName = member.name,
-                            originalName = member.originalName,
-                            fallbackEnglishName = member.id?.let { englishFallbackNames[it] },
+                        resolveDisplayLabel(
+                            localized = member.name,
+                            original = member.originalName,
+                            fallbackEnglish = member.id?.let { englishFallbackNames[it] },
                             preferredLanguage = normalizedLanguage
                         )?.takeIf { it.isNotBlank() }
                     }
@@ -399,10 +399,10 @@ class TmdbMetadataService(
                 val writerMembers = writerCrew
                     .mapNotNull { member ->
                         val tmdbPersonId = member.id ?: return@mapNotNull null
-                        val name = resolvePersonName(
-                            localizedName = member.name,
-                            originalName = member.originalName,
-                            fallbackEnglishName = englishFallbackNames[tmdbPersonId],
+                        val name = resolveDisplayLabel(
+                            localized = member.name,
+                            original = member.originalName,
+                            fallbackEnglish = englishFallbackNames[tmdbPersonId],
                             preferredLanguage = normalizedLanguage
                         )?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         MetaCastMember(
@@ -416,10 +416,10 @@ class TmdbMetadataService(
 
                 val writer = writerCrew
                     .mapNotNull { member ->
-                        resolvePersonName(
-                            localizedName = member.name,
-                            originalName = member.originalName,
-                            fallbackEnglishName = member.id?.let { englishFallbackNames[it] },
+                        resolveDisplayLabel(
+                            localized = member.name,
+                            original = member.originalName,
+                            fallbackEnglish = member.id?.let { englishFallbackNames[it] },
                             preferredLanguage = normalizedLanguage
                         )?.takeIf { it.isNotBlank() }
                     }
@@ -807,10 +807,10 @@ class TmdbMetadataService(
                 null
             }
             val englishTitlesById = englishCollectionTitlesById(englishCollection?.parts.orEmpty())
-            val resolvedCollectionName = resolvePersonName(
-                localizedName = collectionResponse?.name,
-                originalName = null,
-                fallbackEnglishName = englishCollection?.name,
+            val resolvedCollectionName = resolveDisplayLabel(
+                localized = collectionResponse?.name,
+                original = null,
+                fallbackEnglish = englishCollection?.name,
                 preferredLanguage = normalizedLanguage
             )
 
@@ -827,10 +827,10 @@ class TmdbMetadataService(
             val items = coroutineScope {
                 sortedParts.map { part ->
                     async {
-                        val title = resolvePersonName(
-                            localizedName = part.title,
-                            originalName = part.originalTitle,
-                            fallbackEnglishName = englishTitlesById[part.id],
+                        val title = resolveDisplayLabel(
+                            localized = part.title,
+                            original = part.originalTitle,
+                            fallbackEnglish = englishTitlesById[part.id],
                             preferredLanguage = normalizedLanguage
                         ) ?: return@async null
 
@@ -1115,10 +1115,10 @@ class TmdbMetadataService(
         preferredLanguage: String,
         englishTitlesById: Map<Int, String>
     ): MetaPreview? {
-        val title = resolvePersonName(
-            localizedName = result.title ?: result.name,
-            originalName = result.originalTitle ?: result.originalName,
-            fallbackEnglishName = englishTitlesById[result.id],
+        val title = resolveDisplayLabel(
+            localized = result.title ?: result.name,
+            original = result.originalTitle ?: result.originalName,
+            fallbackEnglish = englishTitlesById[result.id],
             preferredLanguage = preferredLanguage
         ) ?: return null
 
@@ -1346,10 +1346,10 @@ class TmdbMetadataService(
                     person.biography
                 }?.takeIf { it.isNotBlank() }
 
-                val resolvedPersonName = resolvePersonName(
-                    localizedName = person.name,
-                    originalName = person.originalName,
-                    fallbackEnglishName = englishPerson?.name,
+                val resolvedPersonName = resolveDisplayLabel(
+                    localized = person.name,
+                    original = person.originalName,
+                    fallbackEnglish = englishPerson?.name,
                     preferredLanguage = normalizedLanguage
                 ) ?: "Unknown"
 
@@ -1424,10 +1424,10 @@ class TmdbMetadataService(
             .sortedByDescending { it.voteAverage ?: 0.0 }
             .mapNotNull { credit ->
                 if (!seenMovieIds.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.title ?: credit.name,
-                    originalName = credit.originalTitle ?: credit.originalName,
-                    fallbackEnglishName = englishTitlesById[credit.id],
+                val title = resolveDisplayLabel(
+                    localized = credit.title ?: credit.name,
+                    original = credit.originalTitle ?: credit.originalName,
+                    fallbackEnglish = englishTitlesById[credit.id],
                     preferredLanguage = preferredLanguage
                 ) ?: return@mapNotNull null
                 val year = credit.releaseDate?.take(4)
@@ -1458,10 +1458,10 @@ class TmdbMetadataService(
             .sortedByDescending { it.voteAverage ?: 0.0 }
             .mapNotNull { credit ->
                 if (!seenMovieIds.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.title ?: credit.name,
-                    originalName = credit.originalTitle ?: credit.originalName,
-                    fallbackEnglishName = englishTitlesById[credit.id],
+                val title = resolveDisplayLabel(
+                    localized = credit.title ?: credit.name,
+                    original = credit.originalTitle ?: credit.originalName,
+                    fallbackEnglish = englishTitlesById[credit.id],
                     preferredLanguage = preferredLanguage
                 ) ?: return@mapNotNull null
                 val year = credit.releaseDate?.take(4)
@@ -1492,10 +1492,10 @@ class TmdbMetadataService(
             .sortedByDescending { it.voteAverage ?: 0.0 }
             .mapNotNull { credit ->
                 if (!seenTvIds.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.name ?: credit.title,
-                    originalName = credit.originalName ?: credit.originalTitle,
-                    fallbackEnglishName = englishTitlesById[credit.id],
+                val title = resolveDisplayLabel(
+                    localized = credit.name ?: credit.title,
+                    original = credit.originalName ?: credit.originalTitle,
+                    fallbackEnglish = englishTitlesById[credit.id],
                     preferredLanguage = preferredLanguage
                 ) ?: return@mapNotNull null
                 val year = credit.firstAirDate?.take(4)
@@ -1526,10 +1526,10 @@ class TmdbMetadataService(
             .sortedByDescending { it.voteAverage ?: 0.0 }
             .mapNotNull { credit ->
                 if (!seenTvIds.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.name ?: credit.title,
-                    originalName = credit.originalName ?: credit.originalTitle,
-                    fallbackEnglishName = englishTitlesById[credit.id],
+                val title = resolveDisplayLabel(
+                    localized = credit.name ?: credit.title,
+                    original = credit.originalName ?: credit.originalTitle,
+                    fallbackEnglish = englishTitlesById[credit.id],
                     preferredLanguage = preferredLanguage
                 ) ?: return@mapNotNull null
                 val year = credit.firstAirDate?.take(4)
@@ -1809,17 +1809,17 @@ internal fun containsCjkOrHangul(text: String): Boolean {
     }
 }
 
-internal fun resolvePersonName(
-    localizedName: String?,
-    originalName: String?,
-    fallbackEnglishName: String? = null,
+internal fun resolveDisplayLabel(
+    localized: String?,
+    original: String?,
+    fallbackEnglish: String? = null,
     preferredLanguage: String
 ): String? {
-    val name = localizedName?.trim()?.takeIf { it.isNotBlank() }
-    val original = originalName?.trim()?.takeIf { it.isNotBlank() }
-    val fallback = fallbackEnglishName?.trim()?.takeIf { it.isNotBlank() }
+    val name = localized?.trim()?.takeIf { it.isNotBlank() }
+    val originalLabel = original?.trim()?.takeIf { it.isNotBlank() }
+    val fallback = fallbackEnglish?.trim()?.takeIf { it.isNotBlank() }
 
-    if (name == null) return original ?: fallback
+    if (name == null) return originalLabel ?: fallback
     val lang = preferredLanguage.lowercase(Locale.US)
 
     // User explicitly prefers CJK / Hangul
@@ -1827,14 +1827,14 @@ internal fun resolvePersonName(
         return name
     }
 
-    // If already Latin or non-CJK script, keep localized name
+    // If already Latin or non-CJK script, keep localized label
     if (!containsCjkOrHangul(name)) {
         return name
     }
 
-    // Name is CJK/Hangul: if originalName is Latin (Romaji/stage name), use it
-    if (original != null && !containsCjkOrHangul(original)) {
-        return original
+    // Label is CJK/Hangul: if original is Latin (Romaji/stage name), use it
+    if (originalLabel != null && !containsCjkOrHangul(originalLabel)) {
+        return originalLabel
     }
 
     // If English fallback exists and is Latin / non-CJK, prefer it
@@ -1843,5 +1843,5 @@ internal fun resolvePersonName(
     }
 
     // Otherwise fallback to whatever non-null exists
-    return fallback ?: original ?: name
+    return fallback ?: originalLabel ?: name
 }
