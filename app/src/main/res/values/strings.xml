@@ -530,6 +530,8 @@
     <string name="advanced_sentry_reports_subtitle">Send crash and ANR reports with safe context. On by default.</string>
     <string name="advanced_playback_issue_reports">Playback issue reports</string>
     <string name="advanced_playback_issue_reports_subtitle">Show report buttons during playback, long loading, and playback errors</string>
+    <string name="advanced_player_stats_hud">Playback stats overlay</string>
+    <string name="advanced_player_stats_hud_subtitle">Show live cpu, memory, buffer, bitrate and thermal readings during playback</string>
     <string name="sentry_enable_dialog_title">Turn on crash reports?</string>
     <string name="sentry_enable_dialog_subtitle">Crash reports help identify device-specific failures without asking you to reproduce the issue with ADB logs.</string>
     <string name="sentry_disable_dialog_title">Turn off crash reports?</string>
@@ -1662,6 +1664,8 @@
     <string name="stream_info_resolution">Resolution</string>
     <string name="stream_info_frame_rate">Frame Rate</string>
     <string name="stream_info_bitrate">Bitrate</string>
+    <string name="stream_info_bitrate_file">Bitrate (file)</string>
+    <string name="stream_info_hud">HUD</string>
     <string name="stream_info_channels">Channels</string>
     <string name="stream_info_sample_rate">Sample Rate</string>
     <string name="stream_info_language">Language</string>
