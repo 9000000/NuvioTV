@@ -111,9 +111,10 @@ fun CatalogRowSection(
     upFocusRequester: FocusRequester? = null,
     listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex)
 ) {
-    val rowItemKeys = remember(catalogRow.items) { catalogRow.stableItemKeys() }
+    val catalogRowKey = remember(catalogRow) { catalogRow.stableKey() }
+    val rowItemIdentities = remember(catalogRow.items) { catalogRow.stableItemKeys() }
     fun rowItemFocusKey(index: Int, item: MetaPreview): String {
-        return rowItemKeys.getOrElse(index) { catalogRow.stableItemKey(item) }
+        return "${catalogRowKey}_$index"
     }
 
     val seeAllCardShape = RoundedCornerShape(posterCardStyle.cornerRadius)
@@ -128,15 +129,15 @@ fun CatalogRowSection(
     // Runs during composition, not in an effect: focusRestorer below is driven by the user and
     // can fire before an effect would have relocated the index, which would restore focus onto
     // whatever took that slot.
-    if (previousRowItemKeys.value !== rowItemKeys) {
+    if (previousRowItemKeys.value !== rowItemIdentities) {
         val storedIndex = lastFocusedItemIndex.intValue
         val previousKeys = previousRowItemKeys.value
         if (storedIndex >= 0 && previousKeys.isNotEmpty()) {
             val wanted = previousKeys.getOrNull(storedIndex)
-            val relocated = wanted?.let { rowItemKeys.indexOf(it) } ?: -1
+            val relocated = wanted?.let { rowItemIdentities.indexOf(it) } ?: -1
             if (relocated != storedIndex) lastFocusedItemIndex.intValue = relocated
         }
-        previousRowItemKeys.value = rowItemKeys
+        previousRowItemKeys.value = rowItemIdentities
     }
 
     val blockingFocusExit = remember { mutableStateOf(false) }
