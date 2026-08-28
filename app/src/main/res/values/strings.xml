@@ -567,6 +567,9 @@
     <string name="advanced_clear_cw_cache_done">Cache cleared</string>
     <string name="advanced_remember_last_profile">Remember Last Profile</string>
     <string name="advanced_remember_last_profile_subtitle">Remember last selected profile at startup</string>
+    <string name="advanced_confirm_exit">Full exit on close</string>
+    <string name="advanced_confirm_exit_subtitle">Fully terminate the app and free memory when exiting. Requires pressing back twice to confirm.</string>
+    <string name="confirm_exit_toast">Press back again to exit</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_debug_subtitle">Developer tools and feature flags</string>
     <string name="settings_plugins_section_subtitle">Manage repositories, providers, and plugin states</string>

@@ -918,6 +918,28 @@ class MainActivity : ComponentActivity() {
                     }?.route
                     val selectedDrawerItem = drawerItems.firstOrNull { it.route == selectedDrawerRoute } ?: drawerItems.first()
 
+                    val confirmExitEnabled by profileManager.confirmExitEnabled.collectAsState()
+                    var backPressedOnce by remember { mutableStateOf(false) }
+                    LaunchedEffect(backPressedOnce) {
+                        if (backPressedOnce) {
+                            delay(2000L)
+                            backPressedOnce = false
+                        }
+                    }
+                    val handleExitApp: () -> Unit = {
+                        if (!confirmExitEnabled || backPressedOnce) {
+                            finishAffinity()
+                            finishAndRemoveTask()
+                            if (confirmExitEnabled) {
+                                // Kill the process to free RAM on low-memory devices.
+                                android.os.Process.killProcess(android.os.Process.myPid())
+                            }
+                        } else {
+                            backPressedOnce = true
+                            Toast.makeText(this@MainActivity, getString(R.string.confirm_exit_toast), Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
                     val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
                     val updateState by updateViewModel.uiState.collectAsState()
                     val updateBannerState = updateState.copy(
@@ -952,10 +974,7 @@ class MainActivity : ComponentActivity() {
                                     showProfileSelector = profiles.size > 1,
                                     onSwitchProfile = { hasSelectedProfileThisSession = false },
                                     onNavigate = { optimisticRoute = it },
-                                    onExitApp = {
-                                        finishAffinity()
-                                        finishAndRemoveTask()
-                                    }
+                                    onExitApp = handleExitApp
                                 )
                             } else {
                                 LegacySidebarScaffold(
@@ -973,10 +992,7 @@ class MainActivity : ComponentActivity() {
                                     showProfileSelector = profiles.size > 1,
                                     onSwitchProfile = { hasSelectedProfileThisSession = false },
                                     onNavigate = { optimisticRoute = it },
-                                    onExitApp = {
-                                        finishAffinity()
-                                        finishAndRemoveTask()
-                                    }
+                                    onExitApp = handleExitApp
                                 )
                             }
 
