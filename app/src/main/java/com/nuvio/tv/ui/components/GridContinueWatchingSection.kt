@@ -36,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
+import kotlin.math.abs
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -113,9 +114,17 @@ fun GridContinueWatchingSection(
                 )
                 .focusRequester(rowFocusRequester)
                 .focusRestorer {
-                    val idx = if (lastFocusedIndex.intValue >= 0) lastFocusedIndex.intValue else 0
-                    focusRequesters[idx]
-                        ?: focusRequesters.values.firstOrNull()
+                    // Take the remembered card when it is on screen, otherwise the nearest one
+                    // that is, the way the classic row does it. Falling back to whichever
+                    // requester was registered first can hand focus to a card that is not
+                    // composed, and focus then lands wherever the directional search goes.
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                        .map { it.index }
+                        .filter { it in items.indices }
+                    val remembered = lastFocusedIndex.intValue
+                    val idx = remembered.takeIf { it in visible }
+                        ?: visible.minByOrNull { abs(it - remembered) }
+                    idx?.let { focusRequesters[it] }
                         ?: FocusRequester.Default
                 }
                 .focusGroup(),
