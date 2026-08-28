@@ -427,6 +427,7 @@ fun GridHomeContent(
                                 items = gridItem.items.asStable(),
                                 focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
                                 showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
+                                onItemFocus = { activeCwRowKey.value = null },
                                 onItemClick = remember(onNavigateToDetail) {
                                     { item ->
                                         onNavigateToDetail(
@@ -458,7 +459,6 @@ fun GridHomeContent(
                             cwRowFocusRequester.let { runCatching { it.requestFocus() } }
                         }
                     }
-                    Box(modifier = Modifier) {
                     GridContinueWatchingSection(
                         modifier = Modifier.fillMaxWidth(),
                         fullWidth = gridWidth,
@@ -507,7 +507,6 @@ fun GridHomeContent(
                         cardStyle = uiState.continueWatchingCardStyle,
                         cornerRadius = posterCardStyle.cornerRadius
                     )
-                    } // end Box with focus logging
                 }
             }
 
@@ -524,7 +523,6 @@ fun GridHomeContent(
                             upcomingRowFocusRequester.let { runCatching { it.requestFocus() } }
                         }
                     }
-                    Box(modifier = Modifier) {
                     GridContinueWatchingSection(
                         modifier = Modifier.fillMaxWidth(),
                         fullWidth = gridWidth,
@@ -573,7 +571,6 @@ fun GridHomeContent(
                         cardStyle = uiState.continueWatchingCardStyle,
                         cornerRadius = posterCardStyle.cornerRadius
                     )
-                    } // end Box with upcoming focus logging
                 }
             }
 
@@ -606,6 +603,7 @@ fun GridHomeContent(
                             items = gridItem.items.asStable(),
                             focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
                             showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
+                            onItemFocus = { activeCwRowKey.value = null },
                             onItemClick = remember(onNavigateToDetail) {
                                 { item ->
                                     onNavigateToDetail(

@@ -24,6 +24,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -207,7 +208,7 @@ fun ClassicHomeContent(
     // Store scroll state for each row to persist position during recycling
     val rowStates = remember { mutableMapOf<String, LazyListState>() }
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
-    val rowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
+    val rowFocusedItemIndex = remember { mutableStateMapOf<String, Int>() }
     // Item keys of each row as they were when its focused index was last recorded, so the index
     // can be relocated when a refresh shifts the row instead of pointing at a new card.
     val previousRowItemKeys = remember { mutableMapOf<String, List<String>>() }
@@ -215,6 +216,7 @@ fun ClassicHomeContent(
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val cwRowFocusRequester = remember { FocusRequester() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
+    val lastFocusedCwIndex = remember { mutableIntStateOf(-1) }
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
 
     // Improved Back navigation: when focused item is not the first in a row,
@@ -276,7 +278,12 @@ fun ClassicHomeContent(
     }
 
     LaunchedEffect(visibleRowKeys) {
-        rowStates.keys.retainAll(visibleRowKeys)
+        // Keep CW/upcoming row states alive — they use rowStates.getOrPut but aren't
+        // part of visibleRowKeys (which only tracks catalog/collection rows).
+        val keysToRetain = visibleRowKeys.toMutableSet()
+        if (rowStates.containsKey("continue_watching")) keysToRetain.add("continue_watching")
+        if (rowStates.containsKey("upcoming_section")) keysToRetain.add("upcoming_section")
+        rowStates.keys.retainAll(keysToRetain)
         rowFocusRequesters.keys.retainAll(visibleRowKeys)
     }
 
@@ -363,6 +370,7 @@ fun ClassicHomeContent(
 
     val handleHeroFocus: (MetaPreview) -> Unit = remember(uiState.classicFocusGradientEnabled) {
         { item ->
+            activeRowKeyState.value = null
             if (uiState.classicFocusGradientEnabled) {
                 focusedArtwork = null
             }
@@ -643,6 +651,7 @@ fun ClassicHomeContent(
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = cwItemFocusRequesters,
                     rowFocusRequester = cwRowFocusRequester,
+                    lastFocusedIndexState = lastFocusedCwIndex,
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,

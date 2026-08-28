@@ -273,7 +273,7 @@ private fun TabbedGridContent(
     var gridScrollToTopTrigger by remember { mutableIntStateOf(0) }
 
     // Grid Back: focus on grid -> move focus to active tab (grid stays scrolled).
-    BackHandler(enabled = gridHasFocus) {
+    BackHandler(enabled = gridHasFocus && uiState.tabs.size > 1) {
         tabFocusRequesters.getOrNull(uiState.selectedTabIndex)?.let { runCatching { it.requestFocus() } }
     }
 
