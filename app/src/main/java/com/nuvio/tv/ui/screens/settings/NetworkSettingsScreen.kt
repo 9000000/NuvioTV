@@ -510,6 +510,18 @@ fun AdvancedSettingsContent(
                         )
                     }
                 )
+                SettingsToggleRow(
+                    title = stringResource(R.string.advanced_player_stats_hud),
+                    subtitle = stringResource(R.string.advanced_player_stats_hud_subtitle),
+                    checked = uiState.playerStatsHudEnabled,
+                    onToggle = {
+                        viewModel.onEvent(
+                            AdvancedSettingsEvent.SetPlayerStatsHudEnabled(
+                                !uiState.playerStatsHudEnabled
+                            )
+                        )
+                    }
+                )
             }
         }
 
