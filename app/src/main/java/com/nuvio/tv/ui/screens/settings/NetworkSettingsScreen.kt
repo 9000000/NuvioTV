@@ -478,6 +478,18 @@ fun AdvancedSettingsContent(
                         }
                     }
                 )
+
+                val confirmExitEnabled by profileManager.confirmExitEnabled.collectAsState()
+                SettingsToggleRow(
+                    title = stringResource(R.string.advanced_confirm_exit),
+                    subtitle = stringResource(R.string.advanced_confirm_exit_subtitle),
+                    checked = confirmExitEnabled,
+                    onToggle = {
+                        scope.launch {
+                            profileManager.setConfirmExitEnabled(!confirmExitEnabled)
+                        }
+                    }
+                )
             }
         }
 
