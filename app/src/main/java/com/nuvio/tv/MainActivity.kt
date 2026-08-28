@@ -716,7 +716,8 @@ class MainActivity : ComponentActivity() {
                                     year = next.year,
                                     contentId = next.contentId,
                                     contentName = next.contentName,
-                                    returnToDetailOnBack = next.contentType.equals("series", ignoreCase = true)
+                                    returnToDetailOnBack = next.contentType.equals("series", ignoreCase = true),
+                                    profileId = next.profileId
                                 )
                             ) {
                                 // Replace any lingering Stream screen (e.g. the previous
