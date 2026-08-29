@@ -281,7 +281,7 @@
     <string name="tmdb_error_missing_collection_id">Thiếu ID bộ sưu tập TMDB</string>
     <string name="tmdb_error_missing_person_id">Thiếu ID hồ sơ TMDB</string>
     <string name="tmdb_error_person_credits_not_found">Không có danh sách phim người này trên TMDB</string>
-    <string name="tmdb_error_discover_no_data">TMDB Khám Phá không trả về dữ liệu</string>
+    <string name="tmdb_error_discover_no_data">Khám Phá TMDB không trả về dữ liệu</string>
     <string name="tmdb_entity_empty_title">Không tìm thấy nội dung</string>
     <string name="tmdb_entity_empty_subtitle">TMDB hiện chưa có nội dung để duyệt cho mục này.</string>
     <string name="episodes_unavailable">Không có sẵn</string>
@@ -530,6 +530,8 @@
     <string name="advanced_sentry_reports_subtitle">Gửi báo cáo sự cố và lỗi ứng dụng không phản hồi kèm thông tin an toàn. Bật theo mặc định.</string>
     <string name="advanced_playback_issue_reports">Báo cáo vấn đề phát lại</string>
     <string name="advanced_playback_issue_reports_subtitle">Hiển thị các nút báo cáo trong khi phát lại, tải lâu và khi phát lại bị lỗi</string>
+    <string name="advanced_player_stats_hud">Lớp phủ thống kê phát lại</string>
+    <string name="advanced_player_stats_hud_subtitle">Hiển thị thông số CPU, bộ nhớ, bộ đệm, bitrate và nhiệt độ theo thời gian thực khi phát lại.</string>
     <string name="sentry_enable_dialog_title">Bật báo cáo sự cố?</string>
     <string name="sentry_enable_dialog_subtitle">Báo cáo sự cố giúp xác định các lỗi chỉ xảy ra trên thiết bị mà không yêu cầu bạn tái hiện sự cố bằng nhật ký ADB.</string>
     <string name="sentry_disable_dialog_title">Tắt báo cáo sự cố?</string>
@@ -565,6 +567,9 @@
     <string name="advanced_clear_cw_cache_done">Đã xoá bộ nhớ đệm</string>
     <string name="advanced_remember_last_profile">Nhớ hồ sơ gần nhất</string>
     <string name="advanced_remember_last_profile_subtitle">Nhớ hồ sơ được chọn lần cuối khi khởi động</string>
+    <string name="advanced_confirm_exit">Thoát hoàn toàn khi đóng</string>
+    <string name="advanced_confirm_exit_subtitle">Đóng ứng dụng hoàn toàn và giải phóng bộ nhớ khi thoát. Cần nhấn quay lại hai lần để xác nhận.</string>
+    <string name="confirm_exit_toast">Nhấn quay lại lần nữa để thoát</string>
     <string name="settings_debug">Gỡ lỗi</string>
     <string name="settings_debug_subtitle">Công cụ nhà phát triển và cờ tính năng</string>
     <string name="settings_plugins_section_subtitle">Quản lý kho lưu trữ, nhà cung cấp và trạng thái trình mở rộng</string>
@@ -851,7 +856,9 @@
     <string name="autoplay_mode_regex">Tự động phát theo biểu thức chính quy</string>
     <string name="autoplay_stream_selection">Tự động chọn luồng</string>
     <string name="autoplay_post_play_recommendations">Đề xuất sau khi phát</string>
-    <string name="autoplay_post_play_recommendations_sub">Hiển thị phim và loạt phim được đề xuất khi phát đến cuối.</string>
+    <string name="autoplay_post_play_recommendations_sub">Hiển thị đề xuất gần cuối phim và loạt phim</string>
+    <string name="autoplay_post_play_movie_threshold">Thời điểm đề xuất phim</string>
+    <string name="autoplay_post_play_movie_threshold_sub">Chọn thời điểm hiển thị đề xuất phim. Các tập phim tuân theo cài đặt Ngưỡng tập tiếp theo.</string>
     <string name="autoplay_next_episode">Tự động phát tập tiếp theo</string>
     <string name="autoplay_next_episode_sub">Tự động phát tập tiếp theo khi lời nhắc xuất hiện.</string>
     <string name="autoplay_next_episode_fallback">Dự phòng khi nhóm phát liên tục bị lỗi</string>
@@ -862,7 +869,7 @@
     <string name="autoplay_reuse_binge_group_sub">Ghi nhớ và dùng lại nhóm phát liên tục gần nhất giữa các phiên (Tiếp tục xem, Chi tiết, ...).</string>
     <string name="autoplay_threshold_pct">Phần trăm</string>
     <string name="autoplay_threshold_min">Số phút trước khi kết thúc</string>
-    <string name="autoplay_threshold_mode">Ngưỡng phát tập tiếp theo</string>
+    <string name="autoplay_threshold_mode">Chế độ Ngưỡng tập tiếp theo</string>
     <string name="autoplay_threshold_pct_title">Ngưỡng phần trăm</string>
     <string name="autoplay_threshold_pct_sub">Dự phòng nếu không có mốc thời gian đoạn kết.</string>
     <string name="autoplay_threshold_min_title">Ngưỡng phút</string>
@@ -1319,9 +1326,9 @@
     <string name="trakt_watch_progress_title">Tiến trình xem</string>
     <string name="trakt_watch_progress_subtitle">Chọn nguồn tiến trình dùng để tiếp tục xem</string>
     <string name="trakt_watch_progress_dialog_title">Tiến trình xem</string>
-    <string name="trakt_watch_progress_dialog_subtitle">Chọn nguồn tiến trình dùng để phát tiếp và tiếp tục xem như Trakt hoặc Nuvio Sync, trong khi tính năng ghi nhật ký phát lại của Trakt vẫn hoạt động.</string>
+    <string name="trakt_watch_progress_dialog_subtitle">Chọn nguồn tiến trình dùng để phát tiếp và tiếp tục xem như Trakt hoặc Đồng bộ Nuvio, trong khi tính năng ghi nhật ký phát lại của Trakt vẫn hoạt động.</string>
     <string name="trakt_watch_progress_source_trakt">Trakt</string>
-    <string name="trakt_watch_progress_source_nuvio">Nuvio Sync</string>
+    <string name="trakt_watch_progress_source_nuvio">Đồng bộ Nuvio</string>
     <string name="trakt_library_source_title">Nguồn thư viện</string>
     <string name="trakt_library_source_subtitle">Chọn thư viện để lưu và quản lý bộ sưu tập</string>
     <string name="trakt_library_source_dialog_title">Nguồn thư viện</string>
@@ -1333,7 +1340,7 @@
     <string name="trakt_setting_on">Bật</string>
     <string name="trakt_setting_off">Tắt</string>
     <string name="trakt_watch_progress_trakt_selected">Đã đặt nguồn tiến trình xem là Trakt</string>
-    <string name="trakt_watch_progress_nuvio_selected">Đã đặt nguồn tiến trình xem là Nuvio Sync</string>
+    <string name="trakt_watch_progress_nuvio_selected">Đã đặt nguồn tiến trình xem là Đồng bộ Nuvio</string>
     <string name="trakt_continue_watching_window">Cửa sổ Xem tiếp</string>
     <string name="trakt_continue_watching_subtitle">Lịch sử Trakt được dùng cho mục Tiếp tục xem</string>
     <string name="trakt_unaired_next_up">Tập tiếp theo chưa phát sóng</string>
@@ -1662,6 +1669,8 @@
     <string name="stream_info_resolution">Độ phân giải</string>
     <string name="stream_info_frame_rate">Tỉ lệ khung hình</string>
     <string name="stream_info_bitrate">Bitrate</string>
+    <string name="stream_info_bitrate_file">Bitrate (tệp)</string>
+    <string name="stream_info_hud">HUD</string>
     <string name="stream_info_channels">Kênh</string>
     <string name="stream_info_sample_rate">Tần số lấy mẫu</string>
     <string name="stream_info_language">Ngôn ngữ</string>
@@ -2028,6 +2037,7 @@
     <string name="auth_qr_expires">Hết hạn sau %1$s</string>
     <string name="auth_qr_scan_instruction">Quét mã QR, xác nhận trên trình duyệt, sau đó quay lại đây.</string>
     <string name="auth_qr_code_display">Mã: %1$s</string>
+    <string name="auth_qr_manual_instruction">Hoặc truy cập %1$s và nhập</string>
     <string name="auth_qr_refresh">Làm mới mã QR</string>
     <string name="auth_qr_continue_without_account">Tiếp tục không cần tài khoản</string>
     <string name="auth_qr_connected">Tài khoản của bạn đã được kết nối trên TV này.</string>
@@ -2145,7 +2155,7 @@
     <string name="update_unknown_sources">Cho phép cài đặt từ nguồn không xác định để tiếp tục.</string>
     <!-- AccountScreen -->
     <string name="account_title">Tài khoản</string>
-    <string name="account_sign_in_description">Đăng nhập để đồng bộ thư viện, tiến trình xem, tiện ích và trình mở rộng trên các thiết bị. Tính năng đồng bộ thư viện sử dụng Nuvio Sync khi chưa kết nối Trakt, còn tiến trình xem có thể sử dụng Trakt hoặc Nuvio Sync.</string>
+    <string name="account_sign_in_description">Đăng nhập để đồng bộ thư viện, tiến trình xem, tiện ích và trình mở rộng trên các thiết bị. Tính năng đồng bộ thư viện sử dụng Đồng bộ Nuvio khi chưa kết nối Trakt, còn tiến trình xem có thể sử dụng Trakt hoặc Đồng bộ Nuvio.</string>
     <string name="account_sync_code_title">Mã đồng bộ</string>
     <string name="account_sync_code_description">Đồng bộ giữa các thiết bị mà không cần tạo tài khoản.</string>
     <string name="account_linked_devices">Thiết bị đã liên kết (%1$d)</string>
@@ -2440,7 +2450,7 @@
     <string name="collections_editor_tmdb_default_list">Danh sách TMDB</string>
     <string name="collections_editor_tmdb_default_production">Đơn vị sản xuất TMDB</string>
     <string name="collections_editor_tmdb_default_network">Đơn vị phát hành TMDB</string>
-    <string name="collections_editor_tmdb_default_discover">TMDB Khám phá</string>
+    <string name="collections_editor_tmdb_default_discover">Khám phá TMDB</string>
     <string name="collections_editor_tmdb_movie_collection">Bộ sưu tập phim TMDB</string>
     <string name="collections_editor_tmdb_mode_presets">Mẫu có sẵn</string>
     <string name="collections_editor_tmdb_mode_public_list">Danh sách công khai</string>
