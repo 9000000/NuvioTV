@@ -130,6 +130,7 @@ fun ThemeSettingsContent(
     }
 
     val styleFocusRequesters = remember { SettingsUiStyle.entries.associateWith { FocusRequester() } }
+    val firstThemeFocusRequester = remember { FocusRequester() }
     val appliedSettingsUiStyle = NuvioTheme.settingsUiStyle
     LaunchedEffect(Unit) {
         if (viewModel.consumeStyleFocusRestore()) {
@@ -168,14 +169,16 @@ fun ThemeSettingsContent(
                 Box(modifier = Modifier.fillMaxWidth()) {
                     LazyRow(
                         state = themeRowState,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingsOptionRow(firstThemeFocusRequester),
                         contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xs, vertical = NuvioTheme.spacing.xs),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         itemsIndexed(
                             items = uiState.availableThemes,
                             key = { _, theme -> theme.name }
-                        ) { _, theme ->
+                        ) { themeIndex, theme ->
                             ThemeSwatchChip(
                                 theme = theme,
                                 isSelected = theme == uiState.selectedTheme,
@@ -188,7 +191,13 @@ fun ThemeSettingsContent(
                                     Modifier.focusRequester(initialFocusRequester)
                                 } else {
                                     Modifier
-                                }
+                                }.then(
+                                    if (themeIndex == 0) {
+                                        Modifier.focusRequester(firstThemeFocusRequester)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                             )
                         }
                     }
@@ -221,11 +230,14 @@ fun ThemeSettingsContent(
                 title = stringResource(R.string.appearance_settings_style),
                 subtitle = stringResource(R.string.appearance_settings_style_subtitle)
             ) {
+                val firstAvailableStyle = uiState.availableSettingsUiStyles.firstOrNull()
+                    ?: SettingsUiStyle.entries.first()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(IntrinsicSize.Min)
-                        .padding(horizontal = NuvioTheme.spacing.xs, vertical = NuvioTheme.spacing.xs),
+                        .padding(horizontal = NuvioTheme.spacing.xs, vertical = NuvioTheme.spacing.xs)
+                        .settingsOptionRow(styleFocusRequesters.getValue(firstAvailableStyle)),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     uiState.availableSettingsUiStyles.forEach { style ->

@@ -101,6 +101,8 @@ fun DebridSettingsContent(
     // this screen has nothing to show at all in that case.
     val entryOnCloudLibrary = uiState.hasCloudLibraryProvider
     val entryOnDebridToggle = !entryOnCloudLibrary && uiState.hasResolverProvider
+    // The first visible account row, which is always enabled whatever is connected, so it is the
+    // one row that can always take the entry requester.
     val entryOnFirstAccount = !entryOnCloudLibrary && !entryOnDebridToggle
     var activeApiKeyDialog by remember { mutableStateOf<String?>(null) }
     var activeDeviceAuthDialog by remember { mutableStateOf<String?>(null) }
