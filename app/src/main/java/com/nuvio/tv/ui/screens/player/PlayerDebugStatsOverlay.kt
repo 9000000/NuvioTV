@@ -105,7 +105,7 @@ internal fun PlayerDebugStatsOverlay(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xCC000000))
+            .background(Color(0x99000000))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
@@ -113,7 +113,7 @@ internal fun PlayerDebugStatsOverlay(
             Row {
                 Text(
                     text = stat.label,
-                    modifier = Modifier.width(72.dp),
+                    modifier = Modifier.width(64.dp),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
@@ -147,6 +147,8 @@ private class DebugStatsSampler(context: Context) {
     private var lastRxAtMs = 0L
     private var bufferTotal = 0.0
     private var bufferSamples = 0
+    private var networkTotal = 0.0
+    private var networkSamples = 0
     private var cpuTotal = 0.0
     private var cpuSamples = 0
     private var faultTotal = 0.0
@@ -171,10 +173,10 @@ private class DebugStatsSampler(context: Context) {
         add(networkStat())
         add(droppedStat(snapshot))
         addAll(thermalStats())
-    }
+    }.filterNot { it.value == UNAVAILABLE }
 
     private fun cpuStat(proc: ProcTimes?, elapsedSeconds: Double): DebugStat {
-        if (proc == null) return DebugStat("cpu", "n/a")
+        if (proc == null) return DebugStat("cpu", UNAVAILABLE)
         if (lastCpuTicks < 0L || elapsedSeconds <= 0.0) return DebugStat("cpu", "...")
         val cpuSeconds = (proc.cpuTicks - lastCpuTicks).toDouble() / clockTicks
         val percent = cpuSeconds / elapsedSeconds / cores * 100.0
@@ -189,7 +191,7 @@ private class DebugStatsSampler(context: Context) {
 
     // Faults that had to hit storage, so a high rate means the device is paging rather than playing.
     private fun majorFaultStat(proc: ProcTimes?, elapsedSeconds: Double): DebugStat {
-        if (proc == null) return DebugStat("paging", "n/a")
+        if (proc == null) return DebugStat("paging", UNAVAILABLE)
         if (lastMajorFaults < 0L || elapsedSeconds <= 0.0) return DebugStat("paging", "...")
         val perSecond = (proc.majorFaults - lastMajorFaults).toDouble() / elapsedSeconds
         faultTotal += perSecond
@@ -227,7 +229,7 @@ private class DebugStatsSampler(context: Context) {
     }
 
     private fun bufferStat(snapshot: PlayerSnapshot?): DebugStat {
-        if (snapshot == null) return DebugStat("buffer", "n/a")
+        if (snapshot == null) return DebugStat("buffer", UNAVAILABLE)
         val ahead = snapshot.aheadMs / 1000.0
         bufferTotal += ahead
         bufferSamples++
@@ -254,14 +256,14 @@ private class DebugStatsSampler(context: Context) {
         }
         val video = snapshot?.videoBitrate ?: -1
         val audio = snapshot?.audioBitrate ?: -1
-        if (video <= 0 && audio <= 0) return DebugStat("bitrate", "n/a")
+        if (video <= 0 && audio <= 0) return DebugStat("bitrate", UNAVAILABLE)
         val totalMbps = (video.coerceAtLeast(0) + audio.coerceAtLeast(0)) / 1_000_000.0
         return DebugStat("bitrate", String.format(Locale.US, "%.1f Mbps tracks", totalMbps))
     }
 
     private fun networkStat(): DebugStat {
         val rx = runCatching { TrafficStats.getUidRxBytes(Process.myUid()) }.getOrDefault(-1L)
-        if (rx < 0L) return DebugStat("network", "n/a")
+        if (rx < 0L) return DebugStat("network", UNAVAILABLE)
         val now = System.currentTimeMillis()
         val previousRx = lastRxBytes
         val previousAt = lastRxAtMs
@@ -269,7 +271,17 @@ private class DebugStatsSampler(context: Context) {
         lastRxAtMs = now
         if (previousRx < 0L || now <= previousAt) return DebugStat("network", "...")
         val mbps = (rx - previousRx).toDouble() / ((now - previousAt) / 1000.0) * 8.0 / 1_000_000.0
-        return DebugStat("network", String.format(Locale.US, "%.1f Mbps", mbps))
+        networkTotal += mbps
+        networkSamples++
+        return DebugStat(
+            label = "network",
+            value = String.format(
+                Locale.US,
+                "%.1f Mbps   avg %.1f",
+                mbps,
+                networkTotal / networkSamples
+            )
+        )
     }
 
     private fun droppedStat(snapshot: PlayerSnapshot?): DebugStat {
@@ -279,19 +291,19 @@ private class DebugStatsSampler(context: Context) {
 
     // Headroom is normalised so 1.00 is the throttling point; the status line only matters once it trips.
     private fun thermalStats(): List<DebugStat> {
-        val pm = powerManager ?: return listOf(DebugStat("thermal", "n/a"))
+        val pm = powerManager ?: return listOf(DebugStat("thermal", UNAVAILABLE))
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return listOf(DebugStat("thermal", "needs api 30"))
+            return listOf(DebugStat("thermal", UNAVAILABLE))
         }
         val headroom = runCatching { pm.getThermalHeadroom(0) }.getOrDefault(Float.NaN)
         val status = runCatching { pm.currentThermalStatus }.getOrDefault(PowerManager.THERMAL_STATUS_NONE)
         val headroomStat = DebugStat(
             label = "thermal",
-            value = if (headroom.isNaN()) "n/a" else String.format(Locale.US, "%.2f / 1.00", headroom),
+            value = if (headroom.isNaN()) UNAVAILABLE else String.format(Locale.US, "%.2f / 1.00", headroom),
             warn = !headroom.isNaN() && headroom >= 0.9f
         )
         val throttleName = throttleName(status) ?: return listOf(headroomStat)
-        return listOf(headroomStat, DebugStat("throttling", throttleName, warn = true))
+        return listOf(headroomStat, DebugStat("throttle", throttleName, warn = true))
     }
 
     private fun throttleName(status: Int): String? = when (status) {
@@ -308,5 +320,9 @@ private class DebugStatsSampler(context: Context) {
 
     private companion object {
         const val MB = 1024L * 1024L
+
+        // A row carrying this is one the device will never fill in, so it is dropped rather than
+        // taking a line; the warmup placeholder is left alone so no row appears a second later.
+        const val UNAVAILABLE = "n/a"
     }
 }

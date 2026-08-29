@@ -1019,7 +1019,7 @@ fun PlayerScreen(
                 viewModel = viewModel,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 28.dp, top = NuvioTheme.spacing.xl)
+                    .padding(start = NuvioTheme.spacing.xl, top = NuvioTheme.spacing.xl)
                     .zIndex(2.75f)
             )
         }
