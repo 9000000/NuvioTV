@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import com.nuvio.tv.core.auth.AuthManager
@@ -463,7 +464,10 @@ class AddonRepositoryImpl @Inject constructor(
         }
 
     private fun bumpManifestCacheRevision() {
-        manifestCacheRevision.value = manifestCacheRevision.value + 1
+        // scheduleManifestRefresh fetches every addon in parallel and each success can call
+        // this through putCachedManifestIfChanged, so a plain read-modify-write can lose an
+        // increment and with it one re-emission of installedAddonsFlow.
+        manifestCacheRevision.update { it + 1 }
     }
 
     private fun hasManifestChanged(existing: Addon, incoming: Addon): Boolean =
