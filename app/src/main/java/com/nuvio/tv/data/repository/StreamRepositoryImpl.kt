@@ -523,7 +523,8 @@ class StreamRepositoryImpl @Inject constructor(
             ytId = null,
             externalUrl = null,
             quality = quality,
-            qualityValue = parseQualityValue(quality)
+            qualityValue = parseQualityValue(quality),
+            subtitles = subtitles
         )
     }
 
