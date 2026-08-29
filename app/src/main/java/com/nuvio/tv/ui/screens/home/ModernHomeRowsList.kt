@@ -251,11 +251,15 @@ internal fun ModernHomeRowsList(
     // Only run the shared shimmer while a row on screen actually draws it: rememberInfiniteTransition
     // keeps waking the Compose frame clock on every frame for as long as it is composed, even when
     // nothing reads its value. Rows below the fold stay placeholders until they are scrolled to, so
-    // the check has to be on the visible rows, not on the whole list.
-    val needsPlaceholderShimmer by remember(carouselRows) {
+    // the check has to be on the visible rows, not on the whole list. Keyed on the list state for
+    // the same reason isVerticalRowsScrollingState is in ModernHomeContent: rememberLazyListState
+    // is saveable-backed and can hand back a new instance, and a derived state still holding the
+    // old one would read a layout that has stopped updating.
+    val needsPlaceholderShimmer by remember(verticalRowListState) {
         derivedStateOf {
+            val rows = latestCarouselRowsForLazy.value.list
             verticalRowListState.layoutInfo.visibleItemsInfo.any { visibleRow ->
-                carouselRows.list.getOrNull(visibleRow.index)?.showsPlaceholderShimmer() == true
+                rows.getOrNull(visibleRow.index)?.showsPlaceholderShimmer() == true
             }
         }
     }
