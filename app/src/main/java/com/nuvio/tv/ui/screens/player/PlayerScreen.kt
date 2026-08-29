@@ -8,6 +8,8 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.theme.ThemeColors
+import com.nuvio.tv.ui.theme.accentBrush
 
 import android.util.Log
 import android.view.KeyEvent
@@ -2471,6 +2473,7 @@ private fun ProgressBar(
     /** Position (ms) up to which content is buffered. Pass 0 to skip the overlay. */
     bufferedPosition: Long = 0L
 ) {
+    val accentBrush = ThemeColors.getColorPalette(NuvioTheme.currentTheme).accentBrush()
     val progress = if (duration > 0) {
         (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     } else 0f
@@ -2603,7 +2606,7 @@ private fun ProgressBar(
                 .fillMaxHeight()
                 .width(trackWidth * animatedProgress)
                 .clip(RoundedCornerShape(3.dp))
-                .background(NuvioTheme.colors.Secondary)
+                .background(accentBrush)
         )
     }
 }
