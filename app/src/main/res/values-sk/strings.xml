@@ -3109,8 +3109,6 @@
     <string name="collections_editor_tmdb_without_keywords_placeholder">9715</string>
     <string name="collections_editor_tmdb_without_companies_placeholder">420</string>
 
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
     <string name="advanced_player_stats_hud">Prekrytie štatistík prehrávania</string>
     <string name="advanced_player_stats_hud_subtitle">Zobraziť počas prehrávania živé údaje o CPU, pamäti, vyrovnávacej pamäti, dátovom toku a teplote</string>
     <string name="advanced_confirm_exit">Úplné ukončenie pri zavretí</string>
