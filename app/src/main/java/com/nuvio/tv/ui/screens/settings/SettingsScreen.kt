@@ -317,7 +317,10 @@ fun SettingsScreen(
     var integrationSection by remember { mutableStateOf(IntegrationSettingsSection.Hub) }
     var pendingContentFocusCategory by remember { mutableStateOf<SettingsCategory?>(null) }
     var pendingContentFocusRequestId by remember { mutableLongStateOf(0L) }
-    var allowDetailAutofocus by remember { mutableStateOf(false) }
+    // Saveable so it survives a trip out to one of the screens a category opens. The pane bounces
+    // focus back to the rail whenever it gains focus while this is false, so a plain remember made
+    // every return from those screens land on the rail rather than where the user had been.
+    var allowDetailAutofocus by rememberSaveable { mutableStateOf(false) }
     var detailHasFocus by remember { mutableStateOf(false) }
 
     // Back inside the options pane returns to the category rail before it leaves settings, the
@@ -342,7 +345,17 @@ fun SettingsScreen(
     }
 
     LaunchedEffect(Unit) {
-        runCatching { railContainerFocusRequester.requestFocus() }
+        // Categories such as plugins and addons open a destination of their own, so Settings leaves
+        // composition and comes back with nothing asking for the options pane: the rail is simply
+        // the first thing able to take focus. Landing there loses the user's place for a trip they
+        // did not take through the rail. The saved flag says the pane was where they were, so aim
+        // for it and leave the rail to the case where it really was the last thing focused.
+        if (allowDetailAutofocus) {
+            pendingContentFocusCategory = selectedCategory
+            pendingContentFocusRequestId += 1L
+        } else {
+            runCatching { railContainerFocusRequester.requestFocus() }
+        }
     }
 
     LaunchedEffect(pendingContentFocusRequestId) {
@@ -384,6 +397,11 @@ fun SettingsScreen(
 
             val onSectionClick: (SettingsSectionSpec) -> Unit = { section ->
                 if (section.destination == SettingsSectionDestination.External) {
+                    // These have no options of their own to come back to: the rail row is the
+                    // whole category, and it is the rail the user is leaving from. Without this
+                    // the flag keeps whatever an earlier visit to the pane left in it, and the
+                    // return aims at the options of a category that was never opened.
+                    allowDetailAutofocus = false
                     when (section.category) {
                         SettingsCategory.ACCOUNT -> onNavigateToAuthQrSignIn()
                         SettingsCategory.TRACKING -> onNavigateToTracking()
