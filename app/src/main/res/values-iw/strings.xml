@@ -630,7 +630,7 @@
     <string name="supporter_membership_manage">נהל מנויים</string>
     <string name="supporter_membership_refresh">רענן</string>
     <string name="supporter_membership_refreshing">מרענן</string>
-    <string name="supporter_membership_loading"טוען מנויים…</string>
+    <string name="supporter_membership_loading">טוען מנויים…</string>
     <string name="supporter_membership_unable_load">לא ניתן לטעון את סטטוס המנויים. נסה שוב.</string>
     <string name="supporter_membership_you_are">אתה</string>
     <string name="supporter_membership_thank_you">תודה.</string>
