@@ -90,7 +90,7 @@ data class PlayerUiState(
     val pauseOverlayEnabled: Boolean = true,
     val osdClockEnabled: Boolean = true,
     val playerStatsHudEnabled: Boolean = false,
-    val playerStatsHudVisible: Boolean = true,
+    val playerStatsHudButtonAvailable: Boolean = false,
     val showPauseOverlay: Boolean = false,
     val audioTracks: List<TrackInfo> = emptyList(),
     val subtitleTracks: List<TrackInfo> = emptyList(),

@@ -889,12 +889,12 @@ internal fun PlayerRuntimeController.observePlayerStatsHud() {
         deviceLocalPlayerPreferences.playerStatsHudEnabled
             .distinctUntilChanged()
             .collect { enabled ->
-                // Turning the setting on is a request to see the overlay, even if the button hid
-                // it during an earlier playback.
+                // The button outlives the setting for the rest of the playback, so turning the
+                // overlay off from it leaves a way to turn it back on without visiting settings.
                 _uiState.update {
                     it.copy(
                         playerStatsHudEnabled = enabled,
-                        playerStatsHudVisible = if (enabled) true else it.playerStatsHudVisible
+                        playerStatsHudButtonAvailable = it.playerStatsHudButtonAvailable || enabled
                     )
                 }
             }
