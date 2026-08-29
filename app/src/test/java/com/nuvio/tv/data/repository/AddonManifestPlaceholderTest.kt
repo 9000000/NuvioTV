@@ -156,6 +156,8 @@ class AddonManifestPlaceholderTest {
         assertEquals(addonUrl, resolved.baseUrl)
     }
 
+    private fun newContext(): Context = mockk(relaxed = true)
+
     private data class Harness(
         val repository: AddonRepositoryImpl,
         val preferences: AddonPreferences,
@@ -190,7 +192,7 @@ class AddonManifestPlaceholderTest {
                 preferences = preferences,
                 addonSyncService = mockk<AddonSyncService>(relaxed = true),
                 authManager = mockk<AuthManager>(relaxed = true),
-                context = mockk<Context>(relaxed = true)
+                context = newContext()
             ),
             preferences = preferences,
             manifestCalls = manifestCalls,

@@ -96,28 +96,64 @@ class AddonRepositoryImpl @Inject constructor(
     private val manifestCacheLock = Any()
     private val manifestCacheRevision = MutableStateFlow(0L)
     @Volatile
-    private var lastManifestRefreshTime = 0L
+    private var lastManifestRefreshAttemptTime = 0L
     private var manifestRefreshJob: Job? = null
+    private val manifestRefreshLock = Any()
 
     init {
         syncScope.launch { loadManifestCacheFromDisk() }
     }
 
     private fun isCacheStale(): Boolean =
-        System.currentTimeMillis() - lastManifestRefreshTime > MANIFEST_CACHE_TTL_MS
+        System.currentTimeMillis() - lastManifestRefreshAttemptTime > MANIFEST_CACHE_TTL_MS
 
+    /**
+     * Scheduling is serialised so that the staleness check, the timestamp and the job assignment
+     * happen as one step. Without the lock two recomputations can each observe a stale clock and
+     * an inactive job before either launched coroutine runs, and both sweep - the timestamp alone
+     * cannot prevent that, because it is written on the dispatcher rather than at the call site.
+     *
+     * The attempt is recorded here rather than after the fetches complete, so the record does not
+     * depend on the sweep finishing or on fetchAddon staying exception-free. The cost is that a
+     * cancelled sweep still counts as an attempt; nothing cancels this job or syncScope today, so
+     * that only arises at process death, where the field dies with the process anyway.
+     *
+     * The policy this encodes is a minimum interval between refresh *starts*, not a guarantee of
+     * freshness for a period after one completes. A sweep that outlived the TTL would therefore be
+     * eligible to run again as soon as it finished. Do not "fix" that by moving the assignment to
+     * completion: on an all-failed sweep that reinstates the bug this exists to prevent.
+     */
     private fun scheduleManifestRefresh(urls: List<String>) {
-        if (manifestRefreshJob?.isActive == true) return
-        manifestRefreshJob = syncScope.launch {
-            val refreshed = urls.map { url ->
-                async {
-                    fetchAddon(url)
+        if (urls.isEmpty()) {
+            // Nothing to attempt, so nothing is recorded - otherwise enabling an addon straight
+            // afterwards inherits a full TTL window it never had.
+            Log.d(TAG, "Background manifest refresh skipped: no enabled addons")
+            return
+        }
+        synchronized(manifestRefreshLock) {
+            if (manifestRefreshJob?.isActive == true) return
+            // Re-checked under the lock: the caller tested this before we got here.
+            if (!isCacheStale()) return
+            lastManifestRefreshAttemptTime = System.currentTimeMillis()
+            manifestRefreshJob = syncScope.launch {
+                val refreshed = urls.map { url ->
+                    async {
+                        fetchAddon(url)
+                    }
+                }.awaitAll()
+                // isCacheStale() is re-evaluated every time installedAddonsFlow's combine emits -
+                // on any addon add, remove, rename, enable or disable, and on any manifest cache
+                // mutation - so leaving the clock unset after a failed sweep makes each of those
+                // schedule another full fetch of every addon, indefinitely, while offline or
+                // while an addon is down. Manifests that are missing entirely are recovered by
+                // the cache-miss path above, which does not consult this clock, so waiting out
+                // the TTL here only delays refreshing manifests that are already cached and
+                // usable.
+                if (refreshed.any { it is NetworkResult.Success }) {
+                    Log.d(TAG, "Background manifest refresh completed")
+                } else {
+                    Log.w(TAG, "Background manifest refresh failed for all ${urls.size} addon(s)")
                 }
-            }.awaitAll()
-            val anyUpdated = refreshed.any { it is NetworkResult.Success }
-            if (anyUpdated) {
-                lastManifestRefreshTime = System.currentTimeMillis()
-                Log.d(TAG, "Background manifest refresh completed")
             }
         }
     }
