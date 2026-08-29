@@ -51,8 +51,8 @@ fun StreamInfoOverlay(
     visible: Boolean,
     onClose: () -> Unit,
     data: StreamInfoData?,
-    hudAvailable: Boolean,
-    hudVisible: Boolean,
+    hudEnabled: Boolean,
+    hudButtonShown: Boolean,
     onToggleHud: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -74,16 +74,16 @@ fun StreamInfoOverlay(
                 KeyEvent.KEYCODE_DPAD_RIGHT -> true
                 else -> false
             }
-            if (!isDirection || hudFocused || !hudAvailable) return@onPreviewKeyEvent false
+            if (!isDirection || hudFocused || !hudButtonShown) return@onPreviewKeyEvent false
             runCatching { hudFocusRequester.requestFocus() }.isSuccess
         },
-        dismissOnCenter = true,
+        dismissOnCenter = !hudButtonShown,
         contentPadding = PaddingValues(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, top = 36.dp, bottom = 36.dp)
     ) {
         // Someone who never turned the overlay on has no use for a control they cannot interpret.
-        if (hudAvailable) {
+        if (hudButtonShown) {
             StreamInfoHudButton(
-                enabled = hudVisible,
+                enabled = hudEnabled,
                 onClick = onToggleHud,
                 focusRequester = hudFocusRequester,
                 onFocusChanged = { hudFocused = it },
@@ -329,10 +329,10 @@ private fun StreamInfoHudButton(
             },
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         colors = ButtonDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.14f),
-            contentColor = Color.White,
-            focusedContainerColor = Color.White,
-            focusedContentColor = Color.Black
+            containerColor = Color.White.copy(alpha = if (enabled) 0.14f else 0.06f),
+            contentColor = Color.White.copy(alpha = if (enabled) 1f else 0.5f),
+            focusedContainerColor = Color.White.copy(alpha = if (enabled) 1f else 0.4f),
+            focusedContentColor = if (enabled) Color.Black else Color.White
         )
     ) {
         // The label stays fixed, so the dot is the only thing carrying the on or off state.
