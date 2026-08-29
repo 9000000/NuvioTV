@@ -195,12 +195,20 @@ class AddonRepositoryImpl @Inject constructor(
                                         ?.copy(enabled = false)
                                         ?: placeholderAddon(canonical, userNames, enabled = false)
                                 }
+                                // On failure fall back to a placeholder rather than null. Returning
+                                // null drops the addon from the emitted list entirely, so an installed
+                                // URL whose manifest has never been fetched successfully becomes
+                                // invisible in the addon manager - and unremovable, because removal is
+                                // driven by the listed row. The disabled branch above already does this.
+                                // A placeholder carries no resources or catalogs, so it is not queried
+                                // for streams and contributes no catalog rows until a real manifest
+                                // arrives.
                                 (getCachedManifest(canonical) ?: when (val result = fetchAddon(url)) {
                                     is NetworkResult.Success -> result.data
-                                    else -> null
-                                })?.copy(enabled = enabled)
+                                    else -> placeholderAddon(canonical, userNames, enabled)
+                                }).copy(enabled = enabled)
                             }
-                        }.awaitAll().filterNotNull()
+                        }.awaitAll()
                     }
 
                     if (fresh != cached) {
