@@ -48,7 +48,8 @@ internal data class PlayerSnapshot(
     val audioBitrate: Int,
     val durationMs: Long,
     val droppedFrames: Int,
-    val fileSizeBytes: Long?
+    val fileSizeBytes: Long?,
+    val nativeMemoryBytes: Long? = null
 )
 
 @OptIn(UnstableApi::class)
@@ -92,7 +93,8 @@ internal fun PlayerDebugStatsOverlay(
                     audioBitrate = runCatching { it.audioFormat?.bitrate }.getOrNull() ?: -1,
                     durationMs = runCatching { it.duration }.getOrNull() ?: -1L,
                     droppedFrames = runCatching { it.videoDecoderCounters?.droppedBufferCount }.getOrNull() ?: 0,
-                    fileSizeBytes = viewModel.getCurrentFileSizeBytes() ?: probedFileSize
+                    fileSizeBytes = viewModel.getCurrentFileSizeBytes() ?: probedFileSize,
+                    nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes()
                 )
             }
             stats = withContext(Dispatchers.IO) { sampler.sample(snapshot) }
@@ -167,7 +169,7 @@ private class DebugStatsSampler(context: Context) {
             lastProcAtMs = now
         }
 
-        add(memoryStat())
+        add(memoryStat(snapshot))
         add(bufferStat(snapshot))
         add(bitrateStat(snapshot))
         add(networkStat())
@@ -215,12 +217,22 @@ private class DebugStatsSampler(context: Context) {
     }.getOrNull()
 
     // Performance mode puts the player buffers in native memory, so the java heap alone hides them.
-    private fun memoryStat(): DebugStat {
+    private fun memoryStat(snapshot: PlayerSnapshot?): DebugStat {
         val runtime = Runtime.getRuntime()
         val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / MB
         val maxMb = runtime.maxMemory() / MB
-        val nativeMb = runCatching { Debug.getNativeHeapAllocatedSize() / MB }.getOrDefault(-1L)
-        val nativeText = if (nativeMb < 0L) "" else "   native $nativeMb MB"
+        val playerNativeBytes = snapshot?.nativeMemoryBytes
+        val nativeMb = if (playerNativeBytes != null && playerNativeBytes > 0L) {
+            playerNativeBytes / MB
+        } else {
+            runCatching { Debug.getNativeHeapAllocatedSize() / MB }.getOrDefault(-1L)
+        }
+        val targetBufferMb = NuvioExoPlayerPerformanceHelper.calculatedMemoryUsageMb
+        val nativeText = when {
+            nativeMb < 0L -> ""
+            targetBufferMb > 0 -> "   native $nativeMb / $targetBufferMb MB"
+            else -> "   native $nativeMb MB"
+        }
         return DebugStat(
             label = "memory",
             value = "$usedMb / $maxMb MB$nativeText",
