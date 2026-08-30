@@ -10,12 +10,16 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,19 +27,20 @@ import retrofit2.Response
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * An installed addon whose manifest cannot be fetched must still be emitted, so it stays visible
  * in the addon manager and can be removed. Before the placeholder fallback it resolved to null and
  * was dropped by filterNotNull(), leaving the URL installed but unreachable from the UI.
  *
- * Uses runBlocking rather than runTest: AddonRepositoryImpl publishes installedAddonsFlow through
- * stateIn() on a scope hardcoded to Dispatchers.IO, so virtual time would not advance it. The
- * withTimeout() calls are therefore scheduling-dependent rather than deterministic.
+ * The placeholder tests use runBlocking and Dispatchers.IO, matching production scheduling. The
+ * refresh-clock test injects a test dispatcher and a settable clock instead, so the TTL policy is
+ * asserted without waiting on real time or real IO threads.
  *
  * Each repository built here leaks its stateIn collector: syncScope is a SupervisorJob the class
  * never cancels, and there is no close/dispose. Harmless for a handful of instances in a unit-test
- * JVM, but a reason not to grow this file much further without making the scope injectable.
+ * JVM.
  */
 class AddonManifestPlaceholderTest {
 
@@ -46,6 +51,8 @@ class AddonManifestPlaceholderTest {
         const val REAL_VERSION = "1.0.0"
         /** A placeholder carries no version; a resolved manifest does. */
         const val PLACEHOLDER_VERSION = ""
+        /** Mirrors AddonRepositoryImpl.MANIFEST_CACHE_TTL_MS, which is private. */
+        const val MANIFEST_CACHE_TTL_MS = 6 * 60 * 60 * 1000L
     }
 
     @Test
@@ -156,6 +163,68 @@ class AddonManifestPlaceholderTest {
         assertEquals(addonUrl, resolved.baseUrl)
     }
 
+    /**
+     * The bug: the refresh timestamp was only advanced when a fetch succeeded, so a sweep that
+     * failed for every addon left isCacheStale() true and the next recomputation of
+     * installedAddonsFlow scheduled another full sweep. Any addon rename, enable or disable while
+     * offline therefore re-armed it indefinitely.
+     *
+     * Deterministic because the dispatcher and the clock are injected: the unconfined test
+     * dispatcher runs the disk load, the flow and the sweep to completion at their launch points,
+     * so a manifest-call count sampled after an emission is stable.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun `an all-failed sweep does not re-arm on the next recomputation`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val now = AtomicLong(0L)
+        val names = MutableStateFlow(emptyMap<String, String>())
+        val harness = newRepository(
+            userSetNames = names,
+            reachable = true,
+            dispatcher = dispatcher,
+            clock = { now.get() }
+        )
+
+        // Resolve the manifest once so it is cached. While it is not, every recomputation takes
+        // the cache-miss branch, which never consults the clock.
+        harness.repository.getInstalledAddons().first { list ->
+            list.singleOrNull()?.version == REAL_VERSION
+        }
+        val afterCaching = harness.manifestCalls.get()
+
+        // Server goes away, clock moves past the TTL. The cache is now stale with no cache miss,
+        // so the next recomputation schedules a sweep, and every fetch in it fails.
+        harness.reachable.set(false)
+        now.set(MANIFEST_CACHE_TTL_MS + 1)
+        names.value = mapOf(addonUrl to "renamed once")
+        val afterFailedSweep = harness.manifestCalls.get()
+        assertEquals(
+            "the stale cache should have produced exactly one sweep",
+            afterCaching + 1,
+            afterFailedSweep
+        )
+
+        // The sweep failed, but it was still an attempt. Further recomputations must not re-arm it.
+        names.value = mapOf(addonUrl to "renamed twice")
+        names.value = mapOf(addonUrl to "renamed three times")
+        assertEquals(
+            "a failed sweep must not re-arm on later recomputations",
+            afterFailedSweep,
+            harness.manifestCalls.get()
+        )
+
+        // Once the TTL has elapsed again the sweep is eligible, which is what makes the assertion
+        // above a throttle rather than a permanent stop.
+        now.set(now.get() + MANIFEST_CACHE_TTL_MS + 1)
+        names.value = mapOf(addonUrl to "renamed four times")
+        assertEquals(
+            "a new TTL window should allow one further sweep",
+            afterFailedSweep + 1,
+            harness.manifestCalls.get()
+        )
+    }
+
     private fun newContext(): Context = mockk(relaxed = true)
 
     private data class Harness(
@@ -167,7 +236,9 @@ class AddonManifestPlaceholderTest {
 
     private fun newRepository(
         userSetNames: kotlinx.coroutines.flow.Flow<Map<String, String>> = flowOf(emptyMap()),
-        reachable: Boolean = false
+        reachable: Boolean = false,
+        dispatcher: CoroutineDispatcher = Dispatchers.IO,
+        clock: () -> Long = System::currentTimeMillis
     ): Harness {
         val manifestCalls = AtomicInteger()
         val isReachable = AtomicBoolean(reachable)
@@ -192,7 +263,9 @@ class AddonManifestPlaceholderTest {
                 preferences = preferences,
                 addonSyncService = mockk<AddonSyncService>(relaxed = true),
                 authManager = mockk<AuthManager>(relaxed = true),
-                context = newContext()
+                context = newContext(),
+                dispatcher = dispatcher,
+                clock = clock
             ),
             preferences = preferences,
             manifestCalls = manifestCalls,

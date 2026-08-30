@@ -12,6 +12,7 @@ import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -43,13 +44,38 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
  * get its own instance, with its own manifest cache, refresh clock and stateIn collector.
  */
 @Singleton
-class AddonRepositoryImpl @Inject constructor(
+class AddonRepositoryImpl(
     private val api: AddonApi,
     private val preferences: AddonPreferences,
     private val addonSyncService: AddonSyncService,
     private val authManager: AuthManager,
-    @ApplicationContext private val context: Context
+    private val context: Context,
+    /**
+     * The dispatcher backing syncScope, the manifest cache disk IO and installedAddonsFlow.
+     * Injectable so tests can drive the flow and the background sweep on a test dispatcher
+     * instead of racing real IO threads; production always gets Dispatchers.IO.
+     */
+    private val dispatcher: CoroutineDispatcher,
+    /** Source of the refresh clock, injectable so the TTL policy can be tested without waiting. */
+    private val clock: () -> Long
 ) : AddonRepository {
+
+    @Inject
+    constructor(
+        api: AddonApi,
+        preferences: AddonPreferences,
+        addonSyncService: AddonSyncService,
+        authManager: AuthManager,
+        @ApplicationContext context: Context
+    ) : this(
+        api = api,
+        preferences = preferences,
+        addonSyncService = addonSyncService,
+        authManager = authManager,
+        context = context,
+        dispatcher = Dispatchers.IO,
+        clock = System::currentTimeMillis
+    )
 
     companion object {
         private const val TAG = "AddonRepository"
@@ -60,7 +86,7 @@ class AddonRepositoryImpl @Inject constructor(
         private const val MANIFEST_CACHE_TTL_MS = 6 * 60 * 60 * 1000L 
     }
 
-    private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val syncScope = CoroutineScope(SupervisorJob() + dispatcher)
     private var syncJob: Job? = null
     var isSyncingFromRemote = false
 
@@ -113,7 +139,7 @@ class AddonRepositoryImpl @Inject constructor(
     }
 
     private fun isCacheStale(): Boolean =
-        System.currentTimeMillis() - lastManifestRefreshAttemptTime > MANIFEST_CACHE_TTL_MS
+        clock() - lastManifestRefreshAttemptTime > MANIFEST_CACHE_TTL_MS
 
     /**
      * Scheduling is serialised so that the staleness check, the timestamp and the job assignment
@@ -142,7 +168,7 @@ class AddonRepositoryImpl @Inject constructor(
             if (manifestRefreshJob?.isActive == true) return
             // Re-checked under the lock: the caller tested this before we got here.
             if (!isCacheStale()) return
-            lastManifestRefreshAttemptTime = System.currentTimeMillis()
+            lastManifestRefreshAttemptTime = clock()
             manifestRefreshJob = syncScope.launch {
                 val refreshed = urls.map { url ->
                     async {
@@ -166,7 +192,7 @@ class AddonRepositoryImpl @Inject constructor(
         }
     }
 
-    private suspend fun loadManifestCacheFromDisk() = kotlinx.coroutines.withContext(Dispatchers.IO) {
+    private suspend fun loadManifestCacheFromDisk() = kotlinx.coroutines.withContext(dispatcher) {
         try {
             val prefs = context.getSharedPreferences(MANIFEST_CACHE_PREFS, Context.MODE_PRIVATE)
             if (prefs.contains(LEGACY_MANIFEST_CACHE_KEY)) {
@@ -263,7 +289,7 @@ class AddonRepositoryImpl @Inject constructor(
                         urls.filter { url -> enabledByUrl[canonicalizeUrl(url)] ?: true }
                     )
                 }
-            }.flowOn(Dispatchers.IO)
+            }.flowOn(dispatcher)
         }
         .stateIn(syncScope, SharingStarted.Eagerly, emptyList<Addon>())
 
