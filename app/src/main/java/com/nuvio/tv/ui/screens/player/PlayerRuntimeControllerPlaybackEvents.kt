@@ -1746,10 +1746,7 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             _uiState.update { it.copy(showStreamInfoOverlay = false) }
         }
         PlayerEvent.OnTogglePlayerStatsHud -> {
-            // This is the only way to turn the overlay off from the player, so it writes the setting
-            // rather than a session flag the next playback would start from scratch.
-            val enable = !_uiState.value.playerStatsHudEnabled
-            scope.launch { deviceLocalPlayerPreferences.setPlayerStatsHudEnabled(enable) }
+            _uiState.update { it.copy(playerStatsHudEnabled = !it.playerStatsHudEnabled) }
         }
     }
 }
