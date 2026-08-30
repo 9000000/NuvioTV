@@ -34,8 +34,15 @@ import kotlinx.coroutines.launch
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.sync.AddonSyncService
 import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+/**
+ * Scoped @Singleton on the class, not only on the @Binds in RepositoryModule. The binding scopes
+ * the AddonRepository *interface*; anything injecting AddonRepositoryImpl directly would otherwise
+ * get its own instance, with its own manifest cache, refresh clock and stateIn collector.
+ */
+@Singleton
 class AddonRepositoryImpl @Inject constructor(
     private val api: AddonApi,
     private val preferences: AddonPreferences,
