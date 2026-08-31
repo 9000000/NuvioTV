@@ -328,7 +328,8 @@ class ExternalPlaybackTracker @Inject constructor(
 
         Log.d(TAG, "Started tracking: content=${metadata.contentId}, video=${metadata.videoId}")
 
-        // On Zidoo devices, start REST API polling
+        // Zidoo's built-in player does not return ActivityResult data, so keep its REST monitor
+        // running as a fallback. Third-party players on the same device still use ActivityResult.
         if (ZidooPlayerMonitor.isZidooDevice()) {
             startZidooMonitor(metadata, startFromBeginning)
         }
@@ -344,7 +345,8 @@ class ExternalPlaybackTracker @Inject constructor(
      */
     /**
      * Launch external player with progress tracking.
-     * Uses the Activity-level launcher for ActivityResult, or fire-and-forget on Zidoo.
+     * Uses the Activity-level launcher for ActivityResult. Zidoo's REST monitor runs separately
+     * as a fallback for its built-in player, without bypassing results from third-party players.
      * If resumePositionMs is 0, fetches the saved position from the repository.
      *
      * @param metadata Content metadata for progress saving
@@ -509,41 +511,17 @@ class ExternalPlaybackTracker @Inject constructor(
             skipSegmentsJson = skipSegmentsJson
         )
 
-        if (ZidooPlayerMonitor.isZidooDevice()) {
-            // Zidoo doesn't return ActivityResult - use fire-and-forget
-            return ExternalPlayerLauncher.launch(
-                context = context,
-                url = url,
-                title = title,
-                headers = headers,
-                resumePositionMs = resumePositionMs,
-                startFromBeginning = startFromBeginning,
-                subtitles = subtitles,
-                skipSegmentsJson = skipSegmentsJson
-            )
-        } else {
-            // Use Activity-level launcher for ActivityResult
-            val launcher = activityLauncher
-            if (launcher != null) {
-                return try {
-                    launcher.launch(input)
-                    true
-                } catch (e: Exception) {
-                    Log.w(TAG, "ActivityResultLauncher failed, falling back to fire-and-forget", e)
-                    ExternalPlayerLauncher.launch(
-                        context = context,
-                        url = url,
-                        title = title,
-                        headers = headers,
-                        resumePositionMs = resumePositionMs,
-                        startFromBeginning = startFromBeginning,
-                        subtitles = subtitles,
-                        skipSegmentsJson = skipSegmentsJson
-                    )
-                }
-            } else {
-                Log.w(TAG, "No activityLauncher registered, using fire-and-forget")
-                return ExternalPlayerLauncher.launch(
+        // Always prefer ActivityResult, including on Zidoo hardware. A Zidoo may launch Vimu,
+        // Just Player, or another third-party player that does return progress. Treating the
+        // device itself as the player bypasses that contract and loses resume updates (#3269).
+        val launcher = activityLauncher
+        if (launcher != null) {
+            return try {
+                launcher.launch(input)
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "ActivityResultLauncher failed, falling back to fire-and-forget", e)
+                ExternalPlayerLauncher.launch(
                     context = context,
                     url = url,
                     title = title,
@@ -555,6 +533,18 @@ class ExternalPlaybackTracker @Inject constructor(
                 )
             }
         }
+
+        Log.w(TAG, "No activityLauncher registered, using fire-and-forget")
+        return ExternalPlayerLauncher.launch(
+            context = context,
+            url = url,
+            title = title,
+            headers = headers,
+            resumePositionMs = resumePositionMs,
+            startFromBeginning = startFromBeginning,
+            subtitles = subtitles,
+            skipSegmentsJson = skipSegmentsJson
+        )
     }
 
     // ===================== External-player result handling =====================
