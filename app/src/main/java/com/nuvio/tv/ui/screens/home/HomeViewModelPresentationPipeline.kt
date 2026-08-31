@@ -856,6 +856,11 @@ private fun HomeViewModel.updateCatalogItemWithMeta(itemId: String, meta: Meta) 
     clearEnrichmentFailure(itemId)
 
     _uiState.update { state ->
+        // Modern layout reads enrichment through enrichedPreviews / lastEnrichedPreview, populated
+        // just below, so rebuilding catalogRows here buys nothing and forces a full-home
+        // recomposition. The layout is read from the state being updated rather than from
+        // _uiState.value beforehand, so a concurrent layout change cannot make this stale.
+        if (state.homeLayout == HomeLayout.MODERN) return@update state
         var changed = false
         val updatedRows = state.catalogRows.map { row ->
             val itemIndex = row.items.indexOfFirst { it.id == itemId }
