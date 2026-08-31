@@ -222,7 +222,7 @@ private data class MainUiPrefs(
 )
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var themeDataStore: ThemeDataStore

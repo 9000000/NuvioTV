@@ -287,26 +287,26 @@
     <string name="episodes_unavailable">Không có sẵn</string>
     <!-- Status labels for series (some languages need gendered forms) -->
     <string name="series_status_ended">Đã kết thúc</string>
-    <string name="series_status_continuing">Đang phát sóng</string>
-    <string name="series_status_current">Chờ mùa mới</string>
+    <string name="series_status_continuing">Còn tiếp</string>
+    <string name="series_status_current">Đang phát sóng</string>
     <string name="series_status_cancelled">Đã bị hủy</string>
     <string name="series_status_released">Đã phát hành</string>
-    <string name="series_status_planned">Sắp phát hành</string>
+    <string name="series_status_planned">Sắp sản xuất</string>
     <string name="series_status_rumored">Đang đồn đoán</string>
     <string name="series_status_in_production">Đang sản xuất</string>
     <string name="series_status_post_production">Hậu kỳ</string>
     <!-- Status labels for movies (allows gendered translations in languages that need it) -->
     <string name="movie_status_ended">Đã kết thúc</string>
-    <string name="movie_status_continuing">Còn tiếp tục</string>
+    <string name="movie_status_continuing">Còn tiếp</string>
     <string name="movie_status_current">Đang chiếu</string>
     <string name="movie_status_cancelled">Đã bị hủy</string>
     <string name="movie_status_released">Đã phát hành</string>
-    <string name="movie_status_planned">Sắp phát hành</string>
+    <string name="movie_status_planned">Sắp sản xuất</string>
     <string name="movie_status_rumored">Đang đồn đoán</string>
     <string name="movie_status_in_production">Đang sản xuất</string>
     <string name="movie_status_post_production">Hậu kỳ</string>
     <string name="detail_lists_fallback">Danh sách</string>
-    <string name="detail_lists_subtitle">Chọn danh sách chứa tựa phim này.</string>
+    <string name="detail_lists_subtitle">Chọn danh sách để thêm nội dung này.</string>
     <string name="action_save">Lưu</string>
     <string name="action_saving">Đang lưu…</string>
 
@@ -326,13 +326,13 @@
     <string name="appearance_color_theme_subtitle">Chọn màu nhấn dùng cho toàn bộ ứng dụng</string>
     <string name="theme_color_gold">Vàng</string>
     <string name="theme_color_jade">Ngọc bích</string>
-    <string name="theme_color_rose_gold">Vàng hồng</string>
-    <string name="theme_color_arctic_blue">Xanh lam băng giá</string>
+    <string name="theme_color_rose_gold">Vàng Hồng</string>
+    <string name="theme_color_arctic_blue">Xanh Bắc Cực</string>
     <string name="theme_color_graphite">Than chì</string>
     <string name="theme_color_crimson">Đỏ thẫm</string>
     <string name="theme_color_ocean">Xanh lam</string>
     <string name="theme_color_violet">Tím</string>
-    <string name="theme_color_emerald">Xanh ngọc</string>
+    <string name="theme_color_emerald">Ngọc lục bảo</string>
     <string name="theme_color_amber">Cam</string>
     <string name="theme_color_rose">Hồng</string>
     <string name="theme_color_white">Trắng</string>
@@ -342,6 +342,21 @@
     <string name="appearance_amoled_surfaces_mode_subtitle">Đồng thời dùng màu đen tuyệt đối cho các thẻ, bảng và khung chứa</string>
     <string name="appearance_settings_style">Kiểu màn hình Cài đặt</string>
     <string name="appearance_settings_style_subtitle">Chọn cách hiển thị các màn hình Cài đặt</string>
+    <string name="appearance_launcher_artwork">Ảnh hiển thị Trình khởi chạy</string>
+    <string name="appearance_launcher_artwork_subtitle">Chọn cách Nuvio hiển thị trên màn hình chính TV của bạn</string>
+    <string name="appearance_app_icon_and_banner">Biểu tượng ứng dụng &amp; Ảnh biểu ngữ</string>
+    <string name="appearance_app_icon_and_banner_subtitle">Thay đổi biểu tượng ứng dụng và ảnh biểu ngữ</string>
+    <string name="appearance_app_icon_picker_title">Chọn Biểu tượng ứng dụng &amp; Ảnh biểu ngữ</string>
+    <string name="appearance_app_icon_picker_subtitle">Mỗi kiểu bao gồm một biểu tượng vuông và ảnh biểu ngữ TV đi kèm</string>
+    <string name="appearance_app_icon_confirmation_title">Đổi biểu tượng ứng dụng?</string>
+    <string name="appearance_app_icon_confirmation_message">Chuyển sang %1$s sẽ đóng Nuvio. Ảnh biểu ngữ TV có thể cần khởi động lại thiết bị để cập nhật. Chọn OK để tiếp tục.</string>
+    <string name="appearance_app_icon_change_failed">Không thể thay đổi biểu tượng và ảnh biểu ngữ. Vui lòng thử lại.</string>
+    <string name="appearance_app_icon_original">Gốc</string>
+    <string name="appearance_app_icon_arctic_blue">Xanh Bắc Cực</string>
+    <string name="appearance_app_icon_emerald">Ngọc lục bảo</string>
+    <string name="appearance_app_icon_rose_gold">Vàng Hồng</string>
+    <string name="appearance_app_icon_copper">Đồng</string>
+    <string name="appearance_app_icon_graphite">Than chì</string>
     <string name="settings_style_classic">Mặc định</string>
     <string name="settings_style_classic_desc">Bố cục tiêu chuẩn với các thẻ</string>
     <string name="settings_style_zen">Tối giản</string>
@@ -375,7 +390,7 @@
     <string name="licenses_attributions_nuvio_title">Nuvio TV</string>
     <string name="licenses_attributions_nuvio_body">Mã nguồn và các điều khoản cấp phép có sẵn trong kho lưu trữ của dự án. Phần mềm được cấp phép theo Giấy phép Công cộng GNU phiên bản 3.0.</string>
     <string name="licenses_attributions_tmdb_title">The Movie Database (TMDB)</string>
-    <string name="licenses_attributions_tmdb_body">Nuvio sử dụng API TMDB để lấy dữ liệu phim và TV, hình ảnh, trailer, diễn viên, thông tin sản xuất, bộ sưu tập và đề xuất. Sản phẩm này sử dụng API TMDB nhưng không được TMDB xác thực hoặc chứng nhận.</string>
+    <string name="licenses_attributions_tmdb_body">Nuvio sử dụng API TMDB để lấy dữ liệu phim và TV, ảnh hiển thị, trailer, diễn viên, thông tin sản xuất, bộ sưu tập và đề xuất. Sản phẩm này sử dụng API TMDB nhưng không được TMDB xác thực hoặc chứng nhận.</string>
     <string name="licenses_attributions_trakt_title">Trakt</string>
     <string name="licenses_attributions_trakt_body">Nuvio kết nối với Trakt để xác thực tài khoản, đồng bộ lịch sử đã xem, tiến độ xem, dữ liệu thư viện, đánh giá, danh sách và bình luận. Nuvio không liên kết hoặc được Trakt xác nhận.</string>
     <string name="licenses_attributions_simkl_title">Simkl</string>
@@ -556,7 +571,7 @@
     <string name="buffer_safe_status">An toàn: Nằm trong giới hạn khuyến nghị dành cho thiết bị của bạn.</string>
     <string name="buffer_unsafe_warning">Cảnh báo: Vượt quá giới hạn an toàn khuyến nghị. (%1$d MB) cho %2$s thiết bị. Có thể khiến ứng dụng bị treo.</string>
     <string name="buffer_auto_limit_active">Giới hạn an toàn được tự động điều chỉnh: %d MB</string>
-    <string name="advanced_nuvio_focus_scroll">Nuvio cuộn theo tiêu điểm</string>
+    <string name="advanced_nuvio_focus_scroll">Cuộn theo tiêu điểm Nuvio</string>
     <string name="advanced_nuvio_focus_scroll_subtitle">Sử dụng hiệu ứng hoạt ảnh và cách định vị cuộn theo tiêu điểm toàn cục tùy chỉnh của Nuvio.</string>
     <string name="advanced_memory_only_vertical_scroll">Cuộn dọc chỉ trong bộ nhớ:</string>
     <string name="advanced_memory_only_vertical_scroll_subtitle">Bỏ qua các yêu cầu tải ảnh từ ổ đĩa và mạng trong khi cuộn dọc qua các hàng trên trang chủ.</string>
@@ -866,7 +881,7 @@
     <string name="autoplay_prefer_binge_group">Ưu tiên nhóm phát liên tục (Tập tiếp theo)</string>
     <string name="autoplay_prefer_binge_group_sub">Ưu tiên cùng cấu hình nguồn (cùng tiện ích/nhóm chất lượng) trước các quy tắc tự động phát thông thường.</string>
     <string name="autoplay_reuse_binge_group">Dùng lại nhóm phát liên tục</string>
-    <string name="autoplay_reuse_binge_group_sub">Ghi nhớ và dùng lại nhóm phát liên tục gần nhất giữa các phiên (Tiếp tục xem, Chi tiết, ...).</string>
+    <string name="autoplay_reuse_binge_group_sub">Ghi nhớ và dùng lại nhóm phát liên tục gần nhất giữa các phiên (Tiếp tục xem, Chi tiết...).</string>
     <string name="autoplay_threshold_pct">Phần trăm</string>
     <string name="autoplay_threshold_min">Số phút trước khi kết thúc</string>
     <string name="autoplay_threshold_mode">Chế độ Ngưỡng tập tiếp theo</string>
@@ -928,7 +943,7 @@
     <string name="layout_fullscreen_hero_backdrop">Phông nền Khu vực Nổi bật toàn màn hình</string>
     <string name="layout_fullscreen_hero_backdrop_sub">Mở rộng phông nền Khu vực Nổi bật để lấp đầy toàn bộ màn hình.</string>
     <string name="layout_classic_focus_gradient">Dải màu mục được chọn</string>
-    <string name="layout_classic_focus_gradient_sub">Hoà trộn màu ảnh bìa vào phần bên phải của Trang chủ Cổ điển.</string>
+    <string name="layout_classic_focus_gradient_sub">Hoà trộn màu ảnh hiển thị vào phần bên phải của Trang chủ Cổ điển.</string>
     <string name="layout_show_hero">Hiển thị Khu vực Nổi bật</string>
     <string name="layout_show_hero_sub">Hiển thị Khu vực Nổi bật dạng vòng quay ở đầu Trang chủ.</string>
     <string name="layout_show_discover">Hiển thị/ẩn mục Khám phá</string>
@@ -970,11 +985,11 @@
     <string name="layout_episode_options_overlay">Lớp phủ tùy chọn tập phim</string>
     <string name="layout_episode_options_overlay_sub">Chọn giao diện hiển thị khi nhấn giữ một tập phim.</string>
     <string name="layout_episode_options_overlay_none">Không có</string>
-    <string name="layout_episode_options_overlay_none_desc">Sử dụng hiệu ứng chuyển màu toàn màn hình mà không có ảnh bìa tập phim.</string>
-    <string name="layout_episode_options_overlay_artwork">Ảnh bìa</string>
-    <string name="layout_episode_options_overlay_artwork_desc">Sử dụng bố cục toàn màn hình với ảnh bìa tập phim.</string>
+    <string name="layout_episode_options_overlay_none_desc">Sử dụng hiệu ứng chuyển màu toàn màn hình mà không có ảnh hiển thị tập phim.</string>
+    <string name="layout_episode_options_overlay_artwork">Ảnh hiển thị</string>
+    <string name="layout_episode_options_overlay_artwork_desc">Sử dụng bố cục toàn màn hình với ảnh hiển thị tập phim.</string>
     <string name="layout_episode_options_overlay_blur">Làm mờ</string>
-    <string name="layout_episode_options_overlay_blur_desc">Sử dụng bố cục toàn màn hình với ảnh bìa tập phim được làm mờ.</string>
+    <string name="layout_episode_options_overlay_blur_desc">Sử dụng bố cục toàn màn hình với ảnh hiển thị tập phim được làm mờ.</string>
     <string name="layout_blur_cw_next_up">Làm mờ Chưa xem trong Tiếp tục xem</string>
     <string name="layout_blur_cw_next_up_sub">Làm mờ ảnh thu nhỏ tập tiếp theo trong Tiếp tục xem để tránh tiết lộ nội dung.</string>
     <string name="layout_next_up_furthest_episode">Tiếp theo từ tập xa nhất</string>
@@ -1279,7 +1294,7 @@
     <string name="tmdb_enrich_continue_watching_subtitle">Áp dụng bổ sung dữ liệu TMDB cho các mục Tiếp tục Xem</string>
     <string name="tmdb_language_title">Ngôn ngữ</string>
     <string name="tmdb_language_subtitle">Ngôn ngữ dữ liệu TMDB cho tiêu đề, logo và các trường đã bật</string>
-    <string name="tmdb_artwork_title">Ảnh bìa</string>
+    <string name="tmdb_artwork_title">Ảnh hiển thị</string>
     <string name="tmdb_artwork_subtitle">Logo và phông nền hình ảnh từ TMDB</string>
     <string name="tmdb_basic_info_title">Thông tin cơ bản</string>
     <string name="tmdb_basic_info_subtitle">Mô tả, thể loại và điểm đánh giá từ TMDB</string>
@@ -1794,8 +1809,8 @@
     <string name="still_watching_countdown">Dừng lại sau %1$d</string>
     <string name="still_watching_setting_title">Bạn vẫn đang xem chứ?</string>
     <string name="still_watching_setting_sub">Nhắc nhở sau khi các tập tự động phát liên tiếp.</string>
-    <string name="still_watching_threshold_title">Giới hạn số tập</string>
-    <string name="still_watching_threshold_sub">Số tập tự động phát liên tiếp trước khi nhắc nhở.</string>
+    <string name="still_watching_threshold_title">Giới hạn số tập phim</string>
+    <string name="still_watching_threshold_sub">Số tập phim tự động phát liên tiếp trước khi nhắc nhở.</string>
     <string name="skip_intro">Bỏ qua giới thiệu</string>
     <string name="skip_ending">Bỏ qua kết thúc</string>
     <string name="skip_recap">Bỏ qua tóm tắt</string>
@@ -2190,7 +2205,7 @@
     <string name="profile_edit_title_id">Chỉnh sửa hồ sơ %1$d</string>
 
     <!-- PlaybackAudioSettings -->
-    <string name="audio_passthrough_info">Truyền tải âm thanh trực tiếp (TrueHD, DTS, AC-3...) được tự động bật. Khi kết nối với bộ thu AV hoặc loa soundbar tương thích qua HDMI, âm thanh không nén sẽ được truyền nguyên dạng mà không cần qua giải mã.</string>
+    <string name="audio_passthrough_info">Truyền tải âm thanh trực tiếp (TrueHD, DTS, AC-3...) được tự động bật. Khi kết nối với bộ thu AV hoặc loa thanh tương thích qua HDMI, âm thanh không nén sẽ được truyền nguyên dạng mà không cần qua giải mã.</string>
     <string name="audio_dv_title">DV7 → HEVC</string>
     <string name="audio_dv_sub">Ánh xạ Dolby Vision Profile 7 sang HEVC tiêu chuẩn cho các thiết bị không có phần cứng hỗ trợ Dolby Vision</string>
 
@@ -2504,9 +2519,9 @@
     <string name="collections_editor_tmdb_without_keywords">ID từ khóa loại trừ</string>
     <string name="collections_editor_tmdb_without_keywords_helper">Loại trừ các tên khớp với những mã số từ khóa TMDB này.</string>
     <string name="collections_editor_tmdb_companies">ID đơn vị sản xuất</string>
-    <string name="collections_editor_tmdb_companies_helper">Dùng ID của hãng phim/công ty sản xuất. Các nút chọn nhanh sẽ điền sẵn một số ví dụ phổ biến.</string>
+    <string name="collections_editor_tmdb_companies_helper">Dùng ID của hãng phim/hãng sản xuất. Các nút chọn nhanh sẽ điền sẵn một số ví dụ phổ biến.</string>
     <string name="collections_editor_tmdb_without_companies">ID đơn vị sản xuất loại trừ</string>
-    <string name="collections_editor_tmdb_without_companies_helper">Loại trừ các tên liên quan đến những mã số công ty TMDB này.</string>
+    <string name="collections_editor_tmdb_without_companies_helper">Loại trừ các tên liên quan đến những mã số hãng sản xuất TMDB này.</string>
     <string name="collections_editor_tmdb_networks">ID đơn vị phát hành</string>
     <string name="collections_editor_tmdb_networks_helper">Chỉ áp dụng cho loạt phim. Dùng cho ID đơn vị phát hành như Netflix 213 hoặc HBO 49.</string>
     <string name="collections_editor_tmdb_year">Năm</string>
@@ -2536,7 +2551,7 @@
     <string name="collections_editor_error_trakt_list_missing_numeric_id">Danh sách Trakt không bao gồm ID dạng số</string>
     <string name="collections_editor_tmdb_placeholder_list">https://www.themoviedb.org/list/8504994 hoặc 8504994</string>
     <string name="collections_editor_tmdb_placeholder_collection">10 cho Bộ sưu tập Star Wars</string>
-    <string name="collections_editor_tmdb_placeholder_company">Marvel Studios, 420 hoặc URL công ty</string>
+    <string name="collections_editor_tmdb_placeholder_company">Marvel Studios, 420 hoặc URL hãng sản xuất</string>
     <string name="collections_editor_tmdb_placeholder_network">213 cho Netflix, 49 cho HBO, 2739 cho Disney+</string>
     <string name="collections_editor_tmdb_person_placeholder">31 cho Tom Hanks hoặc URL cá nhân</string>
     <string name="collections_editor_trakt_id_placeholder">https://trakt.tv/lists/123456 or 123456</string>
@@ -2632,7 +2647,7 @@
     <!-- Collection editor: TMDB picker placeholders + genres -->
     <string name="collections_editor_tmdb_network_placeholder_example">213 cho Netflix, 49 cho HBO, 2739 cho Disney+</string>
     <string name="collections_editor_tmdb_collection_placeholder_example">10 cho Bộ sưu tập Star Wars</string>
-    <string name="collections_editor_tmdb_company_placeholder_example">Marvel Studios, 420 hoặc URL công ty</string>
+    <string name="collections_editor_tmdb_company_placeholder_example">Marvel Studios, 420 hoặc URL hãng sản xuất</string>
     <string name="collections_editor_tmdb_genre_action">Hành động</string>
     <string name="collections_editor_tmdb_genre_adventure">Phiêu lưu</string>
     <string name="collections_editor_tmdb_genre_animation">Hoạt hình</string>
