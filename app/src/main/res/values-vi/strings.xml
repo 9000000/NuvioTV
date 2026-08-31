@@ -2154,7 +2154,7 @@
     <string name="cast_detail_filmography">Sự nghiệp</string>
     <string name="cast_detail_born">Sinh: %1$s</string>
     <string name="cast_detail_born_died">Sinh: %1$s — †%2$s</string>
-    <string name="cast_detail_age">tuổi %1$d</string>
+    <string name="cast_detail_age">%1$d tuổi</string>
 
     <string name="catalog_see_all_from">từ %1$s</string>
     <string name="catalog_see_all_empty_title">Không có mục nào</string>
