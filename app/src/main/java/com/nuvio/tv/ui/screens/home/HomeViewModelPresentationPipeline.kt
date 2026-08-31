@@ -772,6 +772,7 @@ private fun HomeViewModel.updateCatalogItemWithTmdb(itemId: String, enrichment: 
     }
 
     updateIndexedCatalogItem(itemId, ::mergeItem)
+    clearEnrichmentFailure(itemId)
 
     // Modern layout reads enrichment via enrichedPreviews / lastEnrichedPreview.
     // Rebuilding catalogRows here triggers a useless full-home recomposition.
@@ -852,6 +853,7 @@ private fun HomeViewModel.updateCatalogItemWithMeta(itemId: String, meta: Meta) 
     )
 
     updateIndexedCatalogItem(itemId, ::mergeItem)
+    clearEnrichmentFailure(itemId)
 
     _uiState.update { state ->
         var changed = false

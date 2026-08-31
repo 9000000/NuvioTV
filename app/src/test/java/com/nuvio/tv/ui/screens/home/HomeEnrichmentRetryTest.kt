@@ -216,6 +216,29 @@ class HomeEnrichmentRetryTest {
         )
     }
 
+    @Test
+    fun `the failed-enrichment set is cleared on success and stays bounded`() = runBlocking {
+        val viewModel = newViewModel(newMetaRepository())
+
+        viewModel.markEnrichmentFailed(itemId)
+        assertTrue("a failure should be recorded", itemId in viewModel.failedEnrichmentIds.value)
+
+        viewModel.clearEnrichmentFailure(itemId)
+        assertTrue(
+            "enrichment landing should drop the marker",
+            itemId !in viewModel.failedEnrichmentIds.value
+        )
+
+        // One past the bound: the oldest entry is dropped, the newest is kept.
+        repeat(65) { viewModel.markEnrichmentFailed("id-$it") }
+        assertEquals(64, viewModel.failedEnrichmentIds.value.size)
+        assertTrue("the oldest entry should be evicted", "id-0" !in viewModel.failedEnrichmentIds.value)
+        assertTrue("the newest entry should be kept", "id-64" in viewModel.failedEnrichmentIds.value)
+
+        viewModel.clearEnrichmentFailures()
+        assertTrue("a reset should empty the set", viewModel.failedEnrichmentIds.value.isEmpty())
+    }
+
     /**
      * The inverse of the test above, pinning the asymmetry rather than leaving it to be
      * rediscovered: a cached external result closes the gate even when TMDB has not run. TMDB is
