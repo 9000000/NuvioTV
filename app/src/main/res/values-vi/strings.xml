@@ -553,7 +553,6 @@
     <string name="advanced_playback_issue_reports">Báo cáo vấn đề phát lại</string>
     <string name="advanced_playback_issue_reports_subtitle">Hiển thị các nút báo cáo trong khi phát lại, tải lâu và khi phát lại bị lỗi</string>
     <string name="advanced_player_stats_hud">Lớp phủ thống kê phát lại</string>
-    <string name="advanced_player_stats_hud_subtitle">Hiển thị thông số CPU, bộ nhớ, bộ đệm, bitrate và nhiệt độ theo thời gian thực khi phát lại.</string>
     <string name="sentry_enable_dialog_title">Bật báo cáo sự cố?</string>
     <string name="sentry_enable_dialog_subtitle">Báo cáo sự cố giúp xác định các lỗi chỉ xảy ra trên thiết bị mà không yêu cầu bạn tái hiện sự cố bằng nhật ký ADB.</string>
     <string name="sentry_disable_dialog_title">Tắt báo cáo sự cố?</string>
