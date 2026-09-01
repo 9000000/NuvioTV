@@ -3120,7 +3120,6 @@
     <string name="collections_editor_tmdb_without_companies_placeholder">420</string>
 
     <string name="advanced_player_stats_hud">Prekrytie štatistík prehrávania</string>
-    <string name="advanced_player_stats_hud_subtitle">Zobraziť počas prehrávania živé údaje o CPU, pamäti, vyrovnávacej pamäti, dátovom toku a teplote</string>
     <string name="advanced_confirm_exit">Úplné ukončenie pri zavretí</string>
     <string name="advanced_confirm_exit_subtitle">Pri ukončení úplne zatvoriť aplikáciu a uvoľniť pamäť. Vyžaduje dvojité stlačenie tlačidla Späť na potvrdenie.</string>
     <string name="confirm_exit_toast">Stlačte Späť ešte raz pre ukončenie</string>
