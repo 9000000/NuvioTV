@@ -1746,7 +1746,13 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             _uiState.update { it.copy(showStreamInfoOverlay = false) }
         }
         PlayerEvent.OnTogglePlayerStatsHud -> {
-            _uiState.update { it.copy(playerStatsHudEnabled = !it.playerStatsHudEnabled) }
+            val currentState = _uiState.value
+            if (currentState.playerStatsHudButtonAvailable) {
+                val newActive = !currentState.playerStatsHudEnabled
+                scope.launch {
+                    deviceLocalPlayerPreferences.setPlayerStatsHudActive(newActive)
+                }
+            }
         }
     }
 }

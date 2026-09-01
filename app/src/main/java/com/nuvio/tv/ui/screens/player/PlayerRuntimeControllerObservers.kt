@@ -13,6 +13,7 @@ import com.nuvio.tv.domain.model.enabledAddons
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -886,12 +887,18 @@ internal fun PlayerRuntimeController.scheduleDeferredPlayerReinitialize(
 
 internal fun PlayerRuntimeController.observePlayerStatsHud() {
     scope.launch {
-        deviceLocalPlayerPreferences.playerStatsHudEnabled
-            .distinctUntilChanged()
-            .collect { enabled ->
+        combine(
+            deviceLocalPlayerPreferences.playerStatsHudButtonEnabled,
+            deviceLocalPlayerPreferences.playerStatsHudActive
+        ) { buttonAvailable, active ->
+            val isHudEnabled = buttonAvailable && active
+            buttonAvailable to isHudEnabled
+        }.distinctUntilChanged()
+            .collect { (buttonAvailable, isHudEnabled) ->
                 _uiState.update {
                     it.copy(
-                        playerStatsHudButtonAvailable = enabled
+                        playerStatsHudButtonAvailable = buttonAvailable,
+                        playerStatsHudEnabled = isHudEnabled
                     )
                 }
             }

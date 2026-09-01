@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import android.view.KeyEvent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -346,28 +347,41 @@ private fun StreamInfoHudButton(
             },
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
         colors = ButtonDefaults.colors(
-            containerColor = Color.White.copy(alpha = if (enabled) 0.14f else 0.08f),
-            contentColor = Color.White.copy(alpha = if (enabled) 1f else 0.7f),
-            focusedContainerColor = Color.White,
-            focusedContentColor = Color.Black
+            containerColor = if (enabled) NuvioTheme.colors.Secondary.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f),
+            contentColor = if (enabled) Color.White else Color.White.copy(alpha = 0.7f),
+            focusedContainerColor = if (enabled) NuvioTheme.colors.Secondary else Color.White,
+            focusedContentColor = if (enabled) NuvioTheme.colors.OnSecondary else Color.Black
         ),
         shape = ButtonDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.sm)),
         scale = ButtonDefaults.scale(focusedScale = 1.05f),
         border = ButtonDefaults.border(
+            border = Border(
+                border = BorderStroke(
+                    1.dp,
+                    if (enabled) NuvioTheme.colors.Secondary.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.12f)
+                ),
+                shape = RoundedCornerShape(NuvioTheme.radii.sm)
+            ),
             focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = RoundedCornerShape(NuvioTheme.radii.sm)
             )
         )
     ) {
-        // The label stays fixed, so the dot is the only thing carrying the on or off state.
+        val statusText = if (enabled) {
+            stringResource(R.string.diag_value_on)
+        } else {
+            stringResource(R.string.diag_value_off)
+        }
+        val hudLabel = stringResource(R.string.stream_info_hud)
+
         Box(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
                 .background(
                     if (enabled) {
-                        NuvioTheme.colors.FocusRing
+                        if (isFocused) NuvioTheme.colors.OnSecondary else NuvioTheme.colors.FocusRing
                     } else {
                         if (isFocused) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.4f)
                     }
@@ -375,9 +389,9 @@ private fun StreamInfoHudButton(
         )
         Spacer(modifier = Modifier.width(NuvioTheme.spacing.xs))
         Text(
-            text = stringResource(R.string.stream_info_hud),
+            text = "$hudLabel: $statusText",
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
+            fontWeight = if (isFocused || enabled) FontWeight.SemiBold else FontWeight.Medium
         )
     }
 }
