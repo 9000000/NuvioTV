@@ -751,6 +751,8 @@
     <string name="stream_info_resolution">Rozdzielczość</string>
     <string name="stream_info_frame_rate">Klatki/s</string>
     <string name="stream_info_bitrate">Bitrate</string>
+    <string name="stream_info_bitrate_file">Bitrate (plik)</string>
+    <string name="stream_info_hud">HUD</string>
     <string name="stream_info_channels">Kanały</string>
     <string name="stream_info_sample_rate">Próbkowanie</string>
     <string name="stream_info_language">Język</string>
@@ -912,12 +914,11 @@
 
     <!-- AuthQrSignInScreen -->
     <string name="auth_qr_title">Zaloguj przez QR</string>
-    <string name="auth_qr_account_login">Logowanie do konta</string>
     <string name="auth_qr_finishing">Kończenie logowania\u2026</string>
     <string name="auth_qr_code_label">Kod: %1$s</string>
     <string name="auth_qr_expires">Wygasa za %1$s</string>
-    <string name="auth_qr_phone_hint">Użyj telefonu, aby zalogować się e-mailem i hasłem. TV obsługuje tylko QR dla szybszego logowania.</string>
     <string name="auth_qr_scan_instruction">Zeskanuj QR, zatwierdź w przeglądarce, a następnie wróć tutaj.</string>
+    <string name="auth_qr_manual_instruction">Lub wejdź na %1$s i wpisz</string>
     <string name="auth_qr_code_display">Kod: %1$s</string>
     <string name="auth_qr_refresh">Odśwież QR</string>
     <string name="auth_qr_continue_without_account">Kontynuuj bez konta</string>
@@ -1662,10 +1663,28 @@
     <!-- Missing translations -->
     <string name="advanced_remember_last_profile">Zapamiętaj ostatni profil</string>
     <string name="advanced_remember_last_profile_subtitle">Zapamiętaj ostatnio wybrany profil przy uruchomieniu</string>
+    <string name="advanced_confirm_exit">Pełne zamknięcie aplikacji</string>
+    <string name="advanced_confirm_exit_subtitle">Całkowicie zamyka aplikację i zwalnia pamięć przy wyjściu. Wymaga dwukrotnego naciśnięcia wstecz w celu potwierdzenia.</string>
+    <string name="confirm_exit_toast">Naciśnij wstecz ponownie, aby wyjść</string>
     <string name="appearance_amoled_mode">Tryb AMOLED</string>
     <string name="appearance_amoled_mode_subtitle">Użyj czystej czerni jako tła aplikacji</string>
     <string name="appearance_amoled_surfaces_mode">Czysto czarne powierzchnie</string>
     <string name="appearance_amoled_surfaces_mode_subtitle">Karty, panele i kontenery również będą czysto czarne</string>
+    <string name="appearance_app_icon_and_banner">Ikona i baner aplikacji</string>
+    <string name="appearance_app_icon_and_banner_subtitle">Zmień ikonę i baner aplikacji</string>
+    <string name="appearance_app_icon_arctic_blue">Arctic Blue</string>
+    <string name="appearance_app_icon_change_failed">Nie udało się zmienić ikony i baneru. Spróbuj ponownie.</string>
+    <string name="appearance_app_icon_confirmation_message">Zmiana na %1$s zamknie Nuvio. Baner TV może wymagać restartu urządzenia. Wybierz OK, aby kontynuować.</string>
+    <string name="appearance_app_icon_confirmation_title">Zmienić ikonę aplikacji?</string>
+    <string name="appearance_app_icon_copper">Copper</string>
+    <string name="appearance_app_icon_emerald">Emerald</string>
+    <string name="appearance_app_icon_graphite">Graphite</string>
+    <string name="appearance_app_icon_original">Oryginał</string>
+    <string name="appearance_app_icon_picker_subtitle">Każdy styl zawiera pasującą ikonę kwadratową i baner TV</string>
+    <string name="appearance_app_icon_picker_title">Wybierz ikonę i baner</string>
+    <string name="appearance_app_icon_rose_gold">Rose Gold</string>
+    <string name="appearance_launcher_artwork">Grafika launchera</string>
+    <string name="appearance_launcher_artwork_subtitle">Wybierz jak Nuvio wygląda na ekranie głównym TV</string>
     <string name="theme_color_crimson">Karmazyn</string>
     <string name="theme_color_ocean">Ocean</string>
     <string name="theme_color_violet">Fiolet</string>
@@ -2866,6 +2885,7 @@
     <string name="advanced_nuvio_performance_mode_subtitle">Włącza wysokowydajny natywny alokator, pamięć poza stertą i optymalizacje sieciowe dla płynniejszego odtwarzania</string>
     <string name="advanced_playback_issue_reports">Raporty problemów z odtwarzaniem</string>
     <string name="advanced_playback_issue_reports_subtitle">Pokaż przyciski zgłaszania problemów podczas odtwarzania, długiego ładowania i błędów odtwarzania</string>
+    <string name="advanced_player_stats_hud">Nakładka statystyk odtwarzania</string>
     <string name="advanced_sentry_reports">Raporty awarii Sentry</string>
     <string name="advanced_sentry_reports_subtitle">Wysyłaj raporty awarii i ANR z bezpiecznym kontekstem. Domyślnie włączone.</string>
 
@@ -3134,4 +3154,47 @@
     <string name="debug_member_tier_none">Brak</string>
     <string name="debug_member_tier_one">Supporter</string>
     <string name="debug_member_tier_two">Supporter+</string>
+
+    <!-- Post-play recommendations -->
+    <string name="autoplay_post_play_recommendations">Rekomendacje po odtwarzaniu</string>
+    <string name="autoplay_post_play_recommendations_sub">Pokaż rekomendowane filmy i seriale po zakończeniu odtwarzania.</string>
+    <string name="autoplay_post_play_movie_threshold">Czas rekomendacji filmowych</string>
+    <string name="autoplay_post_play_movie_threshold_sub">Wybierz kiedy pojawiają się rekomendacje filmowe. Odcinki korzystają z ustawienia progu następnego odcinka.</string>
+    <string name="player_post_play_because">Ponieważ obejrzałeś %1$s</string>
+    <string name="player_post_play_next_recommendation">Następna rekomendacja</string>
+    <string name="player_post_play_play">Odtwórz</string>
+    <string name="player_post_play_previous_recommendation">Poprzednia rekomendacja</string>
+    <string name="player_post_play_recommended">Rekomendowane dla Ciebie</string>
+    <string name="player_post_play_return_to_player">Wróć do odtwarzacza</string>
+    <string name="player_post_play_trailer_countdown">Zwiastun za %1$d</string>
+    <string name="player_post_play_trailer_playing">Zwiastun jest odtwarzany</string>
+    <string name="player_post_play_trailer">Zwiastun</string>
+
+    <string name="layout_episode_options_overlay">Styl opcji odcinka</string>
+    <string name="layout_episode_options_overlay_sub">Wybierz wygląd ekranu po przytrzymaniu odcinka.</string>
+    <string name="layout_episode_options_overlay_artwork">Okładka</string>
+    <string name="layout_episode_options_overlay_artwork_desc">Pełnoekranowy widok z grafiką odcinka.</string>
+    <string name="layout_episode_options_overlay_blur">Rozmycie</string>
+    <string name="layout_episode_options_overlay_blur_desc">Pełnoekranowy widok z rozmytą grafiką odcinka.</string>
+    <string name="layout_episode_options_overlay_none">Brak</string>
+    <string name="layout_episode_options_overlay_none_desc">Pełnoekranowy gradient bez grafiki odcinka.</string>
+
+    <string name="genre_anime">Anime</string>
+    <string name="genre_biography">Biografia</string>
+    <string name="genre_children">Dla dzieci</string>
+    <string name="genre_donghua">Donghua</string>
+    <string name="genre_game_show">Teleturniej</string>
+    <string name="genre_holiday">Świąteczny</string>
+    <string name="genre_home_and_garden">Dom i ogród</string>
+    <string name="genre_mini_series">Miniserial</string>
+    <string name="genre_musical">Musical</string>
+    <string name="genre_none">Brak</string>
+    <string name="genre_short">Krótkometrażowy</string>
+    <string name="genre_special_interest">Specjalne zainteresowania</string>
+    <string name="genre_sporting_event">Wydarzenie sportowe</string>
+    <string name="genre_superhero">Superbohaterski</string>
+    <string name="genre_suspense">Suspens</string>
+
+    <!-- Player -->
+    <string name="player_live_watched">NA ŻYWO  %1$s</string>
 </resources>

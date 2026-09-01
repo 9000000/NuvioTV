@@ -8,6 +8,7 @@ import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
+import com.nuvio.tv.core.tmdb.TmdbMovieCollection
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.MDBListSettingsDataStore
@@ -39,6 +40,7 @@ import com.nuvio.tv.domain.repository.WatchProgressRepository
 import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.trailer.TrailerService
+import com.nuvio.tv.core.util.withAppLocale
 import com.nuvio.tv.core.util.isUnreleased
 import com.nuvio.tv.core.util.selectEpisodeReleaseValue
 import java.time.LocalDate
@@ -63,13 +65,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import android.net.Uri
-import com.nuvio.tv.LocaleCache
 import com.nuvio.tv.R
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.Locale
 import javax.inject.Inject
 
 private const val TAG = "MetaDetailsViewModel"
@@ -108,15 +107,11 @@ class MetaDetailsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MetaDetailsUiState())
     val uiState: StateFlow<MetaDetailsUiState> = _uiState.asStateFlow()
 
+    private val _posterCardCornerRadiusDp = MutableStateFlow(12)
+    val posterCardCornerRadiusDp: StateFlow<Int> = _posterCardCornerRadiusDp.asStateFlow()
+
     private val localizedContext: Context
-        get() {
-            val tag = LocaleCache.localeTag.takeIf { it != LocaleCache.UNSET && it.isNotEmpty() }
-                ?: return context
-            val locale = Locale.forLanguageTag(tag)
-            val config = Configuration(context.resources.configuration)
-            config.setLocale(locale)
-            return context.createConfigurationContext(config)
-        }
+        get() = context.withAppLocale()
     val effectiveAutoplayEnabled = playerSettingsDataStore.playerSettings
         .map(StreamAutoPlayPolicy::isEffectivelyEnabled)
         .distinctUntilChanged()
@@ -163,8 +158,13 @@ class MetaDetailsViewModel @Inject constructor(
         observeMovieWatched()
         observeRelatedWatchedStatus()
         observeBlurUnwatchedEpisodes()
+        observeEpisodeOptionsOverlayStyle()
         observeOverallRatingsVisibility()
         observeDetailImdbRatingsVisibility()
+        viewModelScope.launch {
+            layoutPreferenceDataStore.posterCardCornerRadiusDp
+                .collect { _posterCardCornerRadiusDp.value = it }
+        }
         observeShowFullReleaseDate()
         observeHideUnreleasedContent()
         loadMeta()
@@ -590,6 +590,22 @@ class MetaDetailsViewModel @Inject constructor(
                 _uiState.update { state ->
                     if (state.blurUnwatchedEpisodes == enabled) state else state.copy(blurUnwatchedEpisodes = enabled)
                 }
+                }
+        }
+    }
+
+    private fun observeEpisodeOptionsOverlayStyle() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.episodeOptionsOverlayStyle
+                .distinctUntilChanged()
+                .collectLatest { style ->
+                    _uiState.update { state ->
+                        if (state.episodeOptionsOverlayStyle == style) {
+                            state
+                        } else {
+                            state.copy(episodeOptionsOverlayStyle = style)
+                        }
+                    }
                 }
         }
     }
@@ -1277,25 +1293,28 @@ class MetaDetailsViewModel @Inject constructor(
                 return@launch
             }
 
-            val items = runCatching {
+            val collection = runCatching {
                 tmdbMetadataService.fetchMovieCollection(
                     collectionId = collectionId,
                     language = settings.language
                 )
             }.getOrElse {
                 Log.w(TAG, "Failed to load collection $collectionId: ${it.message}")
-                emptyList()
+                TmdbMovieCollection(name = null, items = emptyList())
             }
 
             val filteredItems = if (hideUnreleasedContent) {
                 val today = LocalDate.now()
-                items.filterNot { it.isUnreleased(today) }
+                collection.items.filterNot { it.isUnreleased(today) }
             } else {
-                items
+                collection.items
             }
 
             _uiState.update { state ->
-                state.copy(collection = filteredItems, collectionName = collectionName)
+                state.copy(
+                    collection = filteredItems,
+                    collectionName = collection.name ?: collectionName
+                )
             }
         }
     }

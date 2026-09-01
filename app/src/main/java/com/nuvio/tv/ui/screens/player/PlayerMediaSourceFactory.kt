@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSource
@@ -260,7 +261,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         private const val ENABLE_VOD_CACHE = true
         private const val VOD_CACHE_FREE_SPACE_RESERVE_BYTES = 1024L * 1024L * 1024L
         internal const val DEFAULT_USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "Mozilla/5.0 (Linux; Android 13; Android TV) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
         private const val MIME_PROBE_CACHE_SIZE = 64
@@ -744,6 +745,32 @@ private inline fun <reified T : Throwable> Throwable.findCause(): T? {
 }
 
 private class PlayerLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy(6) {
+    override fun getFallbackSelectionFor(
+        fallbackOptions: LoadErrorHandlingPolicy.FallbackOptions,
+        loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo
+    ): LoadErrorHandlingPolicy.FallbackSelection? {
+        val responseCode = loadErrorInfo.exception
+            .findCause<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+            ?.responseCode
+        if (
+            shouldPreferAlternativeHlsTrack(
+                responseCode = responseCode,
+                dataType = loadErrorInfo.mediaLoadData.dataType,
+                alternativeTrackAvailable = fallbackOptions.isFallbackAvailable(
+                    LoadErrorHandlingPolicy.FALLBACK_TYPE_TRACK
+                )
+            )
+        ) {
+            // A media-segment 404 belongs to the selected rendition. Exclude that
+            // rendition first so HLS can continue with another compatible track.
+            return LoadErrorHandlingPolicy.FallbackSelection(
+                LoadErrorHandlingPolicy.FALLBACK_TYPE_TRACK,
+                DefaultLoadErrorHandlingPolicy.DEFAULT_TRACK_EXCLUSION_MS
+            )
+        }
+        return super.getFallbackSelectionFor(fallbackOptions, loadErrorInfo)
+    }
+
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
         val httpException = loadErrorInfo.exception.findCause<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
         if (httpException != null) {
@@ -762,3 +789,12 @@ private class PlayerLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy(6) 
         } else super.getRetryDelayMsFor(loadErrorInfo)
     }
 }
+
+internal fun shouldPreferAlternativeHlsTrack(
+    responseCode: Int?,
+    dataType: Int,
+    alternativeTrackAvailable: Boolean
+): Boolean =
+    responseCode == 404 &&
+        dataType == C.DATA_TYPE_MEDIA &&
+        alternativeTrackAvailable

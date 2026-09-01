@@ -6,7 +6,6 @@ import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.data.remote.api.AniSkipApi
 import com.nuvio.tv.data.remote.api.AnimeSkipApi
-import com.nuvio.tv.data.remote.api.ArmApi
 import com.nuvio.tv.data.remote.api.AuthDiagnosticReportApi
 import com.nuvio.tv.data.remote.api.GitHubReleaseApi
 import com.nuvio.tv.data.remote.api.SupportersApi
@@ -128,7 +127,7 @@ object NetworkModule {
             // Prevent OkHttp from caching error responses (4xx/5xx).
             .addNetworkInterceptor { chain ->
                 val response = chain.proceed(chain.request())
-                if (!response.isSuccessful) {
+                if (response.code in 400..599) {
                     response.newBuilder()
                         .header("Cache-Control", "no-store")
                         .build()
@@ -423,21 +422,6 @@ object NetworkModule {
     @Singleton
     fun provideAniSkipApi(@Named("aniSkip") retrofit: Retrofit): AniSkipApi =
         retrofit.create(AniSkipApi::class.java)
-
-    @Provides
-    @Singleton
-    @Named("arm")
-    fun provideArmRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
-        Retrofit.Builder()
-            .baseUrl("https://arm.haglund.dev/api/v2/")
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-
-    @Provides
-    @Singleton
-    fun provideArmApi(@Named("arm") retrofit: Retrofit): ArmApi =
-        retrofit.create(ArmApi::class.java)
 
     @Provides
     @Singleton

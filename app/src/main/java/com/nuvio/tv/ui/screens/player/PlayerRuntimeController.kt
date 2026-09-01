@@ -42,6 +42,7 @@ import com.nuvio.tv.data.repository.SkipIntroRepository
 import com.nuvio.tv.data.repository.SkipInterval
 import com.nuvio.tv.data.repository.EpisodeMappingEntry
 import com.nuvio.tv.data.repository.TraktEpisodeMappingService
+import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.repository.AddonRepository
@@ -59,11 +60,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.nuvio.tv.core.util.withAppLocale
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicLong
 
 class PlayerRuntimeController(
-    internal val context: Context,
+    context: Context,
     internal val watchProgressRepository: WatchProgressRepository,
     internal val metaRepository: MetaRepository,
     internal val streamRepository: StreamRepository,
@@ -99,6 +101,9 @@ class PlayerRuntimeController(
     savedStateHandle: SavedStateHandle,
     internal val scope: CoroutineScope
 ) {
+
+    /** Resolved once so every `context.getString(...)` here follows the app language. */
+    internal val context: Context = context.withAppLocale()
 
     companion object {
         internal const val TAG = "PlayerViewModel"
@@ -197,6 +202,7 @@ class PlayerRuntimeController(
     internal var currentStreamResponseHeaders: Map<String, String> = emptyMap()
     internal var currentStreamMimeType: String?
     internal var currentHeaders: Map<String, String>
+    internal var streamSubtitles: List<Subtitle> = emptyList()
 
     init {
         val initialPlaybackRequest = PlayerMediaSourceFactory.normalizePlaybackRequest(
@@ -210,6 +216,8 @@ class PlayerRuntimeController(
             responseHeaders = currentStreamResponseHeaders
         )
         currentHeaders = initialPlaybackRequest.headers
+        streamSubtitles = StreamSidecarSubtitles.forUrl(initialStreamUrl)
+            .ifEmpty { StreamSidecarSubtitles.forUrl(currentStreamUrl) }
     }
 
     fun getCurrentStreamUrl(): String = currentStreamUrl
@@ -264,21 +272,61 @@ class PlayerRuntimeController(
     internal val _playbackTimeline = MutableStateFlow(PlaybackTimelineState())
     val playbackTimeline: StateFlow<PlaybackTimelineState> = _playbackTimeline.asStateFlow()
 
+    internal val liveWatchClock = LivePlaybackWatchClock()
+    internal var livePlaybackLatched: Boolean = false
+
     internal fun updatePlaybackTimeline(
         currentPosition: Long = _playbackTimeline.value.currentPosition,
         duration: Long = _playbackTimeline.value.duration,
-        bufferedPosition: Long = _playbackTimeline.value.bufferedPosition
+        bufferedPosition: Long = _playbackTimeline.value.bufferedPosition,
+        isLive: Boolean = _playbackTimeline.value.isLive,
+        watchedDurationMs: Long = _playbackTimeline.value.watchedDurationMs
     ) {
         _playbackTimeline.update {
             it.copy(
                 currentPosition = currentPosition.coerceAtLeast(0L),
                 duration = duration.coerceAtLeast(0L),
-                bufferedPosition = bufferedPosition.coerceAtLeast(0L)
+                bufferedPosition = bufferedPosition.coerceAtLeast(0L),
+                isLive = isLive,
+                watchedDurationMs = watchedDurationMs.coerceAtLeast(0L)
             )
         }
     }
 
+    internal fun publishPlaybackTimeline(
+        currentPosition: Long,
+        duration: Long,
+        bufferedPosition: Long,
+        playerReportsLive: Boolean,
+        isPlaying: Boolean
+    ) {
+        livePlaybackLatched = LivePlaybackUiPolicy.nextLiveLatch(
+            playerReportsLive = playerReportsLive,
+            previouslyLatched = livePlaybackLatched
+        )
+        val isLive = LivePlaybackUiPolicy.isLivePlayback(
+            playerReportsLive = playerReportsLive,
+            contentType = contentType,
+            latchedLive = livePlaybackLatched
+        )
+        val watched = liveWatchClock.watchedDurationMs(
+            isLive = isLive,
+            isPlaying = isPlaying,
+            nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+        )
+        updatePlaybackTimeline(
+            currentPosition = currentPosition,
+            duration = duration,
+            bufferedPosition = bufferedPosition,
+            isLive = isLive,
+            watchedDurationMs = watched
+        )
+    }
+
     internal fun resetPlaybackTimeline() {
+        livePlaybackLatched = false
+        liveWatchClock.reset()
+        pendingPreviewSeekPosition = null
         _playbackTimeline.value = PlaybackTimelineState()
     }
 
@@ -461,7 +509,17 @@ class PlayerRuntimeController(
     internal val seekProgressSyncDebounceMs = 700L
     internal val audioDelayUs = AtomicLong(0L)
     internal val subtitleDelayUs = AtomicLong(0L)
-    internal var pendingPreviewSeekPosition: Long? = null
+    internal var pendingPreviewSeekPosition: Long?
+        get() = _uiState.value.pendingPreviewSeekPosition
+        set(value) {
+            _uiState.update { state ->
+                if (state.pendingPreviewSeekPosition == value) {
+                    state
+                } else {
+                    state.copy(pendingPreviewSeekPosition = value)
+                }
+            }
+        }
     internal var pendingResumeProgress: WatchProgress? = null
     internal var hasRetriedCurrentStreamAfter416: Boolean = false
     internal var isReleasingPlayer: Boolean = false
@@ -577,6 +635,7 @@ class PlayerRuntimeController(
         observeTorrentSettings()
         observeStreamBadgeSettings()
         observeDeviceLocalAspectMode()
+        observePlayerStatsHud()
     }
 
     private fun observeTorrentSettings() {

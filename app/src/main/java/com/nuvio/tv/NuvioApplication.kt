@@ -161,7 +161,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             .crossfade(false)
             .precision(coil3.size.Precision.INEXACT)
             .allowHardware(false)
-            .allowRgb565(true)
+            .allowRgb565(false)
             .bitmapFactoryMaxParallelism(4)
             .build()
     }
