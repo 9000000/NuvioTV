@@ -6,15 +6,6 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.RawRes
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -560,16 +551,11 @@ fun SettingsScreen(
                             .onGloballyPositioned { topBarCoordinates = it }
                     ) {
                         focusedTabBounds?.let { bounds ->
-                            val glideSpec = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
-                            val pillLeft by animateFloatAsState(bounds.left, glideSpec, label = "pillLeft")
-                            val pillTop by animateFloatAsState(bounds.top, glideSpec, label = "pillTop")
-                            val pillWidth by animateFloatAsState(bounds.width, glideSpec, label = "pillWidth")
-                            val pillHeight by animateFloatAsState(bounds.height, glideSpec, label = "pillHeight")
-                            val pillAlpha by animateFloatAsState(
-                                targetValue = if (railHadFocus) 1f else 0f,
-                                animationSpec = tween(durationMillis = 200),
-                                label = "pillAlpha"
-                            )
+                            val pillLeft = bounds.left
+                            val pillTop = bounds.top
+                            val pillWidth = bounds.width
+                            val pillHeight = bounds.height
+                            val pillAlpha = if (railHadFocus) 1f else 0f
                             Box(
                                 modifier = Modifier
                                     .align(AbsoluteAlignment.TopLeft)
@@ -678,32 +664,15 @@ fun SettingsScreen(
                                 }
                             }
                     ) {
-                        AnimatedContent(
-                            targetState = selectedCategory,
+                        Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .fillMaxHeight()
                                 .widthIn(max = 880.dp)
-                                .fillMaxWidth(),
-                            transitionSpec = {
-                                val order = visibleSections.map { it.category }
-                                val forward = order.indexOf(targetState) >= order.indexOf(initialState)
-                                val toStart = forward != isRtl
-                                (slideInHorizontally(
-                                    animationSpec = tween(SETTINGS_DETAIL_ANIM_IN_DURATION_MS, easing = FastOutSlowInEasing)
-                                ) { fullWidth -> if (toStart) fullWidth / 4 else -fullWidth / 4 } +
-                                    fadeIn(tween(SETTINGS_DETAIL_ANIM_IN_DURATION_MS)))
-                                    .togetherWith(
-                                        slideOutHorizontally(
-                                            animationSpec = tween(SETTINGS_DETAIL_ANIM_OUT_DURATION_MS, easing = FastOutSlowInEasing)
-                                        ) { fullWidth -> if (toStart) -fullWidth / 4 else fullWidth / 4 } +
-                                            fadeOut(tween(SETTINGS_DETAIL_ANIM_OUT_DURATION_MS))
-                                    )
-                            },
-                            label = "settingsDetailTransition"
-                        ) { animatedCategory ->
+                                .fillMaxWidth()
+                        ) {
                             SettingsDetailPane(
-                                selectedCategory = animatedCategory,
+                                selectedCategory = selectedCategory,
                                 isEssentialMode = isEssentialMode,
                                 allowDetailAutofocus = allowDetailAutofocus,
                                 contentFocusRequesters = contentFocusRequesters,
@@ -743,16 +712,8 @@ fun SettingsScreen(
                 ) {
                     if (isZenRailGlide) {
                         focusedRailBounds?.let { bounds ->
-                            val pillTop by animateFloatAsState(
-                                targetValue = bounds.top,
-                                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                                label = "railPillTop"
-                            )
-                            val pillAlpha by animateFloatAsState(
-                                targetValue = if (railHadFocus) 1f else 0f,
-                                animationSpec = tween(durationMillis = 200),
-                                label = "railPillAlpha"
-                            )
+                            val pillTop = bounds.top
+                            val pillAlpha = if (railHadFocus) 1f else 0f
                             Box(
                                 modifier = Modifier
                                     .align(AbsoluteAlignment.TopLeft)

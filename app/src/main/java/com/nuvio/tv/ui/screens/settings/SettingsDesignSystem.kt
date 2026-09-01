@@ -5,9 +5,6 @@ package com.nuvio.tv.ui.screens.settings
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.annotation.RawRes
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -448,15 +445,11 @@ internal fun SettingsTopBarTab(
     } else {
         modifier
     }
-    val contentColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> NuvioTheme.colors.OnSecondary
-            isSelected -> NuvioTheme.colors.TextPrimary
-            else -> NuvioTheme.colors.TextSecondary
-        },
-        animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
-        label = "topBarTabContentColor"
-    )
+    val contentColor = when {
+        isFocused -> NuvioTheme.colors.OnSecondary
+        isSelected -> NuvioTheme.colors.TextPrimary
+        else -> NuvioTheme.colors.TextSecondary
+    }
 
     Card(
         onClick = onClick,

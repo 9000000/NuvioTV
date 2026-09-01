@@ -1497,8 +1497,7 @@ private fun LayoutCard(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    // Selected always animates; others animate only while focused.
-    val animatePreview = isSelected || isFocused
+    val animatePreview = false
 
     Card(
         onClick = onClick,

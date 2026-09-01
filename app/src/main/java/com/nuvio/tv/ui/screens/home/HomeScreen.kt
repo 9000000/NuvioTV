@@ -3,12 +3,7 @@ package com.nuvio.tv.ui.screens.home
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.ReportDrawnWhen
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
 import android.util.Log
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -121,8 +116,6 @@ fun HomeScreen(
         uiState.homeLayout != HomeLayout.MODERN ||
             modernPresentation.rows.list.isNotEmpty() ||
             (uiState.heroSectionEnabled && hasHeroContent && !hasCatalogContent && !hasCollectionContent)
-    var showHomeContentWithAnimation by rememberSaveable { mutableStateOf(false) }
-    var hasShownInitialHomeContent by rememberSaveable { mutableStateOf(false) }
     // Once we've shown stable home content, never go back to loading gate.
     var homeStableGateReleased by rememberSaveable { mutableStateOf(false) }
     // Track that catalog loading has started at least once (isLoading went true→false).
@@ -233,7 +226,7 @@ fun HomeScreen(
         uiState.error == noCatalogAddonsError && uiState.catalogRows.isEmpty() && !hasCollectionContent && !hasHeroContent -> !homeStableGateReleased
         uiState.error != null && uiState.catalogRows.isEmpty() -> false
         !uiState.isLoading && !hasAnyContent -> !homeStableGateReleased
-        else -> !homeStableGateReleased || !modernPresentationReady || !showHomeContentWithAnimation
+        else -> !homeStableGateReleased || !modernPresentationReady
     }
 
     // Reports the home screen as fully drawn once it leaves the loading state so startup timing is measurable and post-launch work can be deferred.
@@ -313,85 +306,52 @@ fun HomeScreen(
 
             else -> {
                 // On first launch, wait for stable content before revealing home.
-                // Once released, never go back to loading (homeStableGateReleased is rememberSaveable).
-                if (!homeStableGateReleased) {
-                    Unit
-                } else if (!modernPresentationReady) {
+                if (!homeStableGateReleased || !modernPresentationReady) {
                     Unit
                 } else {
-                    // Flip showHomeContentWithAnimation on the next frame so
-                    // AnimatedVisibility can run its enter transition.
-                    LaunchedEffect(Unit) {
-                        if (!showHomeContentWithAnimation) {
-                            kotlinx.coroutines.yield()
-                            showHomeContentWithAnimation = true
-                        }
-                    }
-                    LaunchedEffect(showHomeContentWithAnimation) {
-                        if (showHomeContentWithAnimation) {
-                            hasShownInitialHomeContent = true
-                        }
-                    }
-                    // Keep loading visible during the single-frame gap before animation starts.
-                    if (!showHomeContentWithAnimation) {
-                        Unit
-                    }
-                    AnimatedVisibility(
-                        visible = showHomeContentWithAnimation,
-                        enter = if (hasShownInitialHomeContent) {
-                            EnterTransition.None
-                        } else {
-                            fadeIn(animationSpec = tween(320)) +
-                                slideInVertically(
-                                    initialOffsetY = { it / 24 },
-                                    animationSpec = tween(320)
-                                )
-                        }
-                    ) {
-                        when (uiState.homeLayout) {
-                            HomeLayout.CLASSIC -> ClassicHomeRoute(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                posterCardStyle = posterCardStyle,
-                                onNavigateToDetail = onNavigateToDetailStable,
-                                onContinueWatchingClick = onContinueWatchingClickStable,
-                                onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
-                                onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
-                                showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
-                                onNavigateToCatalogSeeAll = onNavigateToCatalogSeeAllStable,
-                                onNavigateToFolderDetail = onNavigateToFolderDetailStable,
-                                isCatalogItemWatched = isCatalogItemWatched,
-                                onCatalogItemLongPress = onCatalogItemLongPress
-                            )
+                    when (uiState.homeLayout) {
+                        HomeLayout.CLASSIC -> ClassicHomeRoute(
+                            viewModel = viewModel,
+                            uiState = uiState,
+                            posterCardStyle = posterCardStyle,
+                            onNavigateToDetail = onNavigateToDetailStable,
+                            onContinueWatchingClick = onContinueWatchingClickStable,
+                            onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
+                            onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
+                            showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
+                            onNavigateToCatalogSeeAll = onNavigateToCatalogSeeAllStable,
+                            onNavigateToFolderDetail = onNavigateToFolderDetailStable,
+                            isCatalogItemWatched = isCatalogItemWatched,
+                            onCatalogItemLongPress = onCatalogItemLongPress
+                        )
 
-                            HomeLayout.GRID -> GridHomeRoute(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                posterCardStyle = posterCardStyle,
-                                onNavigateToDetail = onNavigateToDetailStable,
-                                onContinueWatchingClick = onContinueWatchingClickStable,
-                                onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
-                                onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
-                                showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
-                                onNavigateToCatalogSeeAll = onNavigateToCatalogSeeAllStable,
-                                onNavigateToFolderDetail = onNavigateToFolderDetailStable,
-                                isCatalogItemWatched = isCatalogItemWatched,
-                                onCatalogItemLongPress = onCatalogItemLongPress
-                            )
+                        HomeLayout.GRID -> GridHomeRoute(
+                            viewModel = viewModel,
+                            uiState = uiState,
+                            posterCardStyle = posterCardStyle,
+                            onNavigateToDetail = onNavigateToDetailStable,
+                            onContinueWatchingClick = onContinueWatchingClickStable,
+                            onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
+                            onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
+                            showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
+                            onNavigateToCatalogSeeAll = onNavigateToCatalogSeeAllStable,
+                            onNavigateToFolderDetail = onNavigateToFolderDetailStable,
+                            isCatalogItemWatched = isCatalogItemWatched,
+                            onCatalogItemLongPress = onCatalogItemLongPress
+                        )
 
-                            HomeLayout.MODERN -> ModernHomeRoute(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                onNavigateToDetail = onNavigateToDetailStable,
-                                onContinueWatchingClick = onContinueWatchingClickStable,
-                                onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
-                                onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
-                                showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
-                                onNavigateToFolderDetail = onNavigateToFolderDetailStable,
-                                isCatalogItemWatched = isCatalogItemWatched,
-                                onCatalogItemLongPress = onCatalogItemLongPress
-                            )
-                        }
+                        HomeLayout.MODERN -> ModernHomeRoute(
+                            viewModel = viewModel,
+                            uiState = uiState,
+                            onNavigateToDetail = onNavigateToDetailStable,
+                            onContinueWatchingClick = onContinueWatchingClickStable,
+                            onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
+                            onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
+                            showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
+                            onNavigateToFolderDetail = onNavigateToFolderDetailStable,
+                            isCatalogItemWatched = isCatalogItemWatched,
+                            onCatalogItemLongPress = onCatalogItemLongPress
+                        )
                     }
                 }
             }

@@ -3,8 +3,6 @@
 package com.nuvio.tv.ui.screens.settings
 
 import android.graphics.Bitmap
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -82,11 +80,7 @@ internal fun SupporterMembershipPanel(
     val qrBitmap = remember(actionUrl) {
         runCatching { QrCodeGenerator.generate(actionUrl, 420) }.getOrNull()
     }
-    val rotation = animateFloatAsState(
-        targetValue = if (showQr) 180f else 0f,
-        animationSpec = tween(durationMillis = 480),
-        label = "supporterMembershipFlip"
-    ).value
+    val rotation = if (showQr) 180f else 0f
     val hasShownQr = remember { mutableStateOf(false) }
 
     LaunchedEffect(showQr) {

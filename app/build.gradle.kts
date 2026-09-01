@@ -181,34 +181,40 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            keyAlias = releaseKeyAliasValue
-            keyPassword = releaseKeyPasswordValue
-            storeFile = releaseStoreFilePath?.let(::file) ?: file("../nuviotv.jks")
-            storePassword = releaseStorePasswordValue
+        val releaseKeystore = releaseStoreFilePath?.let(::file) ?: file("../nuviotv.jks")
+        if (releaseKeystore.exists()) {
+            create("release") {
+                keyAlias = releaseKeyAliasValue
+                keyPassword = releaseKeyPasswordValue
+                storeFile = releaseKeystore
+                storePassword = releaseStorePasswordValue
+            }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("release")
-            isDebuggable = false
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            isDebuggable = true
             isMinifyEnabled = false
 
             buildConfigField("boolean", "IS_DEBUG_BUILD", "true")
             buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("debug"))
 
             // Dev environment (from local.dev.properties)
-            buildConfigField("String", "SUPABASE_URL", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_URL")))
-            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_ANON_KEY")))
-            buildConfigField("String", "SUPABASE_FALLBACK_URL", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_FALLBACK_URL")))
-            buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${devProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
-            buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${devProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
-            buildConfigField("String", "PARENTAL_GUIDE_API_URL", "\"${devProperties.getProperty("PARENTAL_GUIDE_API_URL", "")}\"")
-            buildConfigField("String", "INTRODB_API_URL", "\"${devProperties.getProperty("INTRODB_API_URL", "")}\"")
-            buildConfigField("String", "TRAILER_API_URL", "\"${devProperties.getProperty("TRAILER_API_URL", "")}\"")
-            buildConfigField("String", "IMDB_RATINGS_API_BASE_URL", "\"${devProperties.getProperty("IMDB_RATINGS_API_BASE_URL", "")}\"")
-            buildConfigField("String", "IMDB_TAPFRAME_API_BASE_URL", "\"${devProperties.getProperty("IMDB_TAPFRAME_API_BASE_URL", "")}\"")
+            val devSupabaseUrl = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_URL", resolveProperty(devProperties, localProperties, "SUPABASE_URL"))
+            val devSupabaseKey = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_ANON_KEY", resolveProperty(devProperties, localProperties, "SUPABASE_ANON_KEY"))
+            val devSupabaseFallback = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_FALLBACK_URL", resolveProperty(devProperties, localProperties, "SUPABASE_FALLBACK_URL"))
+            buildConfigField("String", "SUPABASE_URL", buildConfigString(devSupabaseUrl))
+            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(devSupabaseKey))
+            buildConfigField("String", "SUPABASE_FALLBACK_URL", buildConfigString(devSupabaseFallback))
+            buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${devProperties.getProperty("TV_LOGIN_WEB_BASE_URL", localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login"))}\"")
+            buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${devProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", localProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link"))}\"")
+            buildConfigField("String", "PARENTAL_GUIDE_API_URL", "\"${devProperties.getProperty("PARENTAL_GUIDE_API_URL", localProperties.getProperty("PARENTAL_GUIDE_API_URL", ""))}\"")
+            buildConfigField("String", "INTRODB_API_URL", "\"${devProperties.getProperty("INTRODB_API_URL", localProperties.getProperty("INTRODB_API_URL", ""))}\"")
+            buildConfigField("String", "TRAILER_API_URL", "\"${devProperties.getProperty("TRAILER_API_URL", localProperties.getProperty("TRAILER_API_URL", ""))}\"")
+            buildConfigField("String", "IMDB_RATINGS_API_BASE_URL", "\"${devProperties.getProperty("IMDB_RATINGS_API_BASE_URL", localProperties.getProperty("IMDB_RATINGS_API_BASE_URL", ""))}\"")
+            buildConfigField("String", "IMDB_TAPFRAME_API_BASE_URL", "\"${devProperties.getProperty("IMDB_TAPFRAME_API_BASE_URL", localProperties.getProperty("IMDB_TAPFRAME_API_BASE_URL", ""))}\"")
             buildConfigField("String", "SUPPORTERS_API_BASE_URL", buildConfigString(resolveProperty(devProperties, localProperties, "SUPPORTERS_API_BASE_URL", "https://nuvio.tv/")))
             buildConfigField("String", "SUPPORT_URL", buildConfigString(resolveProperty(devProperties, localProperties, "SUPPORT_URL", "https://nuvio.tv/support")))
             buildConfigField("String", "AVATAR_PUBLIC_BASE_URL", "\"${devProperties.getProperty("AVATAR_PUBLIC_BASE_URL", localProperties.getProperty("AVATAR_PUBLIC_BASE_URL", ""))}\"")
@@ -224,7 +230,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = if (useDebugReleaseSigning) {
+            signingConfig = if (useDebugReleaseSigning || signingConfigs.findByName("release") == null) {
                 signingConfigs.getByName("debug")
             } else {
                 signingConfigs.getByName("release")
@@ -234,9 +240,12 @@ android {
             buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("production"))
 
             // Production environment (from local.properties)
-            buildConfigField("String", "SUPABASE_URL", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_URL", "")))
-            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_ANON_KEY", "")))
-            buildConfigField("String", "SUPABASE_FALLBACK_URL", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_FALLBACK_URL", "")))
+            val relSupabaseUrl = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_URL", resolveProperty(devProperties, localProperties, "SUPABASE_URL"))
+            val relSupabaseKey = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_ANON_KEY", resolveProperty(devProperties, localProperties, "SUPABASE_ANON_KEY"))
+            val relSupabaseFallback = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_FALLBACK_URL", resolveProperty(devProperties, localProperties, "SUPABASE_FALLBACK_URL"))
+            buildConfigField("String", "SUPABASE_URL", buildConfigString(relSupabaseUrl))
+            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(relSupabaseKey))
+            buildConfigField("String", "SUPABASE_FALLBACK_URL", buildConfigString(relSupabaseFallback))
             buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
             buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
             buildConfigField("String", "PARENTAL_GUIDE_API_URL", "\"${localProperties.getProperty("PARENTAL_GUIDE_API_URL", "")}\"")

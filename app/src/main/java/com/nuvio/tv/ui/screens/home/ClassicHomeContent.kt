@@ -159,8 +159,7 @@ fun ClassicHomeContent(
         val topInsetPx = with(density) { CLASSIC_ROW_HEADER_FOCUS_INSET.toPx() }
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
         object : BringIntoViewSpec {
-            override val scrollAnimationSpec: AnimationSpec<Float> =
-                defaultBringIntoViewSpec.scrollAnimationSpec
+            override val scrollAnimationSpec: AnimationSpec<Float> = androidx.compose.animation.core.snap()
 
             override fun calculateScrollDistance(
                 offset: Float,

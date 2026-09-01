@@ -6,8 +6,11 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -17,7 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -772,8 +775,7 @@ internal fun ModernRowSection(
             val parentStartOffsetPx = with(density) { rowStartPadding.roundToPx() }
             @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
             object : BringIntoViewSpec {
-                override val scrollAnimationSpec: AnimationSpec<Float> =
-                    defaultBringIntoViewSpec.scrollAnimationSpec
+                override val scrollAnimationSpec: AnimationSpec<Float> = androidx.compose.animation.core.snap()
 
                 override fun calculateScrollDistance(
                     offset: Float,
@@ -846,7 +848,7 @@ internal fun ModernRowSection(
                         // Flag prevents isBackdropExpandedLambda from collapsing during this scroll.
                         val overshoot = itemEndExpanded - viewportEnd + with(density) { 15.dp.roundToPx() }
                         isExpansionScrollActive = true
-                        rowListState.animateScrollBy(overshoot.toFloat())
+                        rowListState.scrollBy(overshoot.toFloat())
                         isExpansionScrollActive = false
                     }
                 }
@@ -865,12 +867,15 @@ internal fun ModernRowSection(
                 modifier = Modifier
                     .recompositionHighlighter()
                     .focusRequester(rowFocusRequester)
-                    .focusRestorer {
-                        val savedIdx = rowFocusedIndex.value
-                        itemFocusRequesters[savedIdx]
-                            ?: itemFocusRequesters[0]
-                            ?: FocusRequester.Default
-                    }
+                    .then(
+                        @Suppress("DEPRECATION")
+                        Modifier.focusRestorer {
+                            val savedIdx = rowFocusedIndex.value
+                            itemFocusRequesters[savedIdx]
+                                ?: itemFocusRequesters[0]
+                                ?: FocusRequester.Default
+                        }
+                    )
                     .focusGroup(),
                 contentPadding = PaddingValues(horizontal = rowStartPadding),
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
@@ -1052,15 +1057,7 @@ private fun ModernCarouselCard(
     } else {
         cardWidth
     }
-    val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled) {
-        animateDpAsState(
-            targetValue = targetCardWidth,
-            label = "modernCardWidth"
-        )
-    } else {
-        rememberUpdatedState(cardWidth)
-    }
-    val animatedCardWidth by animatedCardWidthState
+    val animatedCardWidth = targetCardWidth
     // Freeze the logo URL for row cards - enrichment updates must not cause flickering.
     // The first non-blank value wins and is never replaced.
     // Primary source of truth is the data-layer frozen value (survives navigation);
@@ -1147,7 +1144,7 @@ private fun ModernCarouselCard(
         imageUrl?.let {
             val builder = ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .memoryCacheKey("${it}_${requestWidthPx}x${requestHeightPx}_v$revalidationKey")
                 .size(width = requestWidthPx, height = requestHeightPx)
             if (revalidationKey > 0) {
@@ -1168,7 +1165,7 @@ private fun ModernCarouselCard(
         effectiveLogoUrl?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .memoryCacheKey("${it}_${maxLogoWidthPx}x${logoHeightPx}")
                 .size(width = maxLogoWidthPx, height = logoHeightPx)
                 .build()
@@ -1188,23 +1185,31 @@ private fun ModernCarouselCard(
     var longPressTriggered by remember { mutableStateOf(false) }
     val longPressKeyTracker = rememberLongPressKeyTracker()
     val backgroundCardColor = NuvioTheme.colors.BackgroundCard
-    val focusRingBorder = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs)
-    val titleMedium = MaterialTheme.typography.titleMedium
-    val backgroundPainter = remember(backgroundCardColor) { ColorPainter(backgroundCardColor) }
-    val focusedBorder = remember(cardShape, focusRingBorder) {
-        Border(
-            border = focusRingBorder,
-            shape = cardShape
-        )
-    }
-    // While the user is dragging the list via held DPAD (see LazyColumn-level fast
-    // scroll takeover in ModernHomeContent), hide focus chrome entirely — the list is
-    // sliding like a touch swipe and showing a border / glow jittering across every
-    // card the drag passes over would break that illusion. The chrome reappears the
-    // moment the user releases the key, when requestFocus lands focus on whichever
-    // card is visible at the leading edge.
     val isFastScrollingState = LocalFastScrollActive.current
     val isFastScrolling = isFastScrollingState.value
+    val focusRingBorderWidth = 3.dp
+    val focusPulseAlpha = if (isFocused && !isFastScrolling) {
+        val transition = rememberInfiniteTransition(label = "modernCardPulse")
+        val alpha by transition.animateFloat(
+            initialValue = 0.25f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+        alpha
+    } else {
+        1.0f
+    }
+    val focusRingBorder = NuvioTheme.focusRing.border(focusRingBorderWidth, alpha = focusPulseAlpha)
+    val titleMedium = MaterialTheme.typography.titleMedium
+    val backgroundPainter = remember(backgroundCardColor) { ColorPainter(backgroundCardColor) }
+    val focusedBorder = Border(
+        border = focusRingBorder,
+        shape = cardShape
+    )
     val transparentFocusBorder = remember(cardShape) {
         Border(
             border = BorderStroke(NuvioTheme.spacing.none, Color.Transparent),
@@ -1212,16 +1217,7 @@ private fun ModernCarouselCard(
         )
     }
     val effectiveFocusedBorder = if (isFastScrolling) transparentFocusBorder else focusedBorder
-    val noFocusGlow = remember { CardDefaults.glow(focusedGlow = Glow.None) }
-    val cardGlow = when (payload) {
-        is ModernPayload.CollectionFolder -> rememberArtworkBackedCardGlow(
-            imageUrl = imageUrl,
-            fallbackSeed = "${item.title}:${payload.collectionTitle}",
-            enabled = payload.focusGlowEnabled
-        )
-        else -> noFocusGlow
-    }
-    val effectiveCardGlow = if (isFastScrolling) noFocusGlow else cardGlow
+    val effectiveCardGlow = remember { CardDefaults.glow(focusedGlow = Glow.None) }
     val titleStyle = remember(titleMedium) {
         titleMedium.copy(fontWeight = FontWeight.Medium)
     }
@@ -1345,7 +1341,7 @@ private fun ModernCarouselCard(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = payload!!.coverEmoji!!,
+                                text = payload.coverEmoji.orEmpty(),
                                 fontSize = 48.sp
                             )
                         }
@@ -1363,11 +1359,7 @@ private fun ModernCarouselCard(
                                 .build()
                         }
                         var gifLoaded by remember(focusGifUrl) { mutableStateOf(false) }
-                        val gifAlpha by animateFloatAsState(
-                            targetValue = if (gifLoaded) 1f else 0f,
-                            animationSpec = tween(durationMillis = 200),
-                            label = "gifFadeIn"
-                        )
+                        val gifAlpha = if (gifLoaded) 1f else 0f
                         AsyncImage(
                             model = gifModel,
                             contentDescription = null,

@@ -4,8 +4,6 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import android.content.Context
 import android.graphics.Bitmap
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,11 +60,6 @@ internal fun ClassicFocusGradientBackdrop(
     val fallbackColor = NuvioTheme.colors.FocusBackground
     val colorCache = remember(fallbackColor) { classicFocusGradientColorCache() }
     var targetColor by remember { mutableStateOf(Color.Transparent) }
-    val animatedColor = animateColorAsState(
-        targetValue = targetColor,
-        animationSpec = tween(durationMillis = NuvioTheme.motion.durations.overlay),
-        label = "classicFocusGradientColor"
-    )
 
     LaunchedEffect(context, fallbackColor) {
         androidx.compose.runtime.snapshotFlow {
@@ -99,14 +92,11 @@ internal fun ClassicFocusGradientBackdrop(
 
     Box(
         modifier = modifier
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-            }
             .drawWithCache {
             val visible = visibleProvider()
             val firstVisibleX = size.width * 0.29f
             val brush = if (visible) {
-                val color = animatedColor.value
+                val color = targetColor
                 Brush.linearGradient(
                     colorStops = arrayOf(
                         0f to Color.Transparent,

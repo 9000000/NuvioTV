@@ -10,18 +10,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateDp
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -176,8 +164,6 @@ import com.nuvio.tv.ui.util.rememberDrawerItemFocusRequesters
 import com.nuvio.tv.updater.UpdateViewModel
 import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.delay
@@ -1261,11 +1247,7 @@ private fun LegacySidebarScaffold(
                         }
                 ) {
                     val isExpanded = drawerValue == DrawerValue.Open
-                    val itemWidth by animateDpAsState(
-                        targetValue = if (isExpanded) openDrawerItemWidth else NuvioTheme.sizes.avatars.md,
-                        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
-                        label = "legacySidebarItemWidth"
-                    )
+                    val itemWidth = if (isExpanded) openDrawerItemWidth else NuvioTheme.sizes.avatars.md
 
                     if (isExpanded) {
                         Column(
@@ -1369,15 +1351,11 @@ private fun LegacySidebarScaffold(
         }
         }
     ) {
-        val contentStartPadding by animateDpAsState(
-            targetValue = if (showSidebar && !sidebarCollapsed) {
-                NuvioLayout.tokens.sidebarContentOffset
-            } else {
-                NuvioTheme.spacing.none
-            },
-            animationSpec = tween(NuvioMotion.tokens.durations.medium),
-            label = "contentStartPadding"
-        )
+        val contentStartPadding = if (showSidebar && !sidebarCollapsed) {
+            NuvioLayout.tokens.sidebarContentOffset
+        } else {
+            NuvioTheme.spacing.none
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1453,52 +1431,33 @@ private fun LegacySidebarButton(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val itemShape = NuvioTheme.shapes.navItem
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> NuvioTheme.colors.FocusBackground
-            expanded && selected -> NuvioTheme.colors.Secondary
-            else -> Color.Transparent
-        },
-        label = "legacySidebarItemBackground"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> NuvioTheme.colors.TextPrimary
-            expanded && selected -> NuvioTheme.colors.OnSecondary
-            else -> NuvioTheme.colors.TextSecondary
-        },
-        label = "legacySidebarItemContent"
-    )
-    val iconTint by animateColorAsState(
-        targetValue = when {
-            isFocused -> NuvioTheme.colors.TextPrimary
-            expanded && selected -> NuvioTheme.colors.OnSecondary
-            selected -> NuvioTheme.colors.Secondary
-            !expanded -> NuvioTheme.colors.TextTertiary
-            else -> NuvioTheme.colors.TextSecondary
-        },
-        label = "legacySidebarItemIconTint"
-    )
+    val backgroundColor = when {
+        isFocused -> NuvioTheme.colors.FocusBackground
+        expanded && selected -> NuvioTheme.colors.Secondary
+        else -> Color.Transparent
+    }
+    val contentColor = when {
+        isFocused -> NuvioTheme.colors.TextPrimary
+        expanded && selected -> NuvioTheme.colors.OnSecondary
+        else -> NuvioTheme.colors.TextSecondary
+    }
+    val iconTint = when {
+        isFocused -> NuvioTheme.colors.TextPrimary
+        expanded && selected -> NuvioTheme.colors.OnSecondary
+        selected -> NuvioTheme.colors.Secondary
+        !expanded -> NuvioTheme.colors.TextTertiary
+        else -> NuvioTheme.colors.TextSecondary
+    }
     val selectedCollapsedIconBrush = if (selected && !expanded) {
         ThemeColors.getColorPalette(NuvioTheme.currentTheme).accentBrush()
     } else {
         null
     }
-    val itemScale by animateFloatAsState(
-        targetValue = if (isFocused && expanded) 1.1f else 1f,
-        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
-        label = "legacySidebarItemScale"
-    )
 
     Card(
         onClick = onClick,
         modifier = modifier
             .height(NuvioComponents.tokens.sidebar.itemHeight)
-            .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
-                transformOrigin = TransformOrigin.Center
-            }
             .focusProperties { canFocus = expanded }
             .onFocusChanged { isFocused = it.hasFocus },
         colors = CardDefaults.colors(
@@ -1640,116 +1599,28 @@ private fun ModernSidebarScaffold(
     }
 
     val sidebarVisible = showSidebar && (isSidebarExpanded || !sidebarCollapsed)
-    val sidebarHazeState = remember { HazeState() }
     val targetSidebarWidth = when {
         !sidebarVisible -> NuvioTheme.spacing.none
         isSidebarExpanded -> openSidebarWidth
         else -> collapsedSidebarWidth
     }
-    val sidebarWidth by animateDpAsState(
-        targetValue = targetSidebarWidth,
-        animationSpec = if (isSidebarExpanded) {
-            keyframes {
-                durationMillis = 365
-                (openSidebarWidth + NuvioTheme.spacing.md) at 175
-            }
-        } else {
-            tween(durationMillis = NuvioMotion.tokens.durations.sidebarEnter, easing = NuvioMotion.tokens.easings.decelerate)
-        },
-        label = "sidebarWidth"
-    )
-    val animationDuration = if (sidebarVisible) 400 else 300
-    val animationEasing = if (sidebarVisible) FastOutSlowInEasing else FastOutLinearInEasing
-
-    val sidebarSlideX by animateDpAsState(
-        targetValue = if (sidebarVisible) NuvioTheme.spacing.none else (-24).dp,
-        animationSpec = tween(durationMillis = animationDuration, easing = animationEasing),
-        label = "sidebarSlideX"
-    )
-    val sidebarSurfaceAlpha by animateFloatAsState(
-        targetValue = if (sidebarVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = animationDuration, easing = animationEasing),
-        label = "sidebarSurfaceAlpha"
-    )
+    val sidebarWidth = targetSidebarWidth
+    val sidebarSlideX = if (sidebarVisible) NuvioTheme.spacing.none else (-24).dp
+    val sidebarSurfaceAlpha = if (sidebarVisible) 1f else 0f
     val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled && (
         isSidebarExpanded || sidebarCollapsePending
         )
-    val sidebarTransition = updateTransition(
-        targetState = isSidebarExpanded,
-        label = "sidebarTransition"
-    )
-    val sidebarLabelAlpha by sidebarTransition.animateFloat(
-        transitionSpec = {
-            if (targetState) {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarLabelIn, easing = FastOutSlowInEasing)
-            } else {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarLabelOut, easing = LinearOutSlowInEasing)
-            }
-        },
-        label = "sidebarLabelAlpha"
-    ) { expanded ->
-        if (expanded) 1f else 0f
-    }
-    val sidebarExpandProgress by sidebarTransition.animateFloat(
-        transitionSpec = {
-            if (targetState) {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelIn, easing = FastOutSlowInEasing)
-            } else {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelOut, easing = LinearOutSlowInEasing)
-            }
-        },
-        label = "sidebarExpandProgress"
-    ) { expanded ->
-        if (expanded) 1f else 0f
-    }
+    val sidebarLabelAlpha = if (isSidebarExpanded) 1f else 0f
+    val sidebarExpandProgress = if (isSidebarExpanded) 1f else 0f
 
-    // derivedStateOf prevents per-frame recomposition — only triggers when the boolean crosses the threshold
-    val sidebarBlocksContentKeys by remember { derivedStateOf { sidebarExpandProgress > 0.2f } }
-    val sidebarShowExpandedPanel by remember { derivedStateOf { sidebarExpandProgress > 0.01f } }
-    val sidebarShowCollapsedPill by remember { derivedStateOf { sidebarExpandProgress < 0.98f } }
+    val sidebarBlocksContentKeys = isSidebarExpanded
+    val sidebarShowExpandedPanel = isSidebarExpanded
+    val sidebarShowCollapsedPill = !isSidebarExpanded
 
-    val sidebarIconScale by sidebarTransition.animateFloat(
-        transitionSpec = { tween(durationMillis = NuvioMotion.tokens.durations.sidebarLabelOut, easing = FastOutSlowInEasing) },
-        label = "sidebarIconScale"
-    ) { expanded ->
-        if (expanded) 1f else 0.92f
-    }
-    val sidebarBloomScale by sidebarTransition.animateFloat(
-        transitionSpec = {
-            if (targetState) {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelIn, easing = FastOutSlowInEasing)
-            } else {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarBloomOut, easing = LinearOutSlowInEasing)
-            }
-        },
-        label = "sidebarBloomScale"
-    ) { expanded ->
-        if (expanded) 1f else 0.9f
-    }
-    val sidebarDeflateOffsetX by sidebarTransition.animateDp(
-        transitionSpec = {
-            if (targetState) {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelIn, easing = FastOutSlowInEasing)
-            } else {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarBloomOut, easing = LinearOutSlowInEasing)
-            }
-        },
-        label = "sidebarDeflateOffsetX"
-    ) { expanded ->
-        if (expanded) NuvioTheme.spacing.none else (-10).dp
-    }
-    val sidebarDeflateOffsetY by sidebarTransition.animateDp(
-        transitionSpec = {
-            if (targetState) {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelIn, easing = FastOutSlowInEasing)
-            } else {
-                tween(durationMillis = NuvioMotion.tokens.durations.sidebarBloomOut, easing = LinearOutSlowInEasing)
-            }
-        },
-        label = "sidebarDeflateOffsetY"
-    ) { expanded ->
-        if (expanded) NuvioTheme.spacing.none else (-8).dp
-    }
+    val sidebarIconScale = if (isSidebarExpanded) 1f else 0.92f
+    val sidebarBloomScale = if (isSidebarExpanded) 1f else 0.9f
+    val sidebarDeflateOffsetX = if (isSidebarExpanded) NuvioTheme.spacing.none else (-10).dp
+    val sidebarDeflateOffsetY = if (isSidebarExpanded) NuvioTheme.spacing.none else (-8).dp
 
     LaunchedEffect(isSidebarExpanded, sidebarCollapsePending, pendingContentFocusTransfer, showSidebar) {
         if (!showSidebar || !pendingContentFocusTransfer || isSidebarExpanded || sidebarCollapsePending) {
@@ -1937,7 +1808,6 @@ private fun ModernSidebarScaffold(
                         isSidebarExpanded = isSidebarExpanded,
                         sidebarCollapsePending = sidebarCollapsePending,
                         blurEnabled = modernSidebarBlurEnabled,
-                        sidebarHazeState = sidebarHazeState,
                         panelShape = panelShape,
                         drawerItemFocusRequesters = drawerItemFocusRequesters,
                         onDrawerItemFocused = { focusedDrawerIndex = it },
@@ -2031,7 +1901,6 @@ private fun CollapsedSidebarPill(
     Row(
         modifier = modifier
             .focusProperties { canFocus = false }
-            .animateContentSize()
             .clickable(onClick = onExpand)
             .padding(horizontal = NuvioTheme.spacing.hairline, vertical = NuvioTheme.spacing.xxs),
         verticalAlignment = Alignment.CenterVertically,

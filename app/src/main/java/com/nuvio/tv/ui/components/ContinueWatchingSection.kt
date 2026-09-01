@@ -22,6 +22,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -229,15 +235,18 @@ fun ContinueWatchingSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(rowFocusRequester)
-                .focusRestorer {
-                    val visibleIndices = listState.layoutInfo.visibleItemsInfo
-                        .map { it.index }
-                        .filter { it in items.indices }
-                    val idx = lastFocusedIndex.takeIf { it in visibleIndices }
-                        ?: visibleIndices.firstOrNull()
-                    idx?.let { focusRequesters[it] }
-                        ?: FocusRequester.Default
-                }
+                .then(
+                    @Suppress("DEPRECATION")
+                    Modifier.focusRestorer {
+                        val visibleIndices = listState.layoutInfo.visibleItemsInfo
+                            .map { it.index }
+                            .filter { it in items.indices }
+                        val idx = lastFocusedIndex.takeIf { it in visibleIndices }
+                            ?: visibleIndices.firstOrNull()
+                        idx?.let { focusRequesters[it] }
+                            ?: FocusRequester.Default
+                    }
+                )
                 .focusGroup(),
             contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl),
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
@@ -579,7 +588,7 @@ fun ContinueWatchingCard(
     val imageRequest = remember(effectiveImageModel, requestWidthPx, requestHeightPx, shouldBlur) {
         ImageRequest.Builder(context)
             .data(effectiveImageModel)
-            .crossfade(true)
+            .crossfade(false)
             .memoryCacheKey(
                 continueWatchingImageCacheKey(
                     effectiveImageModel, requestWidthPx, requestHeightPx, shouldBlur
@@ -603,6 +612,22 @@ fun ContinueWatchingCard(
     
     val bgCardColor = NuvioTheme.colors.BackgroundCard
     val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
+    val focusRingBorderWidth = 3.dp
+    val focusPulseAlpha = if (isFocused) {
+        val transition = rememberInfiniteTransition(label = "cwCardPulse")
+        val alpha by transition.animateFloat(
+            initialValue = 0.25f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+        alpha
+    } else {
+        1.0f
+    }
 
     Card(
         onClick = {
@@ -654,7 +679,7 @@ fun ContinueWatchingCard(
         } else {
             CardDefaults.border(
                 focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                    border = NuvioTheme.focusRing.border(focusRingBorderWidth, alpha = focusPulseAlpha),
                     shape = cwCardShape
                 )
             )
@@ -741,10 +766,6 @@ fun ContinueWatchingCard(
                         contentDescription = titleText,
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer {
-                                compositingStrategy =
-                                    CompositingStrategy.Offscreen
-                            }
                             .clip(cwClipShape)
 
                             // Gradient overlay for text legibility, only needed when text sits on the artwork.
@@ -775,7 +796,7 @@ fun ContinueWatchingCard(
                         contentScale = ContentScale.Crop,
                         onError = {
                             // Primary image failed (e.g. broken thumbnail URL) — remember and try fallback.
-                            if (!usesFallbackImage && effectiveImageModel != null) {
+                            if (!usesFallbackImage) {
                                 brokenImageUrls.add(effectiveImageModel)
                                 if (fallbackImageModel != null && fallbackImageModel != effectiveImageModel) {
                                     usesFallbackImage = true

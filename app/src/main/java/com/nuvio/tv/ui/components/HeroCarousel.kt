@@ -231,7 +231,7 @@ private fun HeroCarouselSlide(
         item.logo?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .size(width = logoRequestWidthPx, height = logoRequestHeightPx)
                 .build()
         }
@@ -422,9 +422,6 @@ internal fun HeroCarouselBackdrop(
 
     Box(
         modifier = modifier
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-            }
             .drawWithCache {
             val bottomStartFraction = if (fullPage) 0.55f else 0.30f
             val leftEndFraction = if (fullPage) 0.66f else 0.72f

@@ -10,8 +10,6 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Box
@@ -593,7 +591,7 @@ fun ModernHomeContent(
                 return@onDispose
             }
             
-            val focusedRowIndex = focusedRowKey?.let { latestRowIndexByKey.value.map[it] } ?: -1
+            val focusedRowIndex = latestRowIndexByKey.value.map[focusedRowKey] ?: -1
             val focusedItemIndex = activeItemIndex.intValue
             
             val focusedItemKeyByRow = latestCarouselRows
@@ -679,12 +677,12 @@ fun ModernHomeContent(
                             title = enrichedItem.name,
                             logo = enrichedItem.logo,
                             description = enrichedItem.description,
-                            contentTypeText = activeCarouselItem?.heroPreview?.contentTypeText,
+                            contentTypeText = activeCarouselItem.heroPreview.contentTypeText,
                             isSeries = isSeriesType(enrichedItem.apiType),
                             yearText = extractYearText(enrichedItem.type, enrichedItem.releaseInfo, enrichedItem.released)
-                                ?: activeCarouselItem?.heroPreview?.yearText,
+                                ?: activeCarouselItem.heroPreview.yearText,
                             runtimeText = formatHeroRuntime(enrichedItem.runtime)
-                                ?: activeCarouselItem?.heroPreview?.runtimeText,
+                                ?: activeCarouselItem.heroPreview.runtimeText,
                             imdbText = enrichedItem.imdbRating
                                 ?.let { String.format(java.util.Locale.US, "%.1f", it) },
                             ageRatingText = enrichedItem.ageRating,
@@ -694,9 +692,9 @@ fun ModernHomeContent(
                             genres = enrichedItem.genres.take(3).asStable(),
                             poster = enrichedItem.poster,
                             backdrop = enrichedItem.backdropUrl,
-                            imageUrl = activeCarouselItem?.heroPreview?.imageUrl,
-                            frozenBackdropUrl = activeCarouselItem?.heroPreview?.frozenBackdropUrl,
-                            frozenLogoUrl = activeCarouselItem?.heroPreview?.frozenLogoUrl
+                            imageUrl = activeCarouselItem.heroPreview.imageUrl,
+                            frozenBackdropUrl = activeCarouselItem.heroPreview.frozenBackdropUrl,
+                            frozenLogoUrl = activeCarouselItem.heroPreview.frozenLogoUrl
                         )
                     } else null
 
@@ -924,9 +922,7 @@ fun ModernHomeContent(
                     val stableHasPreview = stable?.preview?.title?.isNotBlank() == true
 
                     when {
-                        // During vertical scroll: freeze stable to avoid flashing
-                        // transient addon data before enrichment completes
-                        isScrolling && stableHasPreview -> stable!!
+                        isScrolling && stable != null && stableHasPreview -> stable
                         // During rapid horizontal nav: freeze to avoid backdrop flashing
                         isRapidNav && stable != null -> stable
                         // Normal: show live state
@@ -975,7 +971,7 @@ fun ModernHomeContent(
                 val topInsetPx = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
-                    override val scrollAnimationSpec: AnimationSpec<Float> = defaultBringIntoViewSpec.scrollAnimationSpec
+                    override val scrollAnimationSpec: AnimationSpec<Float> = androidx.compose.animation.core.snap()
                     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
                         val currentLeadingEdge = offset
                         if (abs(currentLeadingEdge - topInsetPx) < 1f) return 0f
@@ -1035,11 +1031,10 @@ fun ModernHomeContent(
 
             // Fade content rows when ANY hero media (catalog trailer or collection
             // hero video) is playing in fullscreen — not just catalog trailers.
-            val trailerContentAlphaState = animateFloatAsState(
-                targetValue = if (fullScreenBackdropUpdated && (shouldPlayCatalogHeroTrailerUpdated || shouldPlayCollectionHeroVideoUpdated) && heroTrailerFirstFrameRenderedUpdated) 0f else 1f,
-                animationSpec = tween(durationMillis = 480),
-                label = "trailerContentFade"
-            )
+            val isTrailerPlayingFullscreen = fullScreenBackdropUpdated && (shouldPlayCatalogHeroTrailerUpdated || shouldPlayCollectionHeroVideoUpdated) && heroTrailerFirstFrameRenderedUpdated
+            val stableTrailerContentAlphaLambda = remember(isTrailerPlayingFullscreen) {
+                { if (isTrailerPlayingFullscreen) 0f else 1f }
+            }
 
             val shouldPlayTrailerLambda = remember { { shouldPlayCatalogHeroTrailerUpdated || shouldPlayCollectionHeroVideoUpdated } }
             val heroTrailerRenderedLambda = remember { { heroTrailerFirstFrameRenderedUpdated } }
@@ -1105,7 +1100,6 @@ fun ModernHomeContent(
                     onRowItemFocusedPassedDown.value.invoke(rowKey, index, isCw)
                 }
             }
-            val stableTrailerContentAlphaLambda = remember { { trailerContentAlphaState.value } }
             val stableExpandedTrailerPreviewUrl = remember(heroTrailerUrlsState) { { heroTrailerUrlsState.value.first } }
             val stableExpandedTrailerPreviewAudioUrl = remember(heroTrailerUrlsState) { { heroTrailerUrlsState.value.second } }
             val stableEnrichedPreviews = remember { androidx.compose.runtime.mutableStateOf(enrichedPreviews.asStable()) }

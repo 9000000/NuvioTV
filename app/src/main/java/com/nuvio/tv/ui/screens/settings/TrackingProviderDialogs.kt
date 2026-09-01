@@ -4,8 +4,6 @@ package com.nuvio.tv.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -168,68 +166,62 @@ internal fun SimklAccountDialog(
                 }
             }
         ) {
-            Crossfade(
-                targetState = showSyncInfo,
-                animationSpec = tween(NuvioMotion.tokens.durations.fast),
-                label = "SimklSyncInfo"
-            ) { infoVisible ->
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    if (infoVisible) {
-                        SimklSyncInfoContent(
-                            logo = logo,
-                            browserError = browserError,
-                            onOpenGuide = {
-                                browserError = false
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(
-                                            Intent.ACTION_VIEW,
-                                            Uri.parse(SIMKL_SYNC_GUIDE_URL)
-                                        )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                if (showSyncInfo) {
+                    SimklSyncInfoContent(
+                        logo = logo,
+                        browserError = browserError,
+                        onOpenGuide = {
+                            browserError = false
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(SIMKL_SYNC_GUIDE_URL)
                                     )
-                                }.onFailure {
-                                    browserError = true
-                                }
-                            },
-                            onBack = {
-                                browserError = false
-                                showSyncInfo = false
+                                )
+                            }.onFailure {
+                                browserError = true
                             }
-                        )
-                    } else {
-                        ConnectedTrackingAccountContent(
-                            brand = TrackingDialogBrand.SIMKL,
-                            logo = logo,
-                            logoContentDescription = stringResource(R.string.cd_simkl_logo),
-                            connectedLabel = stringResource(
-                                R.string.simkl_connected_as,
-                                state.username ?: stringResource(R.string.simkl_user_fallback)
-                            ),
-                            connectedDescription = stringResource(R.string.simkl_description),
-                            statusMessage = state.statusMessage,
-                            errorMessage = state.errorMessage,
-                            isLoading = state.isLoading,
-                            onSync = onSync,
-                            onDisconnect = onDisconnect,
-                            onVisit = {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(
-                                            Intent.ACTION_VIEW,
-                                            Uri.parse(SIMKL_WEBSITE_URL)
-                                        )
+                        },
+                        onBack = {
+                            browserError = false
+                            showSyncInfo = false
+                        }
+                    )
+                } else {
+                    ConnectedTrackingAccountContent(
+                        brand = TrackingDialogBrand.SIMKL,
+                        logo = logo,
+                        logoContentDescription = stringResource(R.string.cd_simkl_logo),
+                        connectedLabel = stringResource(
+                            R.string.simkl_connected_as,
+                            state.username ?: stringResource(R.string.simkl_user_fallback)
+                        ),
+                        connectedDescription = stringResource(R.string.simkl_description),
+                        statusMessage = state.statusMessage,
+                        errorMessage = state.errorMessage,
+                        isLoading = state.isLoading,
+                        onSync = onSync,
+                        onDisconnect = onDisconnect,
+                        onVisit = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(SIMKL_WEBSITE_URL)
                                     )
-                                }
-                            },
-                            onInfo = {
-                                browserError = false
-                                showSyncInfo = true
+                                )
                             }
-                        )
-                    }
+                        },
+                        onInfo = {
+                            browserError = false
+                            showSyncInfo = true
+                        }
+                    )
                 }
             }
         }

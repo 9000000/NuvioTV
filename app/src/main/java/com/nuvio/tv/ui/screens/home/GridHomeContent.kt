@@ -6,11 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.State
 import androidx.compose.foundation.lazy.grid.items
 import com.nuvio.tv.LocalContentFocusRequester
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -766,11 +762,7 @@ private fun GridStickyHeader(
         }
     }
 
-    AnimatedVisibility(
-        visible = isScrolledPastHeroState.value && currentSectionName != null,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
+    if (isScrolledPastHeroState.value && currentSectionName != null) {
         StickyCategoryHeader(
             sectionName = currentSectionName ?: ""
         )
@@ -988,11 +980,7 @@ private fun GridCollectionFolderCard(
             val focusGifUrl = if (isFocused && folder.focusGifEnabled) folder.focusGifUrl else null
             if (!focusGifUrl.isNullOrBlank()) {
                 var gifLoaded by remember(focusGifUrl) { mutableStateOf(false) }
-                val gifAlpha by animateFloatAsState(
-                    targetValue = if (gifLoaded) 1f else 0f,
-                    animationSpec = tween(durationMillis = 200),
-                    label = "gifFadeIn"
-                )
+                val gifAlpha = if (gifLoaded) 1f else 0f
                 AsyncImage(
                     model = focusGifUrl,
                     contentDescription = null,

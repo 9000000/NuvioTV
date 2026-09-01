@@ -4,8 +4,6 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -121,11 +119,7 @@ internal fun ModernHeroMediaLayer(
 ) {
     val shouldPlay by remember { derivedStateOf { shouldPlayHeroTrailer() } }
     val trailerRendered by remember { derivedStateOf { heroTrailerFirstFrameRendered() } }
-    val transitionProgressState = animateFloatAsState(
-        targetValue = if (shouldPlay && trailerRendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 480),
-        label = "heroBackdropTrailerCrossfadeProgress"
-    )
+    val transitionProgress = if (shouldPlay && trailerRendered) 1f else 0f
     val localContext = LocalContext.current
 
     // Backdrop URL is managed upstream (heroSceneStateLambda freezes it
@@ -155,24 +149,17 @@ internal fun ModernHeroMediaLayer(
     }
 
     Box(modifier = modifier) {
-        androidx.compose.animation.Crossfade(
-            targetState = imageModel,
-            animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.overlay),
-            label = "heroBackdropCrossfade"
-        ) { model ->
-            AsyncImage(
-                model = model,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                        alpha = 1f - transitionProgressState.value
-                    },
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopEnd
-            )
-        }
+        AsyncImage(
+            model = imageModel,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    alpha = 1f - transitionProgress
+                },
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopEnd
+        )
         if (shouldPlay) {
             val trailerUrlVal = heroTrailerUrl()
             val playbackKeyVal = heroTrailerPlaybackKey()
@@ -191,7 +178,7 @@ internal fun ModernHeroMediaLayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = transitionProgressState.value
+                            alpha = transitionProgress
                         }
                 )
             }
@@ -208,9 +195,6 @@ internal fun ModernHeroGradientLayer(
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Box(
         modifier = modifier
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-            }
             .drawWithCache {
                 val fullScreen = isFullScreen()
                 val horizontalFadeEndX = size.width * if (fullScreen) 0.65f else 0.45f
@@ -354,17 +338,13 @@ private fun HeroTitleContent(
         preview.logo?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .size(width = logoMaxWidthPx, height = logoHeightPx)
                 .build()
         }
     }
     val trailerPlayingValue = trailerPlaying()
-    val metaAlpha by animateFloatAsState(
-        targetValue = if (trailerPlayingValue) 0f else 1f,
-        animationSpec = tween(durationMillis = 480),
-        label = "heroMetaFade"
-    )
+    val metaAlpha = if (trailerPlayingValue) 0f else 1f
     val scaledTitleStyle = remember(headlineLarge, titleScale) {
         headlineLarge.copy(
             fontSize = headlineLarge.fontSize * titleScale,

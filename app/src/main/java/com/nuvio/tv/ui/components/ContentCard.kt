@@ -24,9 +24,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -164,17 +166,7 @@ fun ContentCard(
         // ContentCard only observes trailerPreviewUrl to start playback.
     }
 
-    // Only pay the animation cost on the card that is actually focused/expanding.
-    // Unfocused cards snap directly to baseCardWidth — no animation state overhead.
-    val animatedCardWidth = when {
-        !focusedPosterBackdropExpandEnabled -> baseCardWidth
-        !isFocused && !isBackdropExpanded -> baseCardWidth
-        else -> {
-            val targetCardWidth = if (isBackdropExpanded) expandedCardWidth else baseCardWidth
-            val width by animateDpAsState(targetValue = targetCardWidth, label = "contentCardWidth")
-            width
-        }
-    }
+    val animatedCardWidth = if (focusedPosterBackdropExpandEnabled && isBackdropExpanded) expandedCardWidth else baseCardWidth
     val metaTokensContext = LocalContext.current
     val metaTokens = if (isBackdropExpanded) {
         remember(metaTokensContext, item.type, item.rawType, item.genres, item.releaseInfo, item.imdbRating, item.seasonCount, showImdbRatings) {
@@ -240,7 +232,7 @@ fun ContentCard(
         val imageModel = remember(imageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
             val builder = ImageRequest.Builder(context)
                 .data(imageUrl)
-                .crossfade(true)
+                .crossfade(false)
                 .memoryCacheKey("${imageUrl}_${requestWidthPx}x${requestHeightPx}_v$revalidationKey")
                 .size(width = requestWidthPx, height = requestHeightPx)
             if (revalidationKey > 0) {
@@ -347,12 +339,29 @@ fun ContentCard(
                 focusedContainerColor = Color.Transparent
             ),
             border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                    shape = cardShape
-                )
+                focusedBorder = run {
+                    val focusPulseAlpha = if (isFocused) {
+                        val transition = rememberInfiniteTransition(label = "contentCardPulse")
+                        val alpha by transition.animateFloat(
+                            initialValue = 0.25f,
+                            targetValue = 1.0f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "pulseAlpha"
+                        )
+                        alpha
+                    } else {
+                        1.0f
+                    }
+                    Border(
+                        border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth, alpha = focusPulseAlpha),
+                        shape = cardShape
+                    )
+                }
             ),
-            scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
+            scale = CardDefaults.scale(focusedScale = 1f)
         ) {
             Box(
                 modifier = Modifier
@@ -406,17 +415,7 @@ fun ContentCard(
                     }
                 }
 
-                // Only allocate animation state when trailer is actually playing.
-                val trailerCoverAlpha = if (shouldPlayTrailerPreview) {
-                    val alpha by animateFloatAsState(
-                        targetValue = if (!trailerFirstFrameRendered) 1f else 0f,
-                        animationSpec = tween(durationMillis = 250),
-                        label = "trailerCoverAlpha"
-                    )
-                    alpha
-                } else {
-                    0f
-                }
+                val trailerCoverAlpha = if (shouldPlayTrailerPreview && !trailerFirstFrameRendered) 1f else 0f
 
                 if (shouldPlayTrailerPreview) {
                     // Black plate under FIT-mode video so non-16:9 trailers letterbox

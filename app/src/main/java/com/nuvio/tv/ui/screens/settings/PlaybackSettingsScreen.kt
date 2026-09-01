@@ -37,9 +37,6 @@ import androidx.compose.runtime.remember
 import kotlin.math.roundToInt
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -409,11 +406,8 @@ fun PlaybackSettingsContent(
             )
         }
 
-        AnimatedVisibility(
-            visible = showMemoryUsage &&
-                    (playerSettings.bufferEngineEnabled || playerSettings.parallelNetworkEnabled || playerSettings.nuvioPerformanceModeEnabled),
-            enter = fadeIn(),
-            exit = fadeOut()
+        if (showMemoryUsage &&
+            (playerSettings.bufferEngineEnabled || playerSettings.parallelNetworkEnabled || playerSettings.nuvioPerformanceModeEnabled)
         ) {
             val context = LocalContext.current
             val isNativeAutoMode = playerSettings.nuvioPerformanceModeEnabled && !playerSettings.bufferEngineEnabled

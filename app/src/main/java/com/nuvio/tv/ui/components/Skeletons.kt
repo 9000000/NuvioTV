@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -439,32 +440,10 @@ fun SkeletonPill(
 
 @Composable
 fun rememberShimmerBrush(backdropAware: Boolean = false): Brush {
-    val shimmerColors = if (backdropAware) {
-        listOf(
-            NuvioTheme.colors.TextPrimary.copy(alpha = 0.08f),
-            NuvioTheme.colors.TextPrimary.copy(alpha = 0.20f),
-            NuvioTheme.colors.TextPrimary.copy(alpha = 0.08f)
-        )
+    val color = if (backdropAware) {
+        NuvioTheme.colors.TextPrimary.copy(alpha = 0.08f)
     } else {
-        listOf(
-            NuvioTheme.colors.SurfaceVariant.copy(alpha = 0.30f),
-            NuvioTheme.colors.SurfaceVariant.copy(alpha = 0.60f),
-            NuvioTheme.colors.SurfaceVariant.copy(alpha = 0.30f)
-        )
+        NuvioTheme.colors.SurfaceVariant.copy(alpha = 0.40f)
     }
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val translate by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = LinearEasing)
-        ),
-        label = "shimmer_translate"
-    )
-
-    return Brush.linearGradient(
-        colors = shimmerColors,
-        start = Offset(translate - 1000f, 0f),
-        end = Offset(translate, 0f)
-    )
+    return remember(color) { androidx.compose.ui.graphics.SolidColor(color) }
 }

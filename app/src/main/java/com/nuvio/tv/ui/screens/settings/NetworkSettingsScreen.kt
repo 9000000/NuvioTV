@@ -7,15 +7,6 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -397,11 +388,7 @@ fun AdvancedSettingsContent(
                     title = stringResource(R.string.settings_advanced),
                     subtitle = stringResource(R.string.settings_advanced_subtitle)
                 )
-                AnimatedVisibility(
-                    visible = testState != NetworkTestState.Idle,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
+                if (testState != NetworkTestState.Idle) {
                     ConnectionStatusBadge(type = connectionType)
                 }
             }
@@ -840,17 +827,6 @@ private fun NetworkMetricCard(
     value: String?,
     loading: Boolean
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "spin")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
-
     Column(
         modifier = modifier.padding(NuvioTheme.spacing.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -859,9 +835,7 @@ private fun NetworkMetricCard(
         Icon(
             imageVector = if (loading) Icons.Default.Refresh else icon,
             contentDescription = null,
-            modifier = Modifier
-                .size(28.dp)
-                .then(if (loading) Modifier.rotate(rotation) else Modifier),
+            modifier = Modifier.size(28.dp),
             tint = if (loading) NuvioTheme.colors.Secondary else NuvioTheme.colors.Primary
         )
         Text(

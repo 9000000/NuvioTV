@@ -54,8 +54,6 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioRadii
 import com.nuvio.tv.ui.theme.NuvioStrokes
 import com.nuvio.tv.ui.theme.NuvioTheme
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeChild
 
 private val SidebarLeadingVisualSize = NuvioComponents.tokens.sidebar.leadingVisual
 private val SidebarContentGap = NuvioComponents.tokens.sidebar.contentGap
@@ -72,7 +70,6 @@ internal fun ModernSidebarBlurPanel(
     isSidebarExpanded: Boolean,
     sidebarCollapsePending: Boolean,
     blurEnabled: Boolean,
-    sidebarHazeState: HazeState,
     panelShape: RoundedCornerShape,
     drawerItemFocusRequesters: Map<String, FocusRequester>,
     onDrawerItemFocused: (Int) -> Unit,
@@ -83,30 +80,19 @@ internal fun ModernSidebarBlurPanel(
     showProfileSelector: Boolean,
     onSwitchProfile: () -> Unit
 ) {
-    val delayedBlurProgress =
-        ((sidebarExpandProgress - 0.34f) / 0.66f).coerceIn(0f, 1f)
-    val showPanelBlur = blurEnabled &&
-        isSidebarExpanded &&
-        !sidebarCollapsePending &&
-        delayedBlurProgress > 0f
-    val expandedPanelBlurModifier = if (showPanelBlur) {
-        Modifier.hazeChild(
-            state = sidebarHazeState,
-            shape = panelShape,
-            tint = Color.Unspecified,
-            blurRadius = NuvioTheme.effects.blurPanel * delayedBlurProgress,
-            noiseFactor = 0.04f * delayedBlurProgress
-        )
-    } else {
-        Modifier
-    }
     val colors = NuvioTheme.colors
     val bgElevated = colors.BackgroundElevated
     val bgCard = colors.BackgroundCard
     val borderBase = colors.Border
     val panelBackgroundBrush = remember(blurEnabled, bgElevated, bgCard) {
         if (blurEnabled) {
-            Brush.verticalGradient(listOf(colors.media.glassPanelTop, colors.media.glassPanelMiddle, colors.media.glassPanelBottom))
+            Brush.verticalGradient(
+                listOf(
+                    colors.media.glassPanelTop.copy(alpha = 0.95f),
+                    colors.media.glassPanelMiddle.copy(alpha = 0.96f),
+                    colors.media.glassPanelBottom.copy(alpha = 0.98f)
+                )
+            )
         } else {
             Brush.verticalGradient(listOf(bgElevated, bgCard))
         }
@@ -125,13 +111,9 @@ internal fun ModernSidebarBlurPanel(
                 scaleX = s
                 scaleY = s
                 transformOrigin = TransformOrigin(0f, 0f)
-            }
-            .then(expandedPanelBlurModifier)
-            .graphicsLayer {
                 shape = panelShape
                 clip = true
             }
-            .clip(panelShape)
             .background(brush = panelBackgroundBrush, shape = panelShape)
             .border(width = NuvioStrokes.tokens.hairline, color = panelBorderColor, shape = panelShape)
             .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs)

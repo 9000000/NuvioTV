@@ -10,7 +10,7 @@ data class PosterCardStyle(
     val height: Dp = NuvioComponents.tokens.posterCard.height,
     val cornerRadius: Dp = NuvioComponents.tokens.posterCard.cornerRadius,
     val focusedBorderWidth: Dp = NuvioComponents.tokens.posterCard.focusedBorderWidth,
-    val focusedScale: Float = NuvioComponents.tokens.posterCard.focusedScale
+    val focusedScale: Float = 1.0f
 ) {
     val aspectRatio: Float
         get() = width.value / height.value

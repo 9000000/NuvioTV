@@ -71,11 +71,7 @@ fun TrailerPlayer(
     val currentOnRemoteKey by rememberUpdatedState(onRemoteKey)
     val zoomScale = if (cropToFill) overscanZoom.coerceAtLeast(1f) else 1f
     var hasRenderedFirstFrame by remember(trailerUrl) { mutableStateOf(false) }
-    val playerAlphaState = animateFloatAsState(
-        targetValue = if (isPlaying && hasRenderedFirstFrame) 1f else 0f,
-        animationSpec = tween(durationMillis = 300),
-        label = "trailerFirstFrameAlpha"
-    )
+    val playerAlpha = if (isPlaying && hasRenderedFirstFrame) 1f else 0f
 
     // Resolve pool: explicit parameter > CompositionLocal
     val resolvedPool = trailerPlayerPool ?: LocalTrailerPlayerPool.current
@@ -217,52 +213,46 @@ fun TrailerPlayer(
         }
     }
 
-    if (trailerPlayer != null) {
-        AnimatedVisibility(
-            visible = isPlaying,
-            enter = enter,
-            exit = exit
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null) as PlayerView).apply {
-                        player = trailerPlayer
-                        isFocusable = true
-                        isFocusableInTouchMode = true
-                        setOnKeyListener { _, keyCode, event ->
-                            currentOnRemoteKey(keyCode, event.action, event.repeatCount)
-                        }
-                        keepScreenOn = true
-                        resizeMode = if (cropToFill) {
-                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        } else {
-                            AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        }
+    if (trailerPlayer != null && isPlaying) {
+        AndroidView(
+            factory = { ctx ->
+                (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null) as PlayerView).apply {
+                    player = trailerPlayer
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    setOnKeyListener { _, keyCode, event ->
+                        currentOnRemoteKey(keyCode, event.action, event.repeatCount)
                     }
-                },
-                update = { view ->
-                    // Re-attach player in case it was reclaimed after yield
-                    if (view.player !== trailerPlayer) {
-                        view.player = trailerPlayer
-                    }
-                    view.resizeMode = if (cropToFill) {
+                    keepScreenOn = true
+                    resizeMode = if (cropToFill) {
                         AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     } else {
                         AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
-                },
-                onRelease = { view ->
-                    view.player = null
-                    view.keepScreenOn = false
-                },
-                modifier = modifier
-                    .clipToBounds()
-                    .graphicsLayer {
-                        alpha = playerAlphaState.value
-                        scaleX = zoomScale
-                        scaleY = zoomScale
-                    }
-            )
-        }
+                }
+            },
+            update = { view ->
+                // Re-attach player in case it was reclaimed after yield
+                if (view.player !== trailerPlayer) {
+                    view.player = trailerPlayer
+                }
+                view.resizeMode = if (cropToFill) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+            },
+            onRelease = { view ->
+                view.player = null
+                view.keepScreenOn = false
+            },
+            modifier = modifier
+                .clipToBounds()
+                .graphicsLayer {
+                    alpha = playerAlpha
+                    scaleX = zoomScale
+                    scaleY = zoomScale
+                }
+        )
     }
 }
