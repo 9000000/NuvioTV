@@ -43,9 +43,15 @@ class WatchedItemsPreferences @Inject constructor(
         return prefs[lastSuccessfulPushMsKey] ?: 0L
     }
 
-    suspend fun setLastSuccessfulPushMs(timestampMs: Long, profileId: Int = profileManager.activeProfileId.value) {
+    /**
+     * Advances the stored push point, never lowering it. The comparison happens inside
+     * the edit, so two pushes finishing out of order cannot leave the older one on disk.
+     * Nothing needs to lower it: deleting a profile removes the whole store.
+     */
+    suspend fun advanceLastSuccessfulPushMs(timestampMs: Long, profileId: Int = profileManager.activeProfileId.value) {
         store(profileId).edit { prefs ->
-            prefs[lastSuccessfulPushMsKey] = timestampMs
+            val stored = prefs[lastSuccessfulPushMsKey] ?: 0L
+            prefs[lastSuccessfulPushMsKey] = maxOf(stored, timestampMs)
         }
     }
 
@@ -245,6 +251,7 @@ class WatchedItemsPreferences @Inject constructor(
         remoteItems: List<WatchedItem>,
         pendingUpsertKeys: Set<WatchedMutationKey> = emptySet(),
         pendingDeleteKeys: Set<WatchedMutationKey> = emptySet(),
+        lastSuccessfulPushMs: Long? = null,
         profileId: Int = profileManager.activeProfileId.value
     ): Boolean {
         var preservedLocalItems = false
@@ -260,8 +267,14 @@ class WatchedItemsPreferences @Inject constructor(
             }
             localItems.forEach { localItem ->
                 val mutationKey = localItem.mutationKey()
-                if (mutationKey in pendingUpsertKeys) {
-                    deduped[Triple(localItem.contentId, localItem.season, localItem.episode)] = localItem
+                val itemKey = Triple(localItem.contentId, localItem.season, localItem.episode)
+                val preservePendingUpsert = mutationKey in pendingUpsertKeys
+                val preserveAfterPush = mutationKey !in pendingDeleteKeys &&
+                    itemKey !in deduped &&
+                    lastSuccessfulPushMs != null &&
+                    localItem.watchedAt > lastSuccessfulPushMs
+                if (preservePendingUpsert || preserveAfterPush) {
+                    deduped[itemKey] = localItem
                     preservedLocalItems = true
                 }
             }

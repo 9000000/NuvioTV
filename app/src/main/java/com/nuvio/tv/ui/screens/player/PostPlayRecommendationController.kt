@@ -78,7 +78,8 @@ internal class PostPlayRecommendationController(
         val hasBlockingInteraction: Boolean,
         val playbackEnded: Boolean,
         val positionMs: Long,
-        val durationMs: Long
+        val durationMs: Long,
+        val hasActiveAutoPlay: Boolean
     )
 
     private data class ResolvedCandidate(
@@ -134,7 +135,8 @@ internal class PostPlayRecommendationController(
                     hasBlockingInteraction = playerState.blocksPostPlayRecommendation(),
                     playbackEnded = playerState.playbackEnded,
                     positionMs = timeline.currentPosition,
-                    durationMs = timeline.duration
+                    durationMs = timeline.duration,
+                    hasActiveAutoPlay = playerState.postPlayMode is PostPlayMode.AutoPlay
                 )
             }
                 .distinctUntilChanged()
@@ -227,6 +229,19 @@ internal class PostPlayRecommendationController(
     }
 
     private fun evaluate(snapshot: PlaybackSnapshot) {
+        // If the player already has an active auto-play (next episode found and queued),
+        // recommendations must not appear — clear any in-flight state and bail out.
+        if (snapshot.hasActiveAutoPlay) {
+            if (_uiState.value.recommendation != null ||
+                _uiState.value.isVisible ||
+                _uiState.value.isLoadingRecommendation ||
+                recommendationJob != null
+            ) {
+                clearRecommendationState()
+            }
+            return
+        }
+
         val shouldUseRecommendation = shouldUsePostPlayRecommendation(
             contentType = snapshot.contentType,
             isNextEpisodeMetadataResolved = snapshot.isNextEpisodeMetadataResolved,

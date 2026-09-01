@@ -56,7 +56,7 @@ class WatchProgressSyncService @Inject constructor(
 
     private suspend fun markPushSucceeded(profileId: Int) {
         val now = System.currentTimeMillis()
-        watchProgressPreferences.setLastSuccessfulPushMs(now, profileId)
+        watchProgressPreferences.advanceLastSuccessfulPushMs(now, profileId)
     }
     private suspend fun <T> withJwtRefreshRetry(block: suspend () -> T): T {
         return try {
@@ -252,7 +252,10 @@ class WatchProgressSyncService @Inject constructor(
 
             mutationStore.acknowledgeProgressUpserts(mapOf(key to progress), profileId)
             Log.d(TAG, "Pushed single watch progress entry to remote for profile $profileId (key=$key)")
-            markPushSucceeded(profileId)
+            // Deliberately does not move the sync point. One entry reaching remote says
+            // nothing about the rest, and advancing it here would mark every other local
+            // entry as synced, so the next pull would drop the ones that never made it.
+            // Only the full push in pushToRemote may move it.
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to push single watch progress to remote", e)

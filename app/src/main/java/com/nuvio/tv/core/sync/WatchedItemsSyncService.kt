@@ -58,7 +58,7 @@ class WatchedItemsSyncService @Inject constructor(
 
     private suspend fun markPushSucceeded(profileId: Int) {
         val now = System.currentTimeMillis()
-        watchedItemsPreferences.setLastSuccessfulPushMs(now, profileId)
+        watchedItemsPreferences.advanceLastSuccessfulPushMs(now, profileId)
     }
 
     private suspend fun <T> withJwtRefreshRetry(block: suspend () -> T): T {

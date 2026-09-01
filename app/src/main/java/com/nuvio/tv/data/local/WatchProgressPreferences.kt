@@ -90,9 +90,15 @@ class WatchProgressPreferences @Inject constructor(
         return prefs[lastSuccessfulPushMsKey] ?: 0L
     }
 
-    suspend fun setLastSuccessfulPushMs(timestampMs: Long, profileId: Int = profileManager.activeProfileId.value) {
+    /**
+     * Advances the stored push point, never lowering it. The comparison happens inside
+     * the edit, so two pushes finishing out of order cannot leave the older one on disk.
+     * Nothing needs to lower it: deleting a profile removes the whole store.
+     */
+    suspend fun advanceLastSuccessfulPushMs(timestampMs: Long, profileId: Int = profileManager.activeProfileId.value) {
         metadataStore(profileId).edit { prefs ->
-            prefs[lastSuccessfulPushMsKey] = timestampMs
+            val stored = prefs[lastSuccessfulPushMsKey] ?: 0L
+            prefs[lastSuccessfulPushMsKey] = maxOf(stored, timestampMs)
         }
     }
 
@@ -445,6 +451,7 @@ class WatchProgressPreferences @Inject constructor(
         remoteEntries: Map<String, WatchProgress>,
         pendingUpsertKeys: Set<String> = emptySet(),
         pendingDeleteKeys: Set<String> = emptySet(),
+        lastSuccessfulPushMs: Long? = null,
         profileId: Int = profileManager.activeProfileId.value,
         removeMissingRemoteEntries: Boolean = true,
         isNonTraktId: ((String) -> Boolean)? = null
@@ -467,6 +474,8 @@ class WatchProgressPreferences @Inject constructor(
                     } else if (key in pendingUpsertKeys) {
                         Log.d("WatchProgressPrefs", "  preserved pending key=$key")
                         preservedLocalItems = true
+                    } else if (localEntry != null && lastSuccessfulPushMs != null && localEntry.lastWatched > lastSuccessfulPushMs) {
+                        preservedLocalItems = true
                     } else {
                         local.remove(key)
                         Log.d("WatchProgressPrefs", "  removed key=$key (not in remote)")
@@ -479,6 +488,13 @@ class WatchProgressPreferences @Inject constructor(
                 when {
                     key in pendingDeleteKeys -> local.remove(key)
                     key in pendingUpsertKeys && existing != null -> preservedLocalItems = true
+                    existing != null &&
+                        lastSuccessfulPushMs != null &&
+                        remote.lastWatched <= existing.lastWatched -> {
+                        if (existing.lastWatched > remote.lastWatched && existing.lastWatched > lastSuccessfulPushMs) {
+                            preservedLocalItems = true
+                        }
+                    }
                     else -> {
                         local[key] = mergeDisplayMetadata(remote, existing)
                         Log.d("WatchProgressPrefs", "  merged key=$key (existing=${existing != null})")
@@ -498,6 +514,7 @@ class WatchProgressPreferences @Inject constructor(
         deletes: Collection<String>,
         pendingUpsertKeys: Set<String> = emptySet(),
         pendingDeleteKeys: Set<String> = emptySet(),
+        lastSuccessfulPushMs: Long? = null,
         profileId: Int = profileManager.activeProfileId.value
     ): Boolean {
         if (upserts.isEmpty() && deletes.isEmpty()) {
@@ -526,6 +543,13 @@ class WatchProgressPreferences @Inject constructor(
                 when {
                     key in pendingDeleteKeys -> local.remove(key)
                     key in pendingUpsertKeys && existing != null -> preservedLocalItems = true
+                    existing != null &&
+                        lastSuccessfulPushMs != null &&
+                        remote.lastWatched <= existing.lastWatched -> {
+                        if (existing.lastWatched > remote.lastWatched && existing.lastWatched > lastSuccessfulPushMs) {
+                            preservedLocalItems = true
+                        }
+                    }
                     else -> local[key] = mergeDisplayMetadata(remote, existing)
                 }
             }
