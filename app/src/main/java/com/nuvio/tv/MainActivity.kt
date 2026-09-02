@@ -1930,7 +1930,21 @@ private fun ModernSidebarScaffold(
                             }
 
                             Key.DirectionDown -> {
-                                focusedDrawerIndex == drawerItems.lastIndex
+                                if (focusedDrawerIndex == drawerItems.lastIndex) {
+                                    // Already at the bottom drawer item — stay put.
+                                    true
+                                } else if (focusedDrawerIndex == drawerItems.size && hasSidebarProfileItem) {
+                                    // Profile → first drawer item: skip moveFocus (the
+                                    // Spacer gap causes it to land in content) and
+                                    // request the first drawer item directly.
+                                    drawerItems.firstOrNull()?.route?.let { route ->
+                                        drawerItemFocusRequesters[route]?.requestFocus()
+                                    }
+                                    true
+                                } else {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
                             }
 
                             Key.DirectionRight, Key.DirectionLeft -> {
