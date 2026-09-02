@@ -1498,9 +1498,25 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier.fillMaxSize()
             ) {
+                val isCurrentSubtitleAss = run {
+                    val addon = uiState.selectedAddonSubtitle
+                    if (addon != null) {
+                        val url = addon.url.lowercase(java.util.Locale.US)
+                        return@run url.contains(".ass") || url.contains(".ssa")
+                    }
+                    val track = uiState.subtitleTracks.getOrNull(uiState.selectedSubtitleTrackIndex)
+                    if (track != null) {
+                        val codec = track.codec?.lowercase(java.util.Locale.US).orEmpty()
+                        return@run codec.contains("ass") || codec.contains("ssa") || track.name.contains("ASS", ignoreCase = true)
+                    }
+                    false
+                }
+                val isAssWithLibass = uiState.useLibass && isCurrentSubtitleAss
+
                 SubtitleStyleSidePanel(
                     subtitleStyle = uiState.subtitleStyle,
-                    onEvent = { viewModel.onEvent(it) },
+                    onEvent = { if (!isAssWithLibass) viewModel.onEvent(it) },
+                    isStyleDisabledByLibass = isAssWithLibass,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                 )
@@ -1543,6 +1559,7 @@ fun PlayerScreen(
             subtitleDelayMs = uiState.subtitleDelayMs,
             installedSubtitleAddonOrder = uiState.installedSubtitleAddonOrder,
             isLoadingAddons = uiState.isLoadingAddonSubtitles,
+            useLibass = uiState.useLibass,
             onInternalTrackSelected = { viewModel.onEvent(PlayerEvent.OnSelectSubtitleTrack(it)) },
             onAddonSubtitleSelected = { viewModel.onEvent(PlayerEvent.OnSelectAddonSubtitle(it)) },
             onDisableSubtitles = { viewModel.onEvent(PlayerEvent.OnDisableSubtitles) },
