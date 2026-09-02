@@ -2036,18 +2036,12 @@ private fun CollapsedSidebarPill(
     val bgCard = colors.BackgroundCard
     val borderBase = colors.Border
     val mediaColors = colors.media
-    val pillBackgroundBrush = remember(blurEnabled, bgElevated, bgCard) {
-        if (blurEnabled) {
-            Brush.verticalGradient(listOf(
-                Color(0xFF1C1C1E).copy(alpha = 0.55f),
-                Color(0xFF1C1C1E).copy(alpha = 0.55f)
-            ))
-        } else {
-            Brush.verticalGradient(listOf(bgElevated, bgCard))
-        }
-    }
-    val pillBorderColor = remember(blurEnabled, borderBase) {
-        if (blurEnabled) NuvioPrimitives.white.copy(alpha = 0.14f) else borderBase.copy(alpha = 0.9f)
+    val pillBackgroundBrush = remember(blurEnabled) {
+        val alpha = if (blurEnabled) 0.55f else 0.96f
+        Brush.verticalGradient(listOf(
+            Color(0xFF1C1C1E).copy(alpha = alpha),
+            Color(0xFF1C1C1E).copy(alpha = alpha)
+        ))
     }
 
     Row(
@@ -2084,10 +2078,6 @@ private fun CollapsedSidebarPill(
                     }
                 )
                 .background(brush = pillBackgroundBrush, shape = pillShape)
-                .then(
-                    if (!blurEnabled) Modifier.border(width = NuvioStrokes.tokens.hairline, color = pillBorderColor, shape = pillShape)
-                    else Modifier
-                )
         ) {
             Row(
                 modifier = Modifier

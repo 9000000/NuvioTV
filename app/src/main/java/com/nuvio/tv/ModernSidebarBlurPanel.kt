@@ -107,18 +107,12 @@ internal fun ModernSidebarBlurPanel(
     val bgElevated = colors.BackgroundElevated
     val bgCard = colors.BackgroundCard
     val borderBase = colors.Border
-    val panelBackgroundBrush = remember(blurEnabled, bgElevated, bgCard) {
-        if (blurEnabled) {
-            Brush.verticalGradient(listOf(
-                Color(0xFF1C1C1E).copy(alpha = 0.55f),
-                Color(0xFF1C1C1E).copy(alpha = 0.55f)
-            ))
-        } else {
-            Brush.verticalGradient(listOf(bgElevated, bgCard))
-        }
-    }
-    val panelBorderColor = remember(blurEnabled, borderBase) {
-        if (blurEnabled) colors.text.onOverlay.copy(alpha = 0.14f) else borderBase.copy(alpha = 0.9f)
+    val panelBackgroundBrush = remember(blurEnabled) {
+        val alpha = if (blurEnabled) 0.55f else 0.96f
+        Brush.verticalGradient(listOf(
+            Color(0xFF1C1C1E).copy(alpha = alpha),
+            Color(0xFF1C1C1E).copy(alpha = alpha)
+        ))
     }
 
     Column(
@@ -135,10 +129,6 @@ internal fun ModernSidebarBlurPanel(
             .clip(panelShape)
             .then(expandedPanelBlurModifier)
             .background(brush = panelBackgroundBrush, shape = panelShape)
-            .then(
-                if (blurEnabled) Modifier
-                else Modifier.border(width = NuvioStrokes.tokens.hairline, color = panelBorderColor, shape = panelShape)
-            )
             .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs)
     ) {
         if (showProfileSelector && activeProfileName.isNotEmpty()) {
