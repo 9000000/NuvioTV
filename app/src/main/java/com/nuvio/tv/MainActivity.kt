@@ -1680,11 +1680,6 @@ private fun ModernSidebarScaffold(
         label = "sidebarSurfaceAlpha"
     )
     val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled
-    LaunchedEffect(isSidebarExpanded, shouldApplySidebarHaze, currentRoute) {
-        if (isSidebarExpanded) {
-            Log.d("HazeDebug", "Sidebar opened: route=$currentRoute showSidebar=$showSidebar blurEnabled=$modernSidebarBlurEnabled hazeActive=$shouldApplySidebarHaze")
-        }
-    }
     val sidebarTransition = updateTransition(
         targetState = isSidebarExpanded,
         label = "sidebarTransition"
@@ -1919,7 +1914,14 @@ private fun ModernSidebarScaffold(
                         }
                         when (keyEvent.key) {
                             Key.DirectionUp -> {
-                                focusedDrawerIndex == sidebarTopBoundaryIndex
+                                if (focusedDrawerIndex == sidebarTopBoundaryIndex) {
+                                    true
+                                } else {
+                                    // Move focus within the sidebar; consume unconditionally
+                                    // so focus never escapes into the content behind.
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                    true
+                                }
                             }
 
                             Key.DirectionDown -> {

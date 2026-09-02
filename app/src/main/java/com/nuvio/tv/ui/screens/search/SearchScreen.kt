@@ -497,7 +497,8 @@ fun SearchScreen(
 
     Box(
         modifier = Modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            .background(NuvioTheme.colors.Background),
         contentAlignment = Alignment.TopCenter
     ) {
         val listState = rememberLazyListState()

@@ -1,6 +1,7 @@
 package com.nuvio.tv
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -264,10 +265,20 @@ private fun SidebarNavigationItem(
         animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
         label = "sidebarItemIconTint"
     )
+    val itemScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.1f else 1f,
+        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
+        label = "sidebarItemScale"
+    )
 
     Card(
         onClick = onClick,
         modifier = modifier
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+                transformOrigin = TransformOrigin.Center
+            }
             .onFocusChanged {
                 isFocused = it.hasFocus
                 onFocusChanged(it.hasFocus)
@@ -284,7 +295,8 @@ private fun SidebarNavigationItem(
                 shape = shape
             )
         ),
-        shape = CardDefaults.shape(shape = shape)
+        shape = CardDefaults.shape(shape = shape),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
             modifier = Modifier
@@ -376,7 +388,8 @@ private fun SidebarProfileItem(
                 shape = shape
             )
         ),
-        shape = CardDefaults.shape(shape = shape)
+        shape = CardDefaults.shape(shape = shape),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
             modifier = Modifier
