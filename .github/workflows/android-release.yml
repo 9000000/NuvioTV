@@ -157,6 +157,9 @@ jobs:
 
           if [[ -n "${RELEASE_KEYSTORE_BASE64}" ]]; then
             printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
+          elif [[ -f "keystore/release.jks" ]]; then
+            echo "Using persistent repository release keystore..."
+            cp "keystore/release.jks" "${keystore_path}"
           else
             echo "Generating self-signed release keystore for CI build..."
             keytool -genkeypair \
