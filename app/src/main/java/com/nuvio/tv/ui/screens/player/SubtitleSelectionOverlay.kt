@@ -106,6 +106,7 @@ internal fun SubtitleSelectionOverlay(
     installedSubtitleAddonOrder: List<String>,
     isLoadingAddons: Boolean,
     useLibass: Boolean = false,
+    isUsingMpv: Boolean = false,
     onInternalTrackSelected: (Int) -> Unit,
     onAddonSubtitleSelected: (Subtitle) -> Unit,
     onDisableSubtitles: () -> Unit,
@@ -264,15 +265,16 @@ internal fun SubtitleSelectionOverlay(
     }
     val isStyleDisabledByLibass = remember(
         useLibass,
+        isUsingMpv,
         subtitleOptions,
         selectedOptionId,
         sessionInternalTracks,
         sessionSelectedInternalIndex,
         sessionSelectedAddonSubtitle
     ) {
-        if (!useLibass) return@remember false
+        if (!useLibass && !isUsingMpv) return@remember false
         val selectedOption = subtitleOptions.firstOrNull { it.id == selectedOptionId }
-        when (selectedOption?.kind) {
+        val isAss = when (selectedOption?.kind) {
             SubtitleOptionKind.INTERNAL -> {
                 val track = selectedOption.internalTrackIndex?.let { sessionInternalTracks.getOrNull(it) }
                 val codec = track?.codec?.lowercase(java.util.Locale.US).orEmpty()
@@ -291,6 +293,7 @@ internal fun SubtitleSelectionOverlay(
                     addonUrl.contains(".ass") || addonUrl.contains(".ssa")
             }
         }
+        isAss && (isUsingMpv || useLibass)
     }
 
     fun requestLanguageFocus(targetKey: String?) {

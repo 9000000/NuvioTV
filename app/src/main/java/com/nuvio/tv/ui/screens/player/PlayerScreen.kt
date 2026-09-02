@@ -1511,12 +1511,13 @@ fun PlayerScreen(
                     }
                     false
                 }
-                val isAssWithLibass = uiState.useLibass && isCurrentSubtitleAss
+                val isUsingMpv = uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER
+                val isAssDisabled = isCurrentSubtitleAss && (isUsingMpv || uiState.useLibass)
 
                 SubtitleStyleSidePanel(
                     subtitleStyle = uiState.subtitleStyle,
-                    onEvent = { if (!isAssWithLibass) viewModel.onEvent(it) },
-                    isStyleDisabledByLibass = isAssWithLibass,
+                    onEvent = { if (!isAssDisabled) viewModel.onEvent(it) },
+                    isStyleDisabledByLibass = isAssDisabled,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                 )
@@ -1560,6 +1561,7 @@ fun PlayerScreen(
             installedSubtitleAddonOrder = uiState.installedSubtitleAddonOrder,
             isLoadingAddons = uiState.isLoadingAddonSubtitles,
             useLibass = uiState.useLibass,
+            isUsingMpv = uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER,
             onInternalTrackSelected = { viewModel.onEvent(PlayerEvent.OnSelectSubtitleTrack(it)) },
             onAddonSubtitleSelected = { viewModel.onEvent(PlayerEvent.OnSelectAddonSubtitle(it)) },
             onDisableSubtitles = { viewModel.onEvent(PlayerEvent.OnDisableSubtitles) },
