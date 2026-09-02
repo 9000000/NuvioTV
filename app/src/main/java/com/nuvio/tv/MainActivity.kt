@@ -58,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -1579,6 +1580,7 @@ private fun ModernSidebarScaffold(
     var pendingSidebarFocusRequest by remember { mutableStateOf(false) }
     var focusedDrawerIndex by remember { mutableStateOf(-1) }
     var isFloatingPillIconOnly by remember { mutableStateOf(false) }
+    var pillExpandRequestCount by remember { mutableIntStateOf(0) }
     val keepFloatingPillExpanded = selectedDrawerRoute == Screen.Settings.route
     val keepSidebarFocusDuringCollapse =
         isSidebarExpanded || sidebarCollapsePending || pendingContentFocusTransfer
@@ -1639,7 +1641,7 @@ private fun ModernSidebarScaffold(
     // its label (DPAD UP from content) and then leaves it idle. The DPAD DOWN
     // path already collapses it instantly, this just covers the case where the
     // user releases UP and walks away.
-    LaunchedEffect(isFloatingPillIconOnly, keepFloatingPillExpanded, showSidebar, isSidebarExpanded) {
+    LaunchedEffect(isFloatingPillIconOnly, keepFloatingPillExpanded, showSidebar, isSidebarExpanded, pillExpandRequestCount) {
         if (!showSidebar || isFloatingPillIconOnly || keepFloatingPillExpanded || isSidebarExpanded) {
             return@LaunchedEffect
         }
@@ -1852,7 +1854,10 @@ private fun ModernSidebarScaffold(
                         if (!keepFloatingPillExpanded) {
                             when (keyEvent.key) {
                                 Key.DirectionDown -> isFloatingPillIconOnly = true
-                                Key.DirectionUp -> isFloatingPillIconOnly = false
+                                Key.DirectionUp -> {
+                                    isFloatingPillIconOnly = false
+                                    pillExpandRequestCount++
+                                }
                                 else -> Unit
                             }
                         }
