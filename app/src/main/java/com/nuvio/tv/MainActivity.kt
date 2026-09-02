@@ -177,7 +177,8 @@ import com.nuvio.tv.updater.UpdateViewModel
 import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.delay
@@ -1594,6 +1595,13 @@ private fun ModernSidebarScaffold(
         }
     }
 
+    // Collapse sidebar when navigating between root routes (e.g. Settings -> Home via Back)
+    LaunchedEffect(currentRoute) {
+        if (isSidebarExpanded && showSidebar) {
+            sidebarCollapsePending = true
+        }
+    }
+
     LaunchedEffect(keepFloatingPillExpanded, showSidebar) {
         if (!showSidebar || keepFloatingPillExpanded) {
             isFloatingPillIconOnly = false
@@ -1671,9 +1679,12 @@ private fun ModernSidebarScaffold(
         animationSpec = tween(durationMillis = animationDuration, easing = animationEasing),
         label = "sidebarSurfaceAlpha"
     )
-    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled && (
-        isSidebarExpanded || sidebarCollapsePending
-        )
+    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled
+    LaunchedEffect(isSidebarExpanded, shouldApplySidebarHaze, currentRoute) {
+        if (isSidebarExpanded) {
+            Log.d("HazeDebug", "Sidebar opened: route=$currentRoute showSidebar=$showSidebar blurEnabled=$modernSidebarBlurEnabled hazeActive=$shouldApplySidebarHaze")
+        }
+    }
     val sidebarTransition = updateTransition(
         targetState = isSidebarExpanded,
         label = "sidebarTransition"
@@ -1800,6 +1811,10 @@ private fun ModernSidebarScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (shouldApplySidebarHaze) Modifier.hazeSource(state = sidebarHazeState)
+                    else Modifier
+                )
                 .onPreviewKeyEvent { keyEvent ->
                     // Long-press Back on a root route directly opens the sidebar,
                     // bypassing the "scroll row to start" BackHandler in home content.
@@ -1974,6 +1989,7 @@ private fun ModernSidebarScaffold(
                     icon = selectedDrawerItem.icon,
                     iconOnly = isFloatingPillIconOnly && !keepFloatingPillExpanded,
                     blurEnabled = modernSidebarBlurEnabled,
+                    hazeState = if (modernSidebarBlurEnabled) sidebarHazeState else null,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset {
@@ -2008,6 +2024,7 @@ private fun CollapsedSidebarPill(
     icon: ImageVector?,
     iconOnly: Boolean,
     blurEnabled: Boolean,
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
     onExpand: () -> Unit
 ) {
@@ -2017,9 +2034,12 @@ private fun CollapsedSidebarPill(
     val bgCard = colors.BackgroundCard
     val borderBase = colors.Border
     val mediaColors = colors.media
-    val pillBackgroundBrush = remember(blurEnabled, bgElevated, bgCard, mediaColors) {
+    val pillBackgroundBrush = remember(blurEnabled, bgElevated, bgCard) {
         if (blurEnabled) {
-            Brush.verticalGradient(listOf(mediaColors.glassPanelTop, mediaColors.glassPanelBottom))
+            Brush.verticalGradient(listOf(
+                Color(0xFF1C1C1E).copy(alpha = 0.55f),
+                Color(0xFF1C1C1E).copy(alpha = 0.55f)
+            ))
         } else {
             Brush.verticalGradient(listOf(bgElevated, bgCard))
         }
@@ -2051,13 +2071,21 @@ private fun CollapsedSidebarPill(
         Box(
             modifier = Modifier
                 .height(NuvioTheme.sizes.player.control)
-                .graphicsLayer {
-                    shape = pillShape
-                    clip = true
-                }
                 .clip(pillShape)
+                .then(
+                    if (blurEnabled && hazeState != null) {
+                        Modifier.hazeEffect(state = hazeState) {
+                            blurRadius = 24.dp
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .background(brush = pillBackgroundBrush, shape = pillShape)
-                .border(width = NuvioStrokes.tokens.hairline, color = pillBorderColor, shape = pillShape)
+                .then(
+                    if (!blurEnabled) Modifier.border(width = NuvioStrokes.tokens.hairline, color = pillBorderColor, shape = pillShape)
+                    else Modifier
+                )
         ) {
             Row(
                 modifier = Modifier
@@ -2069,9 +2097,7 @@ private fun CollapsedSidebarPill(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(NuvioTheme.sizes.sidebar.leadingVisual)
-                        .clip(CircleShape)
-                        .background(NuvioTheme.colors.SurfaceVariant),
+                        .size(NuvioTheme.sizes.sidebar.leadingVisual),
                     contentAlignment = Alignment.Center
                 ) {
                     DrawerItemIcon(
