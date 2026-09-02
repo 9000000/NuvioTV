@@ -201,6 +201,36 @@ jobs:
           if ! grep -Eq "^[[:space:]]*TRAKT_CLIENT_SECRET[[:space:]]*=" local.properties; then
             set_property TRAKT_CLIENT_SECRET "placeholder_trakt_client_secret"
           fi
+          if ! grep -Eq "^[[:space:]]*SUPABASE_URL[[:space:]]*=" local.properties; then
+            set_property SUPABASE_URL "https://api.nuvio.tv"
+          fi
+          if ! grep -Eq "^[[:space:]]*SUPABASE_ANON_KEY[[:space:]]*=" local.properties; then
+            set_property SUPABASE_ANON_KEY "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgxNTIxMzQ2LCJleHAiOjE5MzkyMDEzNDZ9.tmQaj682pwzehpqlgCDMnySOqiUvpgRbrE43T4VJpDI"
+          fi
+          if ! grep -Eq "^[[:space:]]*SUPABASE_FALLBACK_URL[[:space:]]*=" local.properties; then
+            set_property SUPABASE_FALLBACK_URL "https://api-two.nuvioapp.space"
+          fi
+          if ! grep -Eq "^[[:space:]]*AVATAR_PUBLIC_BASE_URL[[:space:]]*=" local.properties; then
+            set_property AVATAR_PUBLIC_BASE_URL "https://api.nuvio.tv/storage/v1/object/public/avatars"
+          fi
+          if ! grep -Eq "^[[:space:]]*TRAILER_API_URL[[:space:]]*=" local.properties; then
+            set_property TRAILER_API_URL "https://trailer2.nuvioapp.space/"
+          fi
+          if ! grep -Eq "^[[:space:]]*TV_LOGIN_WEB_BASE_URL[[:space:]]*=" local.properties; then
+            set_property TV_LOGIN_WEB_BASE_URL "https://nuvio.tv/tv-login"
+          fi
+          if ! grep -Eq "^[[:space:]]*DEVICE_LOGIN_WEB_BASE_URL[[:space:]]*=" local.properties; then
+            set_property DEVICE_LOGIN_WEB_BASE_URL "https://nuvio.tv/link"
+          fi
+          if ! grep -Eq "^[[:space:]]*SUPPORTERS_API_BASE_URL[[:space:]]*=" local.properties; then
+            set_property SUPPORTERS_API_BASE_URL "https://nuvio.tv/"
+          fi
+          if ! grep -Eq "^[[:space:]]*SUPPORT_URL[[:space:]]*=" local.properties; then
+            set_property SUPPORT_URL "https://nuvio.tv/support"
+          fi
+          if ! grep -Eq "^[[:space:]]*PLAYBACK_REPORTS_BASE_URL[[:space:]]*=" local.properties; then
+            set_property PLAYBACK_REPORTS_BASE_URL "https://nuvio.tv/"
+          fi
 
       - name: Test updater and build full release APKs
         if: inputs.mode != 'dry-run'
