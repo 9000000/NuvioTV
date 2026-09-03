@@ -12,6 +12,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -191,7 +194,7 @@ import kotlinx.coroutines.launch
 val LocalSidebarExpanded = compositionLocalOf { false }
 val LocalContentFocusRequester = compositionLocalOf { FocusRequester.Default }
 
-private const val SIDEBAR_AUTO_COLLAPSE_DELAY_MS = 4_000L
+private const val SIDEBAR_AUTO_COLLAPSE_DELAY_MS = 3_000L
 
 private const val MAX_SUPPORTED_FONT_SCALE = 1.15f
 
@@ -1659,10 +1662,7 @@ private fun ModernSidebarScaffold(
     val sidebarWidth by animateDpAsState(
         targetValue = targetSidebarWidth,
         animationSpec = if (isSidebarExpanded) {
-            keyframes {
-                durationMillis = 365
-                (openSidebarWidth + NuvioTheme.spacing.md) at 175
-            }
+            tween(durationMillis = NuvioMotion.tokens.durations.sidebarEnter, easing = FastOutSlowInEasing)
         } else {
             tween(durationMillis = NuvioMotion.tokens.durations.sidebarEnter, easing = NuvioMotion.tokens.easings.decelerate)
         },
@@ -2056,7 +2056,7 @@ private fun CollapsedSidebarPill(
     val borderBase = colors.Border
     val mediaColors = colors.media
     val pillBackgroundBrush = remember(blurEnabled) {
-        val alpha = if (blurEnabled) 0.55f else 0.96f
+        val alpha = if (blurEnabled) 0.65f else 0.96f
         Brush.verticalGradient(listOf(
             Color(0xFF1C1C1E).copy(alpha = alpha),
             Color(0xFF1C1C1E).copy(alpha = alpha)
@@ -2066,23 +2066,10 @@ private fun CollapsedSidebarPill(
     Row(
         modifier = modifier
             .focusProperties { canFocus = false }
-            .animateContentSize()
             .clickable(onClick = onExpand)
             .padding(horizontal = NuvioTheme.spacing.hairline, vertical = NuvioTheme.spacing.xxs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(0.25.dp)
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!iconOnly) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_chevron_compact_left),
-                contentDescription = stringResource(R.string.cd_expand_sidebar),
-                modifier = Modifier
-                    .width(8.5.dp)
-                    .height(NuvioTheme.spacing.lg)
-                    .offset(y = (-0.5).dp)
-            )
-        }
-
         Box(
             modifier = Modifier
                 .height(NuvioTheme.sizes.player.control)
@@ -2102,9 +2089,8 @@ private fun CollapsedSidebarPill(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
-                    .padding(start = 5.dp, end = if (iconOnly) 5.dp else NuvioTheme.spacing.md),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(if (iconOnly) NuvioTheme.spacing.none else 9.dp)
+                    .padding(start = 5.dp, end = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
@@ -2121,14 +2107,28 @@ private fun CollapsedSidebarPill(
                     )
                 }
 
-                if (!iconOnly) {
+                AnimatedVisibility(
+                    visible = !iconOnly,
+                    enter = expandHorizontally(
+                            animationSpec = tween(NuvioMotion.tokens.durations.fast, easing = FastOutSlowInEasing),
+                            expandFrom = Alignment.Start,
+                            clip = true
+                        ),
+                    exit = shrinkHorizontally(
+                            animationSpec = tween(NuvioMotion.tokens.durations.fast, easing = FastOutSlowInEasing),
+                            shrinkTowards = Alignment.Start,
+                            clip = true
+                        )
+                ) {
                     Text(
                         text = label,
                         color = NuvioTheme.colors.text.onOverlay,
                         style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
                             lineHeight = 30.sp
                         ),
-                        modifier = Modifier.offset(y = (-0.5).dp),
+                        modifier = Modifier
+                            .padding(start = 9.dp, end = NuvioTheme.spacing.md - 5.dp)
+                            .offset(y = (-0.5).dp),
                         maxLines = 1
                     )
                 }
