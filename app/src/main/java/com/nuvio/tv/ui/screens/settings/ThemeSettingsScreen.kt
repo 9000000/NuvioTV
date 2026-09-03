@@ -116,9 +116,9 @@ fun ThemeSettingsContent(
         }.sortedBy { it.second }
     }
     var selectedTag by remember {
-        mutableStateOf<String?>(
+        mutableStateOf(
             context.getSharedPreferences("app_locale", android.content.Context.MODE_PRIVATE)
-                .getString("locale_tag", "en")?.takeIf { it.isNotEmpty() } ?: "en"
+                .getString("locale_tag", null)?.takeIf { it.isNotEmpty() }
         )
     }
     val currentLocaleName = supportedLocales.firstOrNull { it.first == selectedTag }?.second ?: stringResource(R.string.appearance_language_system)
