@@ -14,6 +14,15 @@ import org.junit.Test
 
 class PostPlayRecommendationStateTest {
     @Test
+    fun `low-ram tier prefetches only the card on screen`() {
+        assertEquals(0..3, postPlayPrefetchIndices(count = 4, currentIndex = 0, isLowRam = false))
+        assertEquals(0..0, postPlayPrefetchIndices(count = 4, currentIndex = 0, isLowRam = true))
+        assertEquals(2..2, postPlayPrefetchIndices(count = 4, currentIndex = 2, isLowRam = true))
+        assertEquals(IntRange.EMPTY, postPlayPrefetchIndices(count = 0, currentIndex = 0, isLowRam = false))
+        assertEquals(IntRange.EMPTY, postPlayPrefetchIndices(count = 4, currentIndex = 9, isLowRam = true))
+    }
+
+    @Test
     fun `prefetches in final ten minutes`() {
         assertTrue(
             shouldPrefetchPostPlayRecommendation(
@@ -46,7 +55,7 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
-    fun `loaded recommendation holds natural completion until overlay evaluation`() {
+    fun `only a shown recommendation holds natural completion`() {
         val recommendation = PostPlayRecommendation(
             id = "tmdb:1",
             contentType = "movie",
@@ -61,7 +70,13 @@ class PostPlayRecommendationStateTest {
             runtime = null
         )
 
-        assertTrue(PostPlayRecommendationUiState(recommendation = recommendation).blocksNaturalCompletion)
+        // A loaded recommendation on its own must not hold it: the overlay is armed before
+        // playback ends, and blocking on the loaded card left the player stuck on the last frame
+        // once the user had returned to it.
+        val loaded = PostPlayRecommendationUiState(recommendation = recommendation)
+        assertFalse(loaded.blocksNaturalCompletion)
+        assertTrue(loaded.copy(isVisible = true).blocksNaturalCompletion)
+        assertTrue(loaded.copy(isLoadingRecommendation = true).blocksNaturalCompletion)
     }
 
     @Test
@@ -85,7 +100,8 @@ class PostPlayRecommendationStateTest {
         assertFalse(state.copy(isVisible = false).canReturnToPlayer)
         assertFalse(returned.isVisible)
         assertTrue(returned.hasReturnedToPlayer)
-        assertTrue(returned.blocksNaturalCompletion)
+        // Playback that ends again after the return must complete naturally.
+        assertFalse(returned.blocksNaturalCompletion)
     }
 
     @Test

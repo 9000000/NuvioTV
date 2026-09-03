@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.ScrubbingModeParameters
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import com.nuvio.tv.core.device.DeviceMemoryTier
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.ui.screens.settings.MemoryBudget
 
@@ -98,7 +99,7 @@ object NuvioExoPlayerPerformanceHelper {
         bufferForPlaybackAfterRebufferMs = if (customBuffers) bufferSettings.bufferForPlaybackAfterRebufferMs else 3_000
         backBufferMs = if (customBuffers) bufferSettings.backBufferDurationMs else DEFAULT_NUVIO_BACK_BUFFER_MS
 
-        val safeLimitMb = getSafeNativeMemoryLimitMb(context)
+        val safeLimitMb = getSafeNativeMemoryLimitMb(DeviceMemoryTier.totalRamBytes)
         targetBufferSizeMb = if (customBuffers && !settings.bufferBudgetManaged) {
             val storedSize = bufferSettings.targetBufferSizeMb
             if (!settings.allowLargeTargetBuffer && storedSize > safeLimitMb) {
@@ -222,8 +223,7 @@ object NuvioExoPlayerPerformanceHelper {
      * Gets a friendly, marketed description of the device physical memory.
      * Uses mid-point boundaries adjusted for up to 20% hardware reservations.
      */
-    fun getFriendlyRamLabel(context: Context): String {
-        val totalMem = getDevicePhysicalRamBytes(context)
+    fun getFriendlyRamLabel(totalMem: Long): String {
         val gb = 1024L * 1024L * 1024L
         return when {
             totalMem <= 0L -> "Unknown"
@@ -239,11 +239,13 @@ object NuvioExoPlayerPerformanceHelper {
         }
     }
 
+    fun getFriendlyRamLabel(context: Context): String =
+        getFriendlyRamLabel(getDevicePhysicalRamBytes(context).takeIf { it > 0L } ?: DeviceMemoryTier.totalRamBytes)
+
     /**
      * Calculates the safe ExoPlayer native target buffer size limit in MB based on RAM tier thresholds.
      */
-    fun getSafeNativeMemoryLimitMb(context: Context): Int {
-        val totalMem = getDevicePhysicalRamBytes(context)
+    fun getSafeNativeMemoryLimitMb(totalMem: Long): Int {
         val gb = 1024L * 1024L * 1024L
         return when {
             totalMem <= 0L -> 250 // Safe default
@@ -257,11 +259,13 @@ object NuvioExoPlayerPerformanceHelper {
         }
     }
 
+    fun getSafeNativeMemoryLimitMb(context: Context): Int =
+        getSafeNativeMemoryLimitMb(getDevicePhysicalRamBytes(context).takeIf { it > 0L } ?: DeviceMemoryTier.totalRamBytes)
+
     /**
      * Calculates the warning native target buffer size limit in MB based on RAM tier thresholds.
      */
-    fun getWarningNativeMemoryLimitMb(context: Context): Int {
-        val totalMem = getDevicePhysicalRamBytes(context)
+    fun getWarningNativeMemoryLimitMb(totalMem: Long): Int {
         val gb = 1024L * 1024L * 1024L
         return when {
             totalMem <= 0L -> 325
@@ -274,6 +278,9 @@ object NuvioExoPlayerPerformanceHelper {
             else -> 2500
         }
     }
+
+    fun getWarningNativeMemoryLimitMb(context: Context): Int =
+        getWarningNativeMemoryLimitMb(getDevicePhysicalRamBytes(context).takeIf { it > 0L } ?: DeviceMemoryTier.totalRamBytes)
 
     /**
      * Builds a [DefaultLoadControl] tuned for Nuvio performance when enabled,

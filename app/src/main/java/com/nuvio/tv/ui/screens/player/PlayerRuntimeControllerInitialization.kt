@@ -523,6 +523,23 @@ internal fun PlayerRuntimeController.initializePlayer(
                     budgetBytes = budgetBytes,
                     allocator = allocator
                 ).also { currentBitrateAwareLoadControl = it }
+            } else if (MemoryBudget.isLowRamTier) {
+                // Byte cap is the device heap budget, not a flat number: a flat 48MB is 5s
+                // of an 80 Mbps remux, so the cap fired before minBufferMs and playback ran
+                // on a ~4s buffer.
+                effectiveBackBufferDurationMs = 5_000
+                currentBitrateAwareLoadControl = null
+                Log.i(
+                    PlayerRuntimeController.TAG,
+                    "BUFFER_GATE: engine=exo-lowram; DefaultLoadControl " +
+                            "(${MemoryBudget.budgetMb}MB/15-40s/5s back) host=${url.safeHost()}"
+                )
+                DefaultLoadControl.Builder()
+                    .setTargetBufferBytes(MemoryBudget.budgetMb * 1024 * 1024)
+                    .setBufferDurationsMs(15_000, 40_000, 2_500, 5_000)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .setBackBuffer(5_000, /* retainBackBufferFromKeyframe = */ true)
+                    .build()
             } else {
                 // Stock LoadControl: DefaultLoadControl configured with 1.5s back buffer so 1s rewind doesn't clear buffer.
                 effectiveBackBufferDurationMs = 1_500
@@ -552,9 +569,16 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
 
             if (playerSettings.parallelNetworkEnabled) {
+                // Clamped here because this is the one place these reach the allocator.
+                val (parallelConnections, parallelChunkKb) = MemoryBudget.clampParallel(
+                    connectionCount = playerSettings.parallelConnectionCount,
+                    chunkKb = playerSettings.parallelChunkSizeKb,
+                    bufferMb = MemoryBudget.effectiveBufferMb(playerSettings.bufferSettings.targetBufferSizeMb),
+                    isLowRamTier = MemoryBudget.isLowRamTier
+                )
                 mediaSourceFactory.useParallelConnections = playerSettings.useParallelConnections
-                mediaSourceFactory.parallelConnectionCount = playerSettings.parallelConnectionCount
-                mediaSourceFactory.parallelChunkSizeKb = playerSettings.parallelChunkSizeKb
+                mediaSourceFactory.parallelConnectionCount = parallelConnections
+                mediaSourceFactory.parallelChunkSizeKb = parallelChunkKb
                 mediaSourceFactory.nuvioPerformanceModeEnabled = playerSettings.nuvioPerformanceModeEnabled
             } else {
                 // Reset each playback so the factory doesn't keep last stream's state.
