@@ -42,6 +42,7 @@ db/
 backups/
 .supabase_db.env
 scripts/*
+!scripts/adb-optimize.sh
 !scripts/generate-release-notes.sh
 !scripts/generate_release_notes.py
 !scripts/release_notes/

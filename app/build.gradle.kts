@@ -382,9 +382,9 @@ baselineProfile {
     saveInSrc = true
     mergeIntoMain = true
     baselineProfileOutputDir = "generated/baselineProfiles"
-    filter {
-        include("com.nuvio.tv.**")
-    }
+    // No filter: the hot startup classes are Compose, Coroutines, OkHttp and Hilt, so
+    // restricting the profile to com.nuvio.tv.** would strip most of what AOT should
+    // cover. The committed profile predates this block and is unfiltered; keep it that way.
 }
 
 sentry {

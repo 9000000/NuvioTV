@@ -282,20 +282,13 @@ open class MainActivity : ComponentActivity() {
 
     @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
     override fun attachBaseContext(newBase: Context) {
-        val tag = LocaleCache.localeTag.takeIf { it != LocaleCache.UNSET }
+        val tag = LocaleCache.localeTag.takeIf { it != LocaleCache.UNSET && it.isNotEmpty() } ?: "en"
 
-        if (!tag.isNullOrEmpty()) {
-            val locale = Locale.forLanguageTag(tag)
-            Locale.setDefault(locale)
-            val config = Configuration(newBase.resources.configuration)
-            config.setLocale(locale)
-            super.attachBaseContext(newBase.createConfigurationContext(config))
-        } else {
-            // Cache not ready yet (very early cold start) — use system locale
-            // The IO coroutine in Application.onCreate will finish before any activity
-            // is usually created, but if not, we just use system locale until next launch
-            super.attachBaseContext(newBase)
-        }
+        val locale = Locale.forLanguageTag(tag)
+        Locale.setDefault(locale)
+        val config = Configuration(newBase.resources.configuration)
+        config.setLocale(locale)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
     }
 
     @OptIn(ExperimentalFoundationApi::class)

@@ -10,7 +10,7 @@ object StreamBadgeWebPage {
     fun html(rawContext: Context?): String {
         val context = rawContext?.let { base ->
             val tag = base.getSharedPreferences("app_locale", Context.MODE_PRIVATE)
-                .getString("locale_tag", null)
+                .getString("locale_tag", "en")
             if (!tag.isNullOrEmpty()) {
                 val config = Configuration(base.resources.configuration)
                 config.setLocale(Locale.forLanguageTag(tag))

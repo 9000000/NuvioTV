@@ -86,8 +86,8 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         // Load locale synchronously so it's available before Activity.attachBaseContext.
         // SharedPreferences reads are fast (cached in memory after first access).
         val tag = getSharedPreferences("app_locale", Context.MODE_PRIVATE)
-            .getString("locale_tag", null)
-        LocaleCache.localeTag = tag ?: ""
+            .getString("locale_tag", "en")
+        LocaleCache.localeTag = if (tag.isNullOrBlank()) "en" else tag
     }
 
     override fun newImageLoader(context: android.content.Context): ImageLoader {

@@ -12,7 +12,7 @@ object AddonWebPage {
         webConfigMode: AddonWebConfigMode = AddonWebConfigMode.FULL
     ): String {
         val tag = baseContext.getSharedPreferences("app_locale", Context.MODE_PRIVATE)
-            .getString("locale_tag", null)
+            .getString("locale_tag", "en")
         val context = if (!tag.isNullOrEmpty()) {
             val config = Configuration(baseContext.resources.configuration)
             config.setLocale(Locale.forLanguageTag(tag))

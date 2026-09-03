@@ -76,7 +76,7 @@ fun NuvioNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.quick))
+                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.fast))
             }
         },
         exitTransition = {
@@ -88,7 +88,7 @@ fun NuvioNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.quick))
+                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.fast))
             }
         },
         popEnterTransition = {
@@ -100,7 +100,7 @@ fun NuvioNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.quick))
+                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.fast))
             }
         },
         popExitTransition = {
@@ -112,7 +112,7 @@ fun NuvioNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.quick))
+                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.fast))
             }
         }
     ) {

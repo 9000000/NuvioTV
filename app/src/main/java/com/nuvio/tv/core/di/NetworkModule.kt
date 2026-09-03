@@ -37,6 +37,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.Cache
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -110,6 +111,13 @@ object NetworkModule {
         }
         return OkHttpClient.Builder()
             .dns(IPv4FirstDns())
+            // Raise per-host concurrency so search fan-out across many catalogs on the same
+            // addon host isn't serialized at OkHttp's default of 5; cap global in-flight
+            // below the default 64 to bound peak response buffering on low-RAM boxes.
+            .dispatcher(Dispatcher().apply {
+                maxRequests = 32
+                maxRequestsPerHost = 12
+            })
             .sslSocketFactory(sslContext.socketFactory, trustAllManager)
             .hostnameVerifier { _, _ -> true }
             .cache(Cache(File(context.cacheDir, "http_cache"), 50L * 1024 * 1024)) // 50 MB disk cache
