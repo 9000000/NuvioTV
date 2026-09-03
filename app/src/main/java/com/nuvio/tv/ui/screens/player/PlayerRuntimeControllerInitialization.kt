@@ -807,10 +807,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 context = context,
                 subtitleDelayUsProvider = subtitleDelayUs::get,
                 audioDelayUsProvider = audioDelayUs::get,
-                shouldNormalizeCuePositionProvider = {
-                    val selectedAddonSubtitle = _uiState.value.selectedAddonSubtitle
-                    selectedAddonSubtitle != null && PlayerSubtitleUtils.mimeTypeFromUrl(selectedAddonSubtitle.url) == MimeTypes.TEXT_VTT
-                },
+                shouldNormalizeCuePositionProvider = { true },
                 shouldStripSdhProvider = {
                     currentPlayerSettingsForReport.subtitleStyle.stripSdh
                 },
