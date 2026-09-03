@@ -229,43 +229,40 @@ private fun SidebarNavigationItem(
     val backgroundColorTarget = when {
         isFocused && selected -> accentColor.copy(alpha = 0.28f)
         isFocused -> Color.White.copy(alpha = 0.12f)
-        selected -> accentColor.copy(alpha = 0.28f)
+        selected -> accentColor.copy(alpha = 0.15f)
         else -> Color.Transparent
     }
-    // Animate only focus transitions; selected changes apply instantly
-    // so the visual update matches the immediate iconBrush switch.
-    val backgroundColor = if (selected) backgroundColorTarget else {
-        animateColorAsState(
-            targetValue = backgroundColorTarget,
-            animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
-            label = "sidebarItemBackground"
-        ).value
-    }
+    val animatedBackgroundColor by animateColorAsState(
+        targetValue = backgroundColorTarget,
+        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
+        label = "sidebarItemBackground"
+    )
+    val backgroundColor = if (selected && !isFocused) backgroundColorTarget else animatedBackgroundColor
+
     val contentColorTarget = when {
         selected -> accentColor
         isFocused -> colors.TextPrimary
         else -> colors.text.onOverlay
     }
-    val contentColor = if (selected) contentColorTarget else {
-        animateColorAsState(
-            targetValue = contentColorTarget,
-            animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
-            label = "sidebarItemContent"
-        ).value
-    }
+    val animatedContentColor by animateColorAsState(
+        targetValue = contentColorTarget,
+        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
+        label = "sidebarItemContent"
+    )
+    val contentColor = if (selected && !isFocused) contentColorTarget else animatedContentColor
+
     val iconBrush = if (selected) palette.accentBrush() else null
     val iconTintTarget = when {
-        selected -> accentColor
+        selected -> Color.White
         isFocused -> colors.TextPrimary
         else -> colors.text.onOverlay
     }
-    val iconTint = if (selected) iconTintTarget else {
-        animateColorAsState(
-            targetValue = iconTintTarget,
-            animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
-            label = "sidebarItemIconTint"
-        ).value
-    }
+    val animatedIconTint by animateColorAsState(
+        targetValue = iconTintTarget,
+        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
+        label = "sidebarItemIconTint"
+    )
+    val iconTint = if (selected && !isFocused) iconTintTarget else animatedIconTint
     val itemScale by animateFloatAsState(
         targetValue = if (isFocused) 1.1f else 1f,
         animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
