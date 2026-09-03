@@ -445,8 +445,10 @@ fun SearchScreen(
         runCatching { topInputFocusRequester.requestFocus() }
     }
 
-    // Push search suggestions to the native keyboard suggestion bar
-    LaunchedEffect(uiState.suggestions) {
+    // Push search suggestions to the native keyboard suggestion bar. Keyed on the query as well
+    // as the list: the keyboard rebuilds its strip as the query changes, so completions have to
+    // be pushed again even when the list is unchanged.
+    LaunchedEffect(uiState.query, uiState.suggestions) {
         val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             ?: return@LaunchedEffect
         val completions = uiState.suggestions.mapIndexed { index, name ->
