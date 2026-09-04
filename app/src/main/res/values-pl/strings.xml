@@ -397,6 +397,8 @@
     <string name="layout_section_content_desc">Kontroluj co pojawia się na stronie głównej i w wyszukiwarce.</string>
     <string name="layout_collapse_sidebar">Zwiń pasek boczny</string>
     <string name="layout_collapse_sidebar_sub">Ukryj pasek boczny domyślnie; pokaż po skupieniu.</string>
+    <string name="layout_hide_floating_pill">Ukryj pływający wskaźnik</string>
+    <string name="layout_hide_floating_pill_sub">Ukryj pływający wskaźnik nawigacji na ekranie głównym.</string>
     <string name="layout_modern_sidebar">Nowoczesny pasek boczny</string>
     <string name="layout_modern_sidebar_sub">Włącz pływającą nawigację boczną.</string>
     <string name="layout_modern_sidebar_blur">Rozmycie nowoczesnego paska bocznego</string>
@@ -3098,7 +3100,7 @@
     <string name="theme_color_gold">Złoty</string>
     <string name="theme_color_jade">Jadeit</string>
     <string name="theme_color_rose_gold">Różowe złoto</string>
-    <string name="theme_color_arctic_blue">Arktyczny błękit</string>
+    <string name="theme_color_arctic_blue">Arktyczny</string>
     <string name="theme_color_graphite">Grafit</string>
 
     <string name="addon_delete_confirm_title">Usunąć dodatek?</string>
