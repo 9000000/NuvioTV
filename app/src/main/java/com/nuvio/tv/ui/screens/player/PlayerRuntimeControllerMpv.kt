@@ -264,7 +264,7 @@ internal fun PlayerRuntimeController.resumeForLifecycle() {
         // Re-create the MediaSession so media controls work in the foreground.
         if (currentMediaSession == null) {
             try {
-                currentMediaSession = androidx.media3.session.MediaSession.Builder(context, player).build()
+                currentMediaSession = androidx.media3.session.MediaSession.Builder(context, SafeMediaSessionPlayer(player)).build()
                 updateMediaSessionMetadata()
             } catch (e: Exception) {
                 e.printStackTrace()

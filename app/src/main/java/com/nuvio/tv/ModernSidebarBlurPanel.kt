@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.draw.drawWithCache
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.hazeEffect
 
 private val SidebarLeadingVisualSize = NuvioComponents.tokens.sidebar.leadingVisual
@@ -99,6 +100,7 @@ internal fun ModernSidebarBlurPanel(
         Modifier.hazeEffect(state = sidebarHazeState) {
             blurRadius = NuvioTheme.effects.blurPanel * delayedBlurProgress
             noiseFactor = 0.04f * delayedBlurProgress
+            inputScale = HazeInputScale.Fixed(0.66f)
         }
     } else {
         Modifier
