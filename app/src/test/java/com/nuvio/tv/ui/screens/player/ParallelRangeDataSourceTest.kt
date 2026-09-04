@@ -262,4 +262,26 @@ class ParallelRangeDataSourceTest {
             )
         )
     }
+
+    @Test
+    fun `releaseTailChunks is safe when no session is active`() {
+        // Should not throw any exception when no session exists
+        ParallelRangeDataSource.releaseTailChunks()
+    }
+
+    @Test
+    fun `tail chunk boundaries with TAIL_CHUNK_COUNT 4`() {
+        val totalChunks = 100L
+        // Tail chunks are 96, 97, 98, 99
+        assertEquals(false, ParallelRangeDataSource.isTailChunk(95L, totalChunks))
+        assertEquals(true, ParallelRangeDataSource.isTailChunk(96L, totalChunks))
+        assertEquals(true, ParallelRangeDataSource.isTailChunk(97L, totalChunks))
+        assertEquals(true, ParallelRangeDataSource.isTailChunk(98L, totalChunks))
+        assertEquals(true, ParallelRangeDataSource.isTailChunk(99L, totalChunks))
+        // Beyond total chunks
+        assertEquals(true, ParallelRangeDataSource.isTailChunk(100L, totalChunks))
+        // Negative total chunks
+        assertEquals(false, ParallelRangeDataSource.isTailChunk(99L, 0L))
+        assertEquals(false, ParallelRangeDataSource.isTailChunk(99L, -1L))
+    }
 }
