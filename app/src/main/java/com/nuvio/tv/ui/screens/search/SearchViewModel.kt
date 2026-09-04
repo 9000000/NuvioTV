@@ -227,6 +227,7 @@ class SearchViewModel @Inject constructor(
             SearchEvent.SubmitSearch -> submitSearch()
             SearchEvent.RememberSearchFromTextInput -> rememberSearchFromTextInput()
             SearchEvent.ClearRecentSearches -> clearRecentSearches()
+            is SearchEvent.RemoveRecentSearch -> removeRecentSearch(event.query)
             is SearchEvent.LoadMoreCatalog -> loadMoreCatalogItems(
                 catalogId = event.catalogId,
                 addonId = event.addonId,
@@ -435,6 +436,12 @@ class SearchViewModel @Inject constructor(
     private fun clearRecentSearches() {
         viewModelScope.launch {
             searchHistoryDataStore.clearRecentSearches()
+        }
+    }
+
+    private fun removeRecentSearch(query: String) {
+        viewModelScope.launch {
+            searchHistoryDataStore.removeRecentSearch(query)
         }
     }
 
