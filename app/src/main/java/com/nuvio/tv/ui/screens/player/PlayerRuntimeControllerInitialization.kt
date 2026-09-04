@@ -957,7 +957,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 try {
                     currentMediaSession?.release()
                     if (canAdvertiseSession()) {
-                        currentMediaSession = MediaSession.Builder(context, this).build()
+                        currentMediaSession = MediaSession.Builder(context, SafeMediaSessionPlayer(this)).build()
                     }
                     updateMediaSessionMetadata()
                 } catch (e: Exception) {
