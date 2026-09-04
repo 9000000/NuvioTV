@@ -159,6 +159,7 @@ internal fun PlayerRuntimeController.initializePlayer(
         _uiState.update { it.copy(error = context.getString(R.string.player_error_no_stream_url), showLoadingOverlay = false) }
         return
     }
+    mpvMediaLoadPrepared = false
 
     scope.launch {
         try {
@@ -215,6 +216,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 contentOriginalLanguage = contentLanguage
             )
             mpvPreferredAudioLanguages = preferredAudioLanguages
+            mpvHi10pGnextSoftwareFallbackEnabledSetting =
+                playerSettings.mpvHi10pGnextSoftwareFallbackEnabled
             mpvHardwareDecodeModeSetting = playerSettings.mpvHardwareDecodeMode
             var effectiveInternalPlayerEngine = overrideInternalPlayerEngine ?: playerSettings.internalPlayerEngine
             if (effectiveInternalPlayerEngine == InternalPlayerEngine.AUTO) {
