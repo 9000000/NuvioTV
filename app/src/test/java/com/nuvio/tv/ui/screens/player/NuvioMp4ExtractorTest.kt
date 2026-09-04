@@ -236,4 +236,122 @@ class NuvioMp4ExtractorTest {
         assertEquals(32L, seekPos.position)
         assertEquals(3, callCount)
     }
+
+    @Test
+    fun `byteArrayExtractorInput skip returns end of input at eof`() {
+        val input = ByteArrayExtractorInput(byteArrayOf(1, 2, 3), 0L, 3L)
+        assertEquals(3, input.skip(10))
+        assertEquals(C.RESULT_END_OF_INPUT, input.skip(1))
+    }
+
+    @Test
+    fun `seekMap without a trailing moov does not trigger release callback`() {
+        val released = AtomicBoolean(false)
+        val delegate = object : Extractor {
+            private var out: ExtractorOutput? = null
+            override fun init(output: ExtractorOutput) { out = output }
+            override fun sniff(input: ExtractorInput): Boolean = true
+            override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+                out?.seekMap(SeekMap.Unseekable(C.TIME_UNSET))
+                out?.endTracks()
+                return Extractor.RESULT_CONTINUE
+            }
+            override fun seek(position: Long, timeUs: Long) {}
+            override fun release() {}
+            override fun getUnderlyingImplementation(): Extractor = this
+        }
+        val extractor = NuvioMp4Extractor(delegate)
+        extractor.onMoovParsedCallback = { released.set(true) }
+        extractor.init(silentOutput())
+
+        val input = ByteArrayExtractorInput(ByteArray(32) { 0 }, 0L, 2_000_000_000L)
+        extractor.read(input, PositionHolder())
+        assertFalse("faststart seekMap must not release tail chunks", released.get())
+    }
+
+    @Test
+    fun `moov-like bytes far from eof are not consumed from live input`() {
+        val liveReads = AtomicBoolean(false)
+        val released = AtomicBoolean(false)
+        val delegate = object : Extractor {
+            override fun init(output: ExtractorOutput) {}
+            override fun sniff(input: ExtractorInput): Boolean = true
+            override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+                if (input !is ByteArrayExtractorInput || input.length > 1_000_000L) {
+                    liveReads.set(true)
+                }
+                return Extractor.RESULT_CONTINUE
+            }
+            override fun seek(position: Long, timeUs: Long) {}
+            override fun release() {}
+            override fun getUnderlyingImplementation(): Extractor = this
+        }
+        val extractor = NuvioMp4Extractor(delegate)
+        extractor.onMoovParsedCallback = { released.set(true) }
+        extractor.init(silentOutput())
+
+        val fakeMoov = moovHeader(size = 32)
+        val input = ByteArrayExtractorInput(fakeMoov, 0L, 2_000_000_000L)
+        val result = extractor.read(input, PositionHolder())
+        assertEquals(Extractor.RESULT_CONTINUE, result)
+        assertEquals(0L, input.position)
+        assertTrue(liveReads.get())
+        assertFalse(released.get())
+    }
+
+    @Test
+    fun `oversized moov header is ignored rather than cached`() {
+        val liveReads = AtomicBoolean(false)
+        val released = AtomicBoolean(false)
+        val delegate = object : Extractor {
+            override fun init(output: ExtractorOutput) {}
+            override fun sniff(input: ExtractorInput): Boolean = true
+            override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+                liveReads.set(true)
+                return Extractor.RESULT_CONTINUE
+            }
+            override fun seek(position: Long, timeUs: Long) {}
+            override fun release() {}
+            override fun getUnderlyingImplementation(): Extractor = this
+        }
+        val extractor = NuvioMp4Extractor(delegate)
+        extractor.onMoovParsedCallback = { released.set(true) }
+        extractor.init(silentOutput())
+
+        val oversized = 9L * 1024L * 1024L
+        val header = moovHeader(size = oversized)
+        val tailOffset = 100_000_000L
+        val input = ByteArrayExtractorInput(header, tailOffset, tailOffset + header.size)
+        extractor.read(input, PositionHolder())
+        assertEquals(tailOffset, input.position)
+        assertTrue(liveReads.get())
+        assertFalse(released.get())
+    }
+
+    private fun silentOutput(): ExtractorOutput = object : ExtractorOutput {
+        override fun track(id: Int, type: Int): TrackOutput = object : TrackOutput {
+            override fun format(format: androidx.media3.common.Format) {}
+            override fun sampleData(input: androidx.media3.common.DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int = length
+            override fun sampleData(data: androidx.media3.common.util.ParsableByteArray, length: Int, sampleDataPart: Int) {}
+            override fun sampleMetadata(timeUs: Long, flags: Int, size: Int, offset: Int, cryptoData: TrackOutput.CryptoData?) {}
+        }
+        override fun endTracks() {}
+        override fun seekMap(seekMap: SeekMap) {}
+    }
+
+    private fun moovHeader(size: Long): ByteArray {
+        val bytes = ByteArray(8)
+        if (size <= 0xFFFFFFFFL) {
+            val s = size.toInt()
+            bytes[0] = ((s ushr 24) and 0xFF).toByte()
+            bytes[1] = ((s ushr 16) and 0xFF).toByte()
+            bytes[2] = ((s ushr 8) and 0xFF).toByte()
+            bytes[3] = (s and 0xFF).toByte()
+        }
+        bytes[4] = 0x6d
+        bytes[5] = 0x6f
+        bytes[6] = 0x6f
+        bytes[7] = 0x76
+        return bytes
+    }
 }

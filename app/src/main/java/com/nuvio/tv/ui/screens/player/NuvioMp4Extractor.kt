@@ -40,10 +40,15 @@ class NuvioExtractorsFactory(
                 selfName == "androidx.media3.extractor.mp4.Mp4Extractor" ||
                 selfName.endsWith(".Mp4Extractor")
         return if (isMp4) {
+            Log.d(TAG, "Wrapped Mp4Extractor ($selfName -> $targetName) with NuvioMp4Extractor")
             NuvioMp4Extractor(extractor)
         } else {
             extractor
         }
+    }
+
+    private companion object {
+        private const val TAG = "NuvioExtractorsFactory"
     }
 }
 
@@ -53,16 +58,8 @@ fun ExtractorsFactory.withNuvioMp4Extractor(): ExtractorsFactory {
 }
 
 /**
- * Custom wrapper around Media3's stock Mp4Extractor that optimizes non-faststart (moov at tail) MP4 playback.
- *
- * For non-faststart MP4 files:
- * 1. Captures the `moov` atom bytes into memory on the first tail read.
- * 2. As soon as `moov` is parsed (when seekMap/endTracks are emitted or moov payload is parsed),
- *    immediately triggers [ParallelRangeDataSource.releaseTailChunks] so that the ~64MB of pinned tail
- *    chunks are evicted and freed from RAM immediately without needing any fixed delay.
- * 3. On subsequent re-bufferings or seek(0) events where ExoPlayer re-requests the `moov` atom header,
- *    replays the cached `moov` bytes from in-memory [ByteArrayExtractorInput] directly, completely preventing
- *    network re-fetches to the tail of the file.
+ * Caches a trailing (non-faststart) `moov` in RAM so parallel-range playback can drop
+ * only the chunks that fully overlap that atom, then replay it without re-fetching EOF.
  */
 @UnstableApi
 class NuvioMp4Extractor(
@@ -71,11 +68,13 @@ class NuvioMp4Extractor(
 ) : Extractor {
 
     private var moovOffset: Long = -1L
-    private var moovSize: Int = 0
+    private var moovSizeBytes: Long = 0L
     private var moovData: ByteArray? = null
     private var moovParsed: Boolean = false
     private var isFeedingCachedMoov: Boolean = false
     private var cachedMoovInput: ByteArrayExtractorInput? = null
+    private var expectAtomHeader: Boolean = true
+    private var lastInputLength: Long = -1L
 
     override fun init(output: ExtractorOutput) {
         delegate.init(object : ExtractorOutput {
@@ -97,133 +96,182 @@ class NuvioMp4Extractor(
 
     @Throws(IOException::class)
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
-        // If we are currently feeding moov from the in-memory cache
+        lastInputLength = input.length
+
         if (isFeedingCachedMoov) {
             val memInput = cachedMoovInput
             if (memInput != null) {
                 val res = delegate.read(memInput, seekPosition)
                 if (res == Extractor.RESULT_SEEK) {
-                    isFeedingCachedMoov = false
-                    cachedMoovInput = null
+                    stopFeedingCachedMoov()
+                    expectAtomHeader = true
                     notifyMoovParsed()
-                    return Extractor.RESULT_SEEK
+                    return res
                 }
-                if (memInput.position >= moovOffset + moovSize) {
-                    isFeedingCachedMoov = false
-                    cachedMoovInput = null
+                if (memInput.position >= moovOffset + moovSizeBytes) {
+                    stopFeedingCachedMoov()
                     notifyMoovParsed()
                 }
                 return res
             }
+            stopFeedingCachedMoov()
         }
 
-        // Check if moov atom is located at the current input position
-        if (moovData == null && input.length > 0L) {
-            val currentPos = input.position
-            val header = ByteArray(16)
-            if (input.peekFully(header, 0, 8, true)) {
-                input.resetPeekPosition()
-                val atomSize32 = ((header[0].toInt() and 0xFF) shl 24) or
-                        ((header[1].toInt() and 0xFF) shl 16) or
-                        ((header[2].toInt() and 0xFF) shl 8) or
-                        (header[3].toInt() and 0xFF)
-                val atomType = ((header[4].toInt() and 0xFF) shl 24) or
-                        ((header[5].toInt() and 0xFF) shl 16) or
-                        ((header[6].toInt() and 0xFF) shl 8) or
-                        (header[7].toInt() and 0xFF)
-
-                if (atomType == ATOM_TYPE_MOOV) {
-                    var atomSize: Long = atomSize32.toLong() and 0xFFFFFFFFL
-                    if (atomSize == 1L) {
-                        if (input.peekFully(header, 0, 16, true)) {
-                            input.resetPeekPosition()
-                            atomSize = parseLong(header, 8)
-                        }
-                    }
-
-                    if (atomSize in 8L..MAX_MOOV_CACHE_SIZE) {
-                        moovOffset = currentPos
-                        moovSize = atomSize.toInt()
-                        Log.d(TAG, "Found moov atom at offset $moovOffset, size=$moovSize bytes. Caching in RAM.")
-                        val data = ByteArray(moovSize)
-                        input.readFully(data, 0, moovSize)
-                        moovData = data
-
-                        val memInput = ByteArrayExtractorInput(data, moovOffset, input.length)
-                        cachedMoovInput = memInput
-                        isFeedingCachedMoov = true
-
-                        val memResult = delegate.read(memInput, seekPosition)
-                        if (memResult == Extractor.RESULT_SEEK) {
-                            isFeedingCachedMoov = false
-                            cachedMoovInput = null
-                            notifyMoovParsed()
-                            return Extractor.RESULT_SEEK
-                        }
-                        return Extractor.RESULT_CONTINUE
-                    } else if (atomSize > MAX_MOOV_CACHE_SIZE) {
-                        // Exceptionally large moov: record offset and size so chunks can still be evicted upon parse completion
-                        moovOffset = currentPos
-                        moovSize = minOf(atomSize, Int.MAX_VALUE.toLong()).toInt()
-                        Log.w(TAG, "Found unusually large moov atom ($atomSize bytes) at $moovOffset; passing through directly")
-                    }
-                }
-            }
+        if (expectAtomHeader) {
+            val cachedResult = tryCacheTrailingMoov(input, seekPosition)
+            if (cachedResult != null) return cachedResult
         }
 
         val result = delegate.read(input, seekPosition)
-
-        // If the delegate requested a seek back to moovOffset and we have cached moov
-        if (result == Extractor.RESULT_SEEK && moovData != null && seekPosition.position == moovOffset) {
-            Log.d(TAG, "Delegate requested seek to moovOffset ($moovOffset); replaying from RAM cache.")
-            val memInput = ByteArrayExtractorInput(moovData!!, moovOffset, input.length)
-            cachedMoovInput = memInput
-            isFeedingCachedMoov = true
-            val memResult = delegate.read(memInput, seekPosition)
-            if (memResult == Extractor.RESULT_SEEK) {
-                isFeedingCachedMoov = false
-                cachedMoovInput = null
-                notifyMoovParsed()
-                return Extractor.RESULT_SEEK
+        if (result == Extractor.RESULT_SEEK) {
+            expectAtomHeader = true
+            val cached = moovData
+            if (cached != null && seekPosition.position == moovOffset) {
+                Log.d(TAG, "Delegate requested seek to moovOffset ($moovOffset); replaying from RAM cache.")
+                return feedCachedMoov(cached, input.length, seekPosition)
             }
-            return Extractor.RESULT_CONTINUE
+            return result
         }
-
+        expectAtomHeader = false
         return result
     }
 
     override fun seek(position: Long, timeUs: Long) {
-        isFeedingCachedMoov = false
-        cachedMoovInput = null
+        stopFeedingCachedMoov()
+        expectAtomHeader = true
         delegate.seek(position, timeUs)
     }
 
     override fun release() {
-        isFeedingCachedMoov = false
-        cachedMoovInput = null
+        stopFeedingCachedMoov()
         moovData = null
         delegate.release()
     }
 
     override fun getUnderlyingImplementation(): Extractor = delegate.underlyingImplementation
 
-    private fun notifyMoovParsed() {
-        if (!moovParsed) {
-            moovParsed = true
-            Log.d(TAG, "Moov parsed (offset=$moovOffset, size=$moovSize). Triggering immediate release of tail/moov chunks.")
-            onMoovParsedCallback?.invoke() ?: ParallelRangeDataSource.releaseTailChunks(moovOffset, moovSize.toLong())
+    private fun tryCacheTrailingMoov(input: ExtractorInput, seekPosition: PositionHolder): Int? {
+        if (moovParsed || moovData != null || !isNearFileTail(input)) return null
+        val currentPos = input.position
+        val header = ByteArray(16)
+        if (!input.peekFully(header, 0, 8, true)) {
+            input.resetPeekPosition()
+            return null
         }
+        input.resetPeekPosition()
+        val atomSize32 = readInt(header, 0)
+        val atomType = readInt(header, 4)
+        if (atomType != ATOM_TYPE_MOOV) return null
+
+        var atomSize: Long = atomSize32.toLong() and 0xFFFFFFFFL
+        if (atomSize == 1L) {
+            if (!input.peekFully(header, 0, 16, true)) {
+                input.resetPeekPosition()
+                return null
+            }
+            input.resetPeekPosition()
+            atomSize = parseLong(header, 8)
+        }
+
+        val remaining = if (input.length > 0L) input.length - currentPos else -1L
+        if (atomSize < 8L || atomSize > MAX_MOOV_CACHE_SIZE) {
+            Log.w(TAG, "Ignoring moov at $currentPos with size=$atomSize (cap=$MAX_MOOV_CACHE_SIZE)")
+            return null
+        }
+        if (remaining >= 0L && atomSize > remaining) {
+            Log.w(TAG, "Ignoring moov at $currentPos with size=$atomSize beyond remaining=$remaining")
+            return null
+        }
+
+        moovOffset = currentPos
+        moovSizeBytes = atomSize
+        val data = try {
+            ByteArray(atomSize.toInt())
+        } catch (oom: OutOfMemoryError) {
+            Log.w(TAG, "OOM caching moov ($atomSize bytes); passing through")
+            moovOffset = -1L
+            moovSizeBytes = 0L
+            return null
+        }
+        try {
+            input.readFully(data, 0, data.size)
+        } catch (e: IOException) {
+            moovOffset = -1L
+            moovSizeBytes = 0L
+            throw e
+        }
+        moovData = data
+        Log.d(TAG, "Cached trailing moov at $moovOffset, size=$moovSizeBytes")
+        return feedCachedMoov(data, input.length, seekPosition)
+    }
+
+    private fun feedCachedMoov(data: ByteArray, streamLength: Long, seekPosition: PositionHolder): Int {
+        val memInput = ByteArrayExtractorInput(data, moovOffset, streamLength)
+        cachedMoovInput = memInput
+        isFeedingCachedMoov = true
+        val memResult = delegate.read(memInput, seekPosition)
+        if (memResult == Extractor.RESULT_SEEK) {
+            stopFeedingCachedMoov()
+            expectAtomHeader = true
+            notifyMoovParsed()
+            return memResult
+        }
+        if (memInput.position >= moovOffset + moovSizeBytes) {
+            stopFeedingCachedMoov()
+            notifyMoovParsed()
+        }
+        return memResult
+    }
+
+    private fun stopFeedingCachedMoov() {
+        isFeedingCachedMoov = false
+        cachedMoovInput = null
+    }
+
+    private fun notifyMoovParsed() {
+        if (moovParsed) return
+        moovParsed = true
+        if (!isTrailingMoov()) {
+            Log.d(TAG, "Moov parsed without a trailing atom (offset=$moovOffset, size=$moovSizeBytes); skipping tail release")
+            return
+        }
+        Log.d(TAG, "Trailing moov parsed (offset=$moovOffset, size=$moovSizeBytes). Releasing overlapping chunks.")
+        onMoovParsedCallback?.invoke() ?: ParallelRangeDataSource.releaseTailChunks(moovOffset, moovSizeBytes)
+    }
+
+    private fun isNearFileTail(input: ExtractorInput): Boolean {
+        val length = input.length
+        if (length <= 0L) return false
+        val tailWindow = minOf(length, MAX_MOOV_CACHE_SIZE + 16L)
+        return input.position >= length - tailWindow
+    }
+
+    private fun isTrailingMoov(): Boolean {
+        if (moovOffset < 0L || moovSizeBytes < 8L) return false
+        val length = lastInputLength
+        if (length <= 0L) return true
+        if (moovOffset + moovSizeBytes > length + 8L) return false
+        val endsNearEof = moovOffset + moovSizeBytes >= length - 8L
+        val startsInLatterHalf = moovOffset >= length / 2L
+        return endsNearEof || startsInLatterHalf
     }
 
     private companion object {
         private const val TAG = "NuvioMp4Extractor"
-        private const val ATOM_TYPE_MOOV = 0x6d6f6f76 // 'm' 'o' 'o' 'v'
-        private const val MAX_MOOV_CACHE_SIZE = 96L * 1024L * 1024L // 96 MB guard
+        private const val ATOM_TYPE_MOOV = 0x6d6f6f76 // 'moov'
+        internal const val MAX_MOOV_CACHE_SIZE = 8L * 1024L * 1024L
+
+        private fun readInt(bytes: ByteArray, offset: Int): Int {
+            return ((bytes[offset].toInt() and 0xFF) shl 24) or
+                ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+                ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+                (bytes[offset + 3].toInt() and 0xFF)
+        }
 
         private fun parseLong(bytes: ByteArray, offset: Int): Long {
             var value = 0L
             for (i in 0 until 8) {
-                value = (value shl 8) or (bytes[offset + i].toLong() and 0xFFL)
+                value = (value shl 8) or (bytes[offset + i].toLong() and 0xFF)
             }
             return value
         }
@@ -271,7 +319,8 @@ internal class ByteArrayExtractorInput(
 
     override fun skip(length: Int): Int {
         val relPos = (readPosition - baseOffset).toInt()
-        val bytesToSkip = minOf(length, maxOf(0, data.size - relPos))
+        if (relPos >= data.size) return C.RESULT_END_OF_INPUT
+        val bytesToSkip = minOf(length, data.size - relPos)
         readPosition += bytesToSkip
         peekPosition = maxOf(peekPosition, readPosition)
         return bytesToSkip
