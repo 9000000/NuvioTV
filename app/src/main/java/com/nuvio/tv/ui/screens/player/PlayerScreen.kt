@@ -867,6 +867,16 @@ fun PlayerScreen(
             !postPlayRecommendationState.isTrailerPlaying &&
             (!postPlayRecommendationState.isVisible || !postPlayRecommendationState.hasAutoPlayedTrailer)
         ) {
+            LaunchedEffect(postPlayRecommendationState.isVisible) {
+                val playerView = viewModel.controller.exoPlayerView
+                val vis = if (postPlayRecommendationState.isVisible) {
+                    android.view.View.GONE
+                } else {
+                    android.view.View.VISIBLE
+                }
+                playerView?.subtitleView?.visibility = vis
+            }
+
             Box(modifier = playerSurfaceModifier) {
                 if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
                     MpvPlayerSurface(
