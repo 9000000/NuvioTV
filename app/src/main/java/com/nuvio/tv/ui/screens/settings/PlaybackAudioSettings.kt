@@ -352,18 +352,6 @@ internal fun LazyListScope.trailerAndAudioSettingsItems(
     }
 
     if (isMpvEngine) {
-        item(key = "audio_mpv_hi10p_gnext_software_fallback") {
-            ToggleSettingsItem(
-                icon = Icons.Default.Tune,
-                title = stringResource(R.string.audio_mpv_hi10p_gnext_sw_title),
-                subtitle = stringResource(R.string.audio_mpv_hi10p_gnext_sw_subtitle),
-                isChecked = playerSettings.mpvHi10pGnextSoftwareFallbackEnabled,
-                onCheckedChange = onSetMpvHi10pGnextSoftwareFallbackEnabled,
-                onFocused = onItemFocused,
-                enabled = enabled
-            )
-        }
-
         item(key = "audio_mpv_hardware_decode_mode") {
             val hwDecodeModeName = when (playerSettings.mpvHardwareDecodeMode) {
                 MpvHardwareDecodeMode.LEGACY_DIRECT_COPY -> stringResource(R.string.audio_mpv_hwdec_legacy_direct_copy)
@@ -378,6 +366,18 @@ internal fun LazyListScope.trailerAndAudioSettingsItems(
                 title = stringResource(R.string.audio_mpv_hwdec_title),
                 subtitle = hwDecodeModeName,
                 onClick = onShowMpvHardwareDecodeModeDialog,
+                onFocused = onItemFocused,
+                enabled = enabled
+            )
+        }
+
+        item(key = "audio_mpv_hi10p_gnext_software_fallback") {
+            ToggleSettingsItem(
+                icon = Icons.Default.Tune,
+                title = stringResource(R.string.audio_mpv_hi10p_gnext_sw_title),
+                subtitle = stringResource(R.string.audio_mpv_hi10p_gnext_sw_subtitle),
+                isChecked = playerSettings.mpvHi10pGnextSoftwareFallbackEnabled,
+                onCheckedChange = onSetMpvHi10pGnextSoftwareFallbackEnabled,
                 onFocused = onItemFocused,
                 enabled = enabled
             )
