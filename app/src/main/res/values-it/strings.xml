@@ -152,16 +152,16 @@
 <string name="cw_airs_today">In onda oggi</string>
 <string name="cw_airs_tomorrow">In onda domani</string>
     <plurals name="cw_airs_in_days">
-        <item quantity="one">Airs in %d Day</item>
-        <item quantity="other">Airs in %d Days</item>
+        <item quantity="one">In onda tra %d giorno</item>
+        <item quantity="other">In onda tra %d giorni</item>
     </plurals>
     <!-- Short versions for compact card styles (wide/poster) -->
 <string name="cw_airs_date_short">%1$s</string>
 <string name="cw_airs_today_short">Oggi</string>
 <string name="cw_airs_tomorrow_short">Domani</string>
     <plurals name="cw_airs_in_days_short">
-        <item quantity="one">In %d Day</item>
-        <item quantity="other">In %d Days</item>
+        <item quantity="one">Tra %d giorno</item>
+        <item quantity="other">Tra %d giorni</item>
     </plurals>
 <string name="cw_action_go_to_details">Vai ai dettagli</string>
 <string name="cw_action_start_from_beginning">Comincia dall\'inizio</string>
@@ -1693,8 +1693,8 @@
 <string name="player_report_issue_failed">Impossibile inviare il resoconto</string>
 <string name="player_report_loading_issue">Segnala problema di caricamento</string>
     <plurals name="player_report_loading_issue_prompt">
-        <item quantity="one">Still loading after %1$d second</item>
-        <item quantity="other">Still loading after %1$d seconds</item>
+        <item quantity="one">Ancora in caricamento da %1$d secondo</item>
+        <item quantity="other">Ancora in caricamento da %1$d secondi</item>
     </plurals>
 <string name="player_speed_title">Velocità di riproduzione</string>
 <string name="player_more_actions_title">Altre azioni</string>
@@ -2983,8 +2983,8 @@
     <!-- Debrid: selection count + size range labels -->
 <string name="debrid_selection_count_any">Qualsiasi</string>
     <plurals name="debrid_selection_count_value">
-        <item quantity="one">%d selected</item>
-        <item quantity="other">%d selected</item>
+        <item quantity="one">%d selezionato</item>
+        <item quantity="other">%d selezionati</item>
     </plurals>
 <string name="debrid_size_range_any">Qualsiasi</string>
 <string name="debrid_size_range_up_to">Fino a %1$dGB</string>
