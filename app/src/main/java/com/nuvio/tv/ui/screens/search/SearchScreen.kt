@@ -66,6 +66,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -91,6 +94,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.IconButton as TvIconButton
+import androidx.tv.material3.IconButtonDefaults as TvIconButtonDefaults
 import androidx.tv.material3.Text
 import com.nuvio.tv.ui.components.CatalogRowSection
 import com.nuvio.tv.ui.components.EmptyScreenState
@@ -554,6 +559,9 @@ fun SearchScreen(
                             onClearHistory = {
                                 viewModel.onEvent(SearchEvent.ClearRecentSearches)
                             },
+                            onRemoveSearch = { query ->
+                                viewModel.onEvent(SearchEvent.RemoveRecentSearch(query))
+                            },
                             onSectionFocusChanged = { focused -> isRecentSearchSectionFocused = focused },
                             clearHistoryFocusRequester = recentClearHistoryFocusRequester,
                             modifier = Modifier.padding(horizontal = 52.dp)
@@ -582,6 +590,9 @@ fun SearchScreen(
                                     onSearchSelected = submitRecentSearch,
                                     onClearHistory = {
                                         viewModel.onEvent(SearchEvent.ClearRecentSearches)
+                                    },
+                                    onRemoveSearch = { query ->
+                                        viewModel.onEvent(SearchEvent.RemoveRecentSearch(query))
                                     },
                                     onSectionFocusChanged = { focused ->
                                         isRecentSearchSectionFocused = focused
@@ -826,6 +837,7 @@ private fun RecentSearchesSection(
     recentSearches: List<String>,
     onSearchSelected: (String) -> Unit,
     onClearHistory: () -> Unit,
+    onRemoveSearch: (String) -> Unit,
     onSectionFocusChanged: (Boolean) -> Unit,
     clearHistoryFocusRequester: FocusRequester,
     modifier: Modifier = Modifier
@@ -866,34 +878,84 @@ private fun RecentSearchesSection(
         }
 
         recentSearches.forEach { recentQuery ->
-            Button(
-                onClick = { onSearchSelected(recentQuery) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onPreviewKeyEvent { keyEvent ->
-                        val clearHistoryKey = RtlKeyUtils.getClearHistoryDpadKey(isRtl)
-                        if (keyEvent.nativeKeyEvent.keyCode == clearHistoryKey) {
-                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                                runCatching { clearHistoryFocusRequester.requestFocus() }
-                            }
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioTheme.colors.BackgroundCard,
-                    contentColor = NuvioTheme.colors.TextPrimary,
-                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = NuvioTheme.colors.Primary
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = recentQuery,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                var isSearchFocused by remember(recentQuery) { mutableStateOf(false) }
+                val searchScale by animateFloatAsState(
+                    targetValue = if (isSearchFocused) 1.02f else 1f,
+                    animationSpec = tween(durationMillis = 140),
+                    label = "recentSearchScale"
                 )
+                Button(
+                    onClick = { onSearchSelected(recentQuery) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .onFocusChanged { isSearchFocused = it.isFocused }
+                        .graphicsLayer {
+                            scaleX = searchScale
+                            scaleY = searchScale
+                            transformOrigin = TransformOrigin(
+                                pivotFractionX = if (isRtl) 1f else 0f,
+                                pivotFractionY = 0.5f
+                            )
+                        },
+                    colors = ButtonDefaults.colors(
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        contentColor = NuvioTheme.colors.TextPrimary,
+                        focusedContainerColor = NuvioTheme.colors.FocusBackground,
+                        focusedContentColor = NuvioTheme.colors.Primary
+                    ),
+                    scale = ButtonDefaults.scale(focusedScale = 1f),
+                    shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
+                ) {
+                    Text(
+                        text = recentQuery,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                var isRemoveFocused by remember(recentQuery) { mutableStateOf(false) }
+                TvIconButton(
+                    onClick = { onRemoveSearch(recentQuery) },
+                    modifier = Modifier
+                        .onFocusChanged { isRemoveFocused = it.isFocused }
+                        .size(36.dp)
+                        .then(
+                            if (isRemoveFocused) {
+                                Modifier.border(
+                                    width = NuvioTheme.spacing.xxs,
+                                    color = NuvioTheme.colors.FocusRing,
+                                    shape = RoundedCornerShape(NuvioTheme.radii.md)
+                                )
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    colors = TvIconButtonDefaults.colors(
+                        containerColor = Color.Transparent,
+                        focusedContainerColor = NuvioTheme.colors.FocusBackground,
+                        contentColor = NuvioTheme.colors.TextPrimary,
+                        focusedContentColor = NuvioTheme.colors.TextPrimary
+                    ),
+                    scale = TvIconButtonDefaults.scale(focusedScale = 1f),
+                    shape = TvIconButtonDefaults.shape(
+                        shape = RoundedCornerShape(NuvioTheme.radii.md)
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(
+                            R.string.cd_remove_recent_search,
+                            recentQuery
+                        ),
+                        modifier = Modifier.size(18.dp),
+                        tint = NuvioTheme.colors.TextPrimary
+                    )
+                }
             }
         }
     }
