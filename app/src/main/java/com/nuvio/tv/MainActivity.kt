@@ -181,6 +181,7 @@ import com.nuvio.tv.updater.UpdateViewModel
 import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
@@ -2022,6 +2023,7 @@ private fun CollapsedSidebarPill(
                     if (blurEnabled && hazeState != null) {
                         Modifier.hazeEffect(state = hazeState) {
                             blurRadius = 24.dp
+                            inputScale = HazeInputScale.Fixed(0.66f)
                         }
                     } else {
                         Modifier
