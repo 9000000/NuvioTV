@@ -405,10 +405,13 @@ internal class ParallelRangeDataSource(
         internal fun releaseTailChunks(moovOffset: Long = -1L, moovSize: Long = -1L) {
             synchronized(sessionLock) {
                 val session = currentChunkSession ?: return
-                val moovRange = moovEvictionRange(moovOffset, moovSize, session.chunkSize)
-                if (moovRange.isEmpty()) return
                 session.tailReleased = true
+                val moovRange = moovEvictionRange(moovOffset, moovSize, session.chunkSize)
                 session.moovChunkRange = moovRange
+                if (moovRange.isEmpty()) {
+                    Log.d(TAG, "Tail marked released after parse (no full moov chunk to immediately evict: moov=$moovOffset, size=$moovSize)")
+                    return
+                }
                 session.pinnedSideChunks.removeAll { it in moovRange }
                 val readerIdx = session.lastReadChunkIndex
                 val targetIndices = session.futures.keys.filter { idx ->

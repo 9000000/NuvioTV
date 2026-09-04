@@ -75,6 +75,7 @@ class NuvioMp4Extractor(
     private var cachedMoovInput: ByteArrayExtractorInput? = null
     private var expectAtomHeader: Boolean = true
     private var lastInputLength: Long = -1L
+    private var resolvedTailStartOffset: Long = -1L
 
     override fun init(output: ExtractorOutput) {
         delegate.init(object : ExtractorOutput {
@@ -125,6 +126,10 @@ class NuvioMp4Extractor(
         val result = delegate.read(input, seekPosition)
         if (result == Extractor.RESULT_SEEK) {
             expectAtomHeader = true
+            if (resolvedTailStartOffset < 0L && input.position < 1024L * 1024L && input.length > 0L && seekPosition.position >= input.length / 2L) {
+                resolvedTailStartOffset = seekPosition.position
+                Log.d(TAG, "Mp4Extractor requested seek past mdat to tail at $resolvedTailStartOffset (file length=${input.length})")
+            }
             val cached = moovData
             if (cached != null && seekPosition.position == moovOffset) {
                 Log.d(TAG, "Delegate requested seek to moovOffset ($moovOffset); replaying from RAM cache.")
@@ -132,7 +137,7 @@ class NuvioMp4Extractor(
             }
             return result
         }
-        expectAtomHeader = false
+        expectAtomHeader = !moovParsed
         return result
     }
 
@@ -174,8 +179,7 @@ class NuvioMp4Extractor(
         }
 
         val remaining = if (input.length > 0L) input.length - currentPos else -1L
-        if (atomSize < 8L || atomSize > MAX_MOOV_CACHE_SIZE) {
-            Log.w(TAG, "Ignoring moov at $currentPos with size=$atomSize (cap=$MAX_MOOV_CACHE_SIZE)")
+        if (atomSize < 8L) {
             return null
         }
         if (remaining >= 0L && atomSize > remaining) {
@@ -185,12 +189,16 @@ class NuvioMp4Extractor(
 
         moovOffset = currentPos
         moovSizeBytes = atomSize
+
+        if (atomSize > MAX_MOOV_CACHE_SIZE) {
+            Log.w(TAG, "Trailing moov at $currentPos with size=$atomSize exceeds cache cap ($MAX_MOOV_CACHE_SIZE); passing through but tracking for tail chunk release")
+            return null
+        }
+
         val data = try {
             ByteArray(atomSize.toInt())
         } catch (oom: OutOfMemoryError) {
-            Log.w(TAG, "OOM caching moov ($atomSize bytes); passing through")
-            moovOffset = -1L
-            moovSizeBytes = 0L
+            Log.w(TAG, "OOM caching moov ($atomSize bytes); passing through but tracking for tail chunk release")
             return null
         }
         try {
@@ -242,8 +250,11 @@ class NuvioMp4Extractor(
     private fun isNearFileTail(input: ExtractorInput): Boolean {
         val length = input.length
         if (length <= 0L) return false
-        val tailWindow = minOf(length, MAX_MOOV_CACHE_SIZE + 16L)
-        return input.position >= length - tailWindow
+        if (resolvedTailStartOffset > 0L && input.position >= resolvedTailStartOffset) {
+            return true
+        }
+        val tailWindow = maxOf(MAX_MOOV_CACHE_SIZE + 16L, 128L * 1024L * 1024L)
+        return input.position >= length / 2L || input.position >= length - tailWindow
     }
 
     private fun isTrailingMoov(): Boolean {
@@ -256,10 +267,10 @@ class NuvioMp4Extractor(
         return endsNearEof || startsInLatterHalf
     }
 
-    private companion object {
+    internal companion object {
         private const val TAG = "NuvioMp4Extractor"
         private const val ATOM_TYPE_MOOV = 0x6d6f6f76 // 'moov'
-        internal const val MAX_MOOV_CACHE_SIZE = 8L * 1024L * 1024L
+        internal const val MAX_MOOV_CACHE_SIZE = 32L * 1024L * 1024L
 
         private fun readInt(bytes: ByteArray, offset: Int): Int {
             return ((bytes[offset].toInt() and 0xFF) shl 24) or
@@ -293,7 +304,7 @@ internal class ByteArrayExtractorInput(
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         val relPos = (readPosition - baseOffset).toInt()
-        if (relPos >= data.size) return C.RESULT_END_OF_INPUT
+        if (relPos < 0 || relPos >= data.size) return C.RESULT_END_OF_INPUT
         val bytesToRead = minOf(length, data.size - relPos)
         System.arraycopy(data, relPos, buffer, offset, bytesToRead)
         readPosition += bytesToRead
@@ -303,9 +314,9 @@ internal class ByteArrayExtractorInput(
 
     override fun readFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
         val relPos = (readPosition - baseOffset).toInt()
-        if (relPos + length > data.size) {
-            if (allowEndOfInput && relPos >= data.size) return false
-            throw EOFException("Cannot read fully $length bytes from memory buffer (available: ${data.size - relPos})")
+        if (relPos < 0 || relPos + length > data.size) {
+            if (allowEndOfInput && (relPos < 0 || relPos >= data.size)) return false
+            throw EOFException("Cannot read fully $length bytes from memory buffer (available: ${data.size - relPos.coerceAtLeast(0)})")
         }
         System.arraycopy(data, relPos, target, offset, length)
         readPosition += length
@@ -319,7 +330,7 @@ internal class ByteArrayExtractorInput(
 
     override fun skip(length: Int): Int {
         val relPos = (readPosition - baseOffset).toInt()
-        if (relPos >= data.size) return C.RESULT_END_OF_INPUT
+        if (relPos < 0 || relPos >= data.size) return C.RESULT_END_OF_INPUT
         val bytesToSkip = minOf(length, data.size - relPos)
         readPosition += bytesToSkip
         peekPosition = maxOf(peekPosition, readPosition)
@@ -328,9 +339,9 @@ internal class ByteArrayExtractorInput(
 
     override fun skipFully(length: Int, allowEndOfInput: Boolean): Boolean {
         val relPos = (readPosition - baseOffset).toInt()
-        if (relPos + length > data.size) {
-            if (allowEndOfInput && relPos >= data.size) return false
-            throw EOFException("Cannot skip fully $length bytes from memory buffer (available: ${data.size - relPos})")
+        if (relPos < 0 || relPos + length > data.size) {
+            if (allowEndOfInput && (relPos < 0 || relPos >= data.size)) return false
+            throw EOFException("Cannot skip fully $length bytes from memory buffer (available: ${data.size - relPos.coerceAtLeast(0)})")
         }
         readPosition += length
         peekPosition = maxOf(peekPosition, readPosition)
@@ -343,7 +354,7 @@ internal class ByteArrayExtractorInput(
 
     override fun peek(target: ByteArray, offset: Int, length: Int): Int {
         val relPos = (peekPosition - baseOffset).toInt()
-        if (relPos >= data.size) return C.RESULT_END_OF_INPUT
+        if (relPos < 0 || relPos >= data.size) return C.RESULT_END_OF_INPUT
         val bytesToPeek = minOf(length, data.size - relPos)
         System.arraycopy(data, relPos, target, offset, bytesToPeek)
         peekPosition += bytesToPeek
@@ -352,9 +363,9 @@ internal class ByteArrayExtractorInput(
 
     override fun peekFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
         val relPos = (peekPosition - baseOffset).toInt()
-        if (relPos + length > data.size) {
-            if (allowEndOfInput && relPos >= data.size) return false
-            throw EOFException("Cannot peek fully $length bytes from memory buffer (available: ${data.size - relPos})")
+        if (relPos < 0 || relPos + length > data.size) {
+            if (allowEndOfInput && (relPos < 0 || relPos >= data.size)) return false
+            throw EOFException("Cannot peek fully $length bytes from memory buffer (available: ${data.size - relPos.coerceAtLeast(0)})")
         }
         System.arraycopy(data, relPos, target, offset, length)
         peekPosition += length
@@ -367,8 +378,8 @@ internal class ByteArrayExtractorInput(
 
     override fun advancePeekPosition(length: Int, allowEndOfInput: Boolean): Boolean {
         val relPos = (peekPosition - baseOffset).toInt()
-        if (relPos + length > data.size) {
-            if (allowEndOfInput && relPos >= data.size) return false
+        if (relPos < 0 || relPos + length > data.size) {
+            if (allowEndOfInput && (relPos < 0 || relPos >= data.size)) return false
             throw EOFException("Cannot advance peek position by $length bytes")
         }
         peekPosition += length

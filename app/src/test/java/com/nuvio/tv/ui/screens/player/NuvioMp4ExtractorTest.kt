@@ -318,14 +318,92 @@ class NuvioMp4ExtractorTest {
         extractor.onMoovParsedCallback = { released.set(true) }
         extractor.init(silentOutput())
 
-        val oversized = 9L * 1024L * 1024L
+        val oversized = NuvioMp4Extractor.MAX_MOOV_CACHE_SIZE + 1024L
         val header = moovHeader(size = oversized)
         val tailOffset = 100_000_000L
-        val input = ByteArrayExtractorInput(header, tailOffset, tailOffset + header.size)
+        val fileLength = tailOffset + oversized
+        val input = ByteArrayExtractorInput(header, tailOffset, fileLength)
         extractor.read(input, PositionHolder())
         assertEquals(tailOffset, input.position)
         assertTrue(liveReads.get())
         assertFalse(released.get())
+    }
+
+    @Test
+    fun `oversized moov still tracks moovOffset and releases chunks upon endTracks`() {
+        val released = AtomicBoolean(false)
+        var delegateOut: ExtractorOutput? = null
+        val delegate = object : Extractor {
+            override fun init(output: ExtractorOutput) { delegateOut = output }
+            override fun sniff(input: ExtractorInput): Boolean = true
+            override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+                // Read from live input (not cached)
+                input.skip(8)
+                delegateOut?.endTracks()
+                return Extractor.RESULT_CONTINUE
+            }
+            override fun seek(position: Long, timeUs: Long) {}
+            override fun release() {}
+            override fun getUnderlyingImplementation(): Extractor = this
+        }
+        val extractor = NuvioMp4Extractor(delegate)
+        extractor.onMoovParsedCallback = { released.set(true) }
+        extractor.init(silentOutput())
+
+        val oversized = NuvioMp4Extractor.MAX_MOOV_CACHE_SIZE + 1024L
+        val header = moovHeader(size = oversized)
+        val tailOffset = 100_000_000L
+        val fileLength = tailOffset + oversized
+        val input = ByteArrayExtractorInput(header, tailOffset, fileLength)
+        extractor.read(input, PositionHolder())
+        assertTrue("Oversized moov must still trigger release when tracks end", released.get())
+    }
+
+    @Test
+    fun `mp4Extractor seek past mdat to tail enables tail detection and moov caching`() {
+        val released = AtomicBoolean(false)
+        var step = 0
+        var delegateOut: ExtractorOutput? = null
+        val tailOffset = 200_000_000L
+        val fileLength = 200_100_000L
+
+        val delegate = object : Extractor {
+            override fun init(output: ExtractorOutput) { delegateOut = output }
+            override fun sniff(input: ExtractorInput): Boolean = true
+            override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+                if (step == 0) {
+                    // Simulate Mp4Extractor seeing mdat at head and requesting seek to tail
+                    step = 1
+                    seekPosition.position = tailOffset
+                    return Extractor.RESULT_SEEK
+                } else if (step == 1) {
+                    // At tail, delegate reading moov from memory
+                    assertTrue("Input should be cached in memory", input is ByteArrayExtractorInput)
+                    delegateOut?.endTracks()
+                    return Extractor.RESULT_CONTINUE
+                }
+                return Extractor.RESULT_CONTINUE
+            }
+            override fun seek(position: Long, timeUs: Long) {}
+            override fun release() {}
+            override fun getUnderlyingImplementation(): Extractor = this
+        }
+        val extractor = NuvioMp4Extractor(delegate)
+        extractor.onMoovParsedCallback = { released.set(true) }
+        extractor.init(silentOutput())
+
+        val seekPos = PositionHolder()
+        // Step 0: Read at offset 32 (head of file, 200MB total)
+        val headInput = ByteArrayExtractorInput(ByteArray(64), 32L, fileLength)
+        val res0 = extractor.read(headInput, seekPos)
+        assertEquals(Extractor.RESULT_SEEK, res0)
+        assertEquals(tailOffset, seekPos.position)
+
+        // Step 1: Read at tailOffset
+        val moovBytes = moovHeader(size = 8)
+        val tailInput = ByteArrayExtractorInput(moovBytes, tailOffset, fileLength)
+        extractor.read(tailInput, seekPos)
+        assertTrue(released.get())
     }
 
     private fun silentOutput(): ExtractorOutput = object : ExtractorOutput {
