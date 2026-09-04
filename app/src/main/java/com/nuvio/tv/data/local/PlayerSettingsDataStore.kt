@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.local
 
+import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -809,6 +810,7 @@ class PlayerSettingsDataStore @Inject constructor(
     val playerSettings: Flow<PlayerSettings> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.onStart { migrateProfile(pid) }
     }.map { prefs ->
+        try {
             PlayerSettings(
                 playerPreference = prefs[playerPreferenceKey]?.let {
                     runCatching { PlayerPreference.valueOf(it) }.getOrDefault(PlayerPreference.INTERNAL)
@@ -1000,6 +1002,10 @@ class PlayerSettingsDataStore @Inject constructor(
                     retainBackBufferFromKeyframe = prefs[retainBackBufferFromKeyframeKey] ?: false
                 )
             )
+        } catch (e: ClassCastException) {
+            Log.w("PlayerSettingsDataStore", "Corrupt preference value, using defaults", e)
+            PlayerSettings()
+        }
         }
 
     val useLibass: Flow<Boolean> = profileManager.activeProfileId.flatMapLatest { pid ->
