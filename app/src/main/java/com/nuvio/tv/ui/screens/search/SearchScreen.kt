@@ -849,13 +849,23 @@ private fun RecentSearchesSection(
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val searchFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val removeFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    var pendingDownwardFocus by remember { mutableStateOf<Pair<String, String>?>(null) }
     val firstRemoveFocusRequester = removeFocusRequesters.getOrPut(recentSearches.first()) {
         FocusRequester()
     }
-    LaunchedEffect(recentSearches) {
+    LaunchedEffect(recentSearches, pendingDownwardFocus) {
         val visibleQueries = recentSearches.toSet()
         searchFocusRequesters.keys.retainAll(visibleQueries)
         removeFocusRequesters.keys.retainAll(visibleQueries)
+
+        val (removedQuery, replacementQuery) = pendingDownwardFocus
+            ?: return@LaunchedEffect
+        if (removedQuery !in visibleQueries) {
+            removeFocusRequesters[replacementQuery]?.let { requester ->
+                runCatching { requester.requestFocus() }
+            }
+            pendingDownwardFocus = null
+        }
     }
     Column(
         modifier = modifier
@@ -962,13 +972,19 @@ private fun RecentSearchesSection(
                     var isRemoveFocused by remember(recentQuery) { mutableStateOf(false) }
                     TvIconButton(
                         onClick = {
-                            val replacementQuery = recentSearches.getOrNull(index + 1)
-                                ?: recentSearches.getOrNull(index - 1)
-                            if (replacementQuery == null) {
-                                runCatching { emptyHistoryFocusRequester.requestFocus() }
-                            } else {
-                                runCatching {
-                                    removeFocusRequesters.getValue(replacementQuery).requestFocus()
+                            val nextQuery = recentSearches.getOrNull(index + 1)
+                            val previousQuery = recentSearches.getOrNull(index - 1)
+                            when {
+                                nextQuery != null -> {
+                                    pendingDownwardFocus = recentQuery to nextQuery
+                                }
+                                previousQuery != null -> {
+                                    runCatching {
+                                        removeFocusRequesters.getValue(previousQuery).requestFocus()
+                                    }
+                                }
+                                else -> {
+                                    runCatching { emptyHistoryFocusRequester.requestFocus() }
                                 }
                             }
                             onRemoveSearch(recentQuery)
