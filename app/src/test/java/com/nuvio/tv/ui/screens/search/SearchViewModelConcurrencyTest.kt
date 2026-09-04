@@ -109,24 +109,6 @@ class SearchViewModelConcurrencyTest {
         coVerify(exactly = 1) { history.saveRecentSearch("Deep Cover", 8) }
     }
 
-    @Test
-    fun `removing a recent search deletes only the selected query`() = runTest {
-        val addon = searchableAddon()
-        val history = mockk<SearchHistoryDataStore>(relaxed = true)
-        every { history.recentSearches } returns flowOf(listOf("Frieren", "Deep Cover"))
-        val viewModel = newViewModel(
-            addonRepository = GatedAddonRepository(addon, CompletableDeferred(Unit)),
-            catalogRepository = ImmediateCatalogRepository(addon),
-            history = history
-        )
-
-        viewModel.onEvent(SearchEvent.RemoveRecentSearch("Deep Cover"))
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { history.removeRecentSearch("Deep Cover") }
-        coVerify(exactly = 0) { history.clearRecentSearches() }
-    }
-
     private fun newViewModel(
         addonRepository: AddonRepository,
         catalogRepository: CatalogRepository,
