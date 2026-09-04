@@ -883,7 +883,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         ),
                         stripDvRpu = stripDvRpuEnabled,
                         stripHdr10PlusSei = stripHdr10PlusSei
-                    )
+                    ).withNuvioMp4Extractor()
 
             setLoadingStatus(
                 phase = "building_player",
