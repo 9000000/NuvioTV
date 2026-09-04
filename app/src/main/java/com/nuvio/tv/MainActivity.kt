@@ -2164,12 +2164,16 @@ private fun navigateToDrawerRoute(
         }
         return
     }
-    navController.navigate(targetRoute) {
-        popUpTo(navController.graph.startDestinationId) {
-            saveState = true
+    try {
+        navController.navigate(targetRoute) {
+            popUpTo(navController.graph.startDestinationId) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
         }
-        launchSingleTop = true
-        restoreState = true
+    } catch (e: IllegalArgumentException) {
+        Log.w("NuvioNavigation", "Route not found in nav graph: $targetRoute", e)
     }
 }
 
