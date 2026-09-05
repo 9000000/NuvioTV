@@ -10,6 +10,21 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +61,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -164,6 +180,10 @@ import com.nuvio.tv.ui.util.rememberDrawerItemFocusRequesters
 import com.nuvio.tv.updater.UpdateViewModel
 import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.delay
@@ -175,7 +195,7 @@ import kotlinx.coroutines.launch
 val LocalSidebarExpanded = compositionLocalOf { false }
 val LocalContentFocusRequester = compositionLocalOf { FocusRequester.Default }
 
-private const val SIDEBAR_AUTO_COLLAPSE_DELAY_MS = 4_000L
+private const val SIDEBAR_AUTO_COLLAPSE_DELAY_MS = 3_000L
 
 private const val MAX_SUPPORTED_FONT_SCALE = 1.15f
 
@@ -703,7 +723,8 @@ open class MainActivity : ComponentActivity() {
                                     year = next.year,
                                     contentId = next.contentId,
                                     contentName = next.contentName,
-                                    returnToDetailOnBack = next.contentType.equals("series", ignoreCase = true)
+                                    returnToDetailOnBack = next.contentType.equals("series", ignoreCase = true),
+                                    profileId = next.profileId
                                 )
                             ) {
                                 // Replace any lingering Stream screen (e.g. the previous
@@ -1247,7 +1268,11 @@ private fun LegacySidebarScaffold(
                         }
                 ) {
                     val isExpanded = drawerValue == DrawerValue.Open
-                    val itemWidth = if (isExpanded) openDrawerItemWidth else NuvioTheme.sizes.avatars.md
+                    val itemWidth by animateDpAsState(
+                        targetValue = if (isExpanded) openDrawerItemWidth else NuvioTheme.sizes.avatars.md,
+                        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
+                        label = "legacySidebarItemWidth"
+                    )
 
                     if (isExpanded) {
                         Column(
@@ -1351,11 +1376,15 @@ private fun LegacySidebarScaffold(
         }
         }
     ) {
-        val contentStartPadding = if (showSidebar && !sidebarCollapsed) {
-            NuvioLayout.tokens.sidebarContentOffset
-        } else {
-            NuvioTheme.spacing.none
-        }
+        val contentStartPadding by animateDpAsState(
+            targetValue = if (showSidebar && !sidebarCollapsed) {
+                NuvioLayout.tokens.sidebarContentOffset
+            } else {
+                NuvioTheme.spacing.none
+            },
+            animationSpec = tween(NuvioMotion.tokens.durations.medium),
+            label = "contentStartPadding"
+        )
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1431,33 +1460,52 @@ private fun LegacySidebarButton(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val itemShape = NuvioTheme.shapes.navItem
-    val backgroundColor = when {
-        isFocused -> NuvioTheme.colors.FocusBackground
-        expanded && selected -> NuvioTheme.colors.Secondary
-        else -> Color.Transparent
-    }
-    val contentColor = when {
-        isFocused -> NuvioTheme.colors.TextPrimary
-        expanded && selected -> NuvioTheme.colors.OnSecondary
-        else -> NuvioTheme.colors.TextSecondary
-    }
-    val iconTint = when {
-        isFocused -> NuvioTheme.colors.TextPrimary
-        expanded && selected -> NuvioTheme.colors.OnSecondary
-        selected -> NuvioTheme.colors.Secondary
-        !expanded -> NuvioTheme.colors.TextTertiary
-        else -> NuvioTheme.colors.TextSecondary
-    }
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isFocused -> NuvioTheme.colors.FocusBackground
+            expanded && selected -> NuvioTheme.colors.Secondary
+            else -> Color.Transparent
+        },
+        label = "legacySidebarItemBackground"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = when {
+            isFocused -> NuvioTheme.colors.TextPrimary
+            expanded && selected -> NuvioTheme.colors.OnSecondary
+            else -> NuvioTheme.colors.TextSecondary
+        },
+        label = "legacySidebarItemContent"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = when {
+            isFocused -> NuvioTheme.colors.TextPrimary
+            expanded && selected -> NuvioTheme.colors.OnSecondary
+            selected -> NuvioTheme.colors.Secondary
+            !expanded -> NuvioTheme.colors.TextTertiary
+            else -> NuvioTheme.colors.TextSecondary
+        },
+        label = "legacySidebarItemIconTint"
+    )
     val selectedCollapsedIconBrush = if (selected && !expanded) {
         ThemeColors.getColorPalette(NuvioTheme.currentTheme).accentBrush()
     } else {
         null
     }
+    val itemScale by animateFloatAsState(
+        targetValue = if (isFocused && expanded) 1.1f else 1f,
+        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
+        label = "legacySidebarItemScale"
+    )
 
     Card(
         onClick = onClick,
         modifier = modifier
             .height(NuvioComponents.tokens.sidebar.itemHeight)
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+                transformOrigin = TransformOrigin.Center
+            }
             .focusProperties { canFocus = expanded }
             .onFocusChanged { isFocused = it.hasFocus },
         colors = CardDefaults.colors(
@@ -1537,7 +1585,8 @@ private fun ModernSidebarScaffold(
     var pendingSidebarFocusRequest by remember { mutableStateOf(false) }
     var focusedDrawerIndex by remember { mutableStateOf(-1) }
     var isFloatingPillIconOnly by remember { mutableStateOf(false) }
-    val keepFloatingPillExpanded = selectedDrawerRoute == Screen.Settings.route
+    var pillExpandRequestCount by remember { mutableIntStateOf(0) }
+    val keepFloatingPillExpanded = false
     val keepSidebarFocusDuringCollapse =
         isSidebarExpanded || sidebarCollapsePending || pendingContentFocusTransfer
     val hasSidebarProfileItem = showProfileSelector && activeProfileName.isNotEmpty()
@@ -1553,9 +1602,24 @@ private fun ModernSidebarScaffold(
         }
     }
 
+    // Collapse sidebar when navigating between root routes (e.g. Settings -> Home via Back)
+    LaunchedEffect(currentRoute) {
+        if (isSidebarExpanded && showSidebar) {
+            sidebarCollapsePending = true
+        }
+    }
+
     LaunchedEffect(keepFloatingPillExpanded, showSidebar) {
         if (!showSidebar || keepFloatingPillExpanded) {
             isFloatingPillIconOnly = false
+        }
+    }
+
+    // Expand pill label briefly after navigating to a different root route
+    LaunchedEffect(selectedDrawerRoute) {
+        if (showSidebar && !isSidebarExpanded) {
+            isFloatingPillIconOnly = false
+            pillExpandRequestCount++
         }
     }
 
@@ -1590,7 +1654,7 @@ private fun ModernSidebarScaffold(
     // its label (DPAD UP from content) and then leaves it idle. The DPAD DOWN
     // path already collapses it instantly, this just covers the case where the
     // user releases UP and walks away.
-    LaunchedEffect(isFloatingPillIconOnly, keepFloatingPillExpanded, showSidebar, isSidebarExpanded) {
+    LaunchedEffect(isFloatingPillIconOnly, keepFloatingPillExpanded, showSidebar, isSidebarExpanded, pillExpandRequestCount) {
         if (!showSidebar || isFloatingPillIconOnly || keepFloatingPillExpanded || isSidebarExpanded) {
             return@LaunchedEffect
         }
@@ -1599,28 +1663,50 @@ private fun ModernSidebarScaffold(
     }
 
     val sidebarVisible = showSidebar && (isSidebarExpanded || !sidebarCollapsed)
-    val targetSidebarWidth = when {
-        !sidebarVisible -> NuvioTheme.spacing.none
-        isSidebarExpanded -> openSidebarWidth
-        else -> collapsedSidebarWidth
+    val sidebarHazeState = remember { HazeState() }
+    // Panel is always laid out at full expanded width; open/close is
+    // purely a graphicsLayer transform (scale + alpha) so Compose never
+    // re-layouts and haze doesn't re-render blur every frame.
+    val sidebarWidth = if (sidebarVisible) openSidebarWidth else collapsedSidebarWidth
+    val animationDuration = if (sidebarVisible) 400 else 300
+    val animationEasing = if (sidebarVisible) FastOutSlowInEasing else FastOutLinearInEasing
+
+    val sidebarSlideX = NuvioTheme.spacing.none
+    val sidebarSurfaceAlpha by animateFloatAsState(
+        targetValue = if (isSidebarExpanded) 1f else 0f,
+        animationSpec = tween(durationMillis = if (isSidebarExpanded) 280 else 200, easing = animationEasing),
+        label = "sidebarSurfaceAlpha"
+    )
+    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled
+    val sidebarTransition = updateTransition(
+        targetState = isSidebarExpanded,
+        label = "sidebarTransition"
+    )
+    // Labels and icons are always at full size — the panel is rendered
+    // complete and the open/close animation is purely graphicsLayer.
+    val sidebarLabelAlpha = 1f
+    val sidebarExpandProgress by sidebarTransition.animateFloat(
+        transitionSpec = {
+            if (targetState) {
+                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelIn, easing = FastOutSlowInEasing)
+            } else {
+                tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelOut, easing = LinearOutSlowInEasing)
+            }
+        },
+        label = "sidebarExpandProgress"
+    ) { expanded ->
+        if (expanded) 1f else 0f
     }
-    val sidebarWidth = targetSidebarWidth
-    val sidebarSlideX = if (sidebarVisible) NuvioTheme.spacing.none else (-24).dp
-    val sidebarSurfaceAlpha = if (sidebarVisible) 1f else 0f
-    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled && (
-        isSidebarExpanded || sidebarCollapsePending
-        )
-    val sidebarLabelAlpha = if (isSidebarExpanded) 1f else 0f
-    val sidebarExpandProgress = if (isSidebarExpanded) 1f else 0f
 
-    val sidebarBlocksContentKeys = isSidebarExpanded
-    val sidebarShowExpandedPanel = isSidebarExpanded
-    val sidebarShowCollapsedPill = !isSidebarExpanded
+    // derivedStateOf prevents per-frame recomposition — only triggers when the boolean crosses the threshold
+    val sidebarBlocksContentKeys by remember { derivedStateOf { sidebarExpandProgress > 0.2f } }
+    val sidebarShowExpandedPanel by remember { derivedStateOf { sidebarExpandProgress > 0.01f } }
+    val sidebarShowCollapsedPill by remember { derivedStateOf { sidebarExpandProgress < 0.98f } }
 
-    val sidebarIconScale = if (isSidebarExpanded) 1f else 0.92f
-    val sidebarBloomScale = if (isSidebarExpanded) 1f else 0.9f
-    val sidebarDeflateOffsetX = if (isSidebarExpanded) NuvioTheme.spacing.none else (-10).dp
-    val sidebarDeflateOffsetY = if (isSidebarExpanded) NuvioTheme.spacing.none else (-8).dp
+    val sidebarIconScale = 1f
+    val sidebarBloomScale = 1f
+    val sidebarDeflateOffsetX = NuvioTheme.spacing.none
+    val sidebarDeflateOffsetY = NuvioTheme.spacing.none
 
     LaunchedEffect(isSidebarExpanded, sidebarCollapsePending, pendingContentFocusTransfer, showSidebar) {
         if (!showSidebar || !pendingContentFocusTransfer || isSidebarExpanded || sidebarCollapsePending) {
@@ -1671,6 +1757,10 @@ private fun ModernSidebarScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (shouldApplySidebarHaze) Modifier.hazeSource(state = sidebarHazeState)
+                    else Modifier
+                )
                 .onPreviewKeyEvent { keyEvent ->
                     // Long-press Back on a root route directly opens the sidebar,
                     // bypassing the "scroll row to start" BackHandler in home content.
@@ -1713,7 +1803,10 @@ private fun ModernSidebarScaffold(
                         if (!keepFloatingPillExpanded) {
                             when (keyEvent.key) {
                                 Key.DirectionDown -> isFloatingPillIconOnly = true
-                                Key.DirectionUp -> isFloatingPillIconOnly = false
+                                Key.DirectionUp -> {
+                                    isFloatingPillIconOnly = false
+                                    pillExpandRequestCount++
+                                }
                                 else -> Unit
                             }
                         }
@@ -1747,25 +1840,21 @@ private fun ModernSidebarScaffold(
             }
         }
 
-        if (showSidebar && (sidebarVisible || sidebarWidth > NuvioTheme.spacing.none)) {
+        if (showSidebar && (sidebarVisible || sidebarShowExpandedPanel)) {
             val panelShape = RoundedCornerShape(sidebarTokens.panelRadius)
             val showExpandedPanel = isSidebarExpanded || sidebarShowExpandedPanel
 
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .width(sidebarWidth)
+                    .width(openSidebarWidth)
                     .padding(start = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs, top = NuvioTheme.spacing.lg, bottom = NuvioTheme.spacing.md, end = NuvioTheme.spacing.sm)
-                    .offset {
-                        IntOffset(
-                            (sidebarSlideX + sidebarDeflateOffsetX).roundToPx(),
-                            sidebarDeflateOffsetY.roundToPx()
-                        )
-                    }
                     .graphicsLayer {
+                        val progress = sidebarExpandProgress
                         alpha = sidebarSurfaceAlpha
-                        scaleX = sidebarBloomScale
-                        scaleY = sidebarBloomScale
+                        val s = 0.92f + 0.08f * progress
+                        scaleX = s
+                        scaleY = s
                         transformOrigin = TransformOrigin(0f, 0f)
                     }
                     .selectableGroup()
@@ -1775,11 +1864,32 @@ private fun ModernSidebarScaffold(
                         }
                         when (keyEvent.key) {
                             Key.DirectionUp -> {
-                                focusedDrawerIndex == sidebarTopBoundaryIndex
+                                if (focusedDrawerIndex == sidebarTopBoundaryIndex) {
+                                    true
+                                } else {
+                                    // Move focus within the sidebar; consume unconditionally
+                                    // so focus never escapes into the content behind.
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                    true
+                                }
                             }
 
                             Key.DirectionDown -> {
-                                focusedDrawerIndex == drawerItems.lastIndex
+                                if (focusedDrawerIndex == drawerItems.lastIndex) {
+                                    // Already at the bottom drawer item — stay put.
+                                    true
+                                } else if (focusedDrawerIndex == drawerItems.size && hasSidebarProfileItem) {
+                                    // Profile → first drawer item: skip moveFocus (the
+                                    // Spacer gap causes it to land in content) and
+                                    // request the first drawer item directly.
+                                    drawerItems.firstOrNull()?.route?.let { route ->
+                                        drawerItemFocusRequesters[route]?.requestFocus()
+                                    }
+                                    true
+                                } else {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
                             }
 
                             Key.DirectionRight, Key.DirectionLeft -> {
@@ -1808,6 +1918,7 @@ private fun ModernSidebarScaffold(
                         isSidebarExpanded = isSidebarExpanded,
                         sidebarCollapsePending = sidebarCollapsePending,
                         blurEnabled = modernSidebarBlurEnabled,
+                        sidebarHazeState = sidebarHazeState,
                         panelShape = panelShape,
                         drawerItemFocusRequesters = drawerItemFocusRequesters,
                         onDrawerItemFocused = { focusedDrawerIndex = it },
@@ -1844,6 +1955,7 @@ private fun ModernSidebarScaffold(
                     icon = selectedDrawerItem.icon,
                     iconOnly = isFloatingPillIconOnly && !keepFloatingPillExpanded,
                     blurEnabled = modernSidebarBlurEnabled,
+                    hazeState = if (modernSidebarBlurEnabled) sidebarHazeState else null,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset {
@@ -1878,6 +1990,7 @@ private fun CollapsedSidebarPill(
     icon: ImageVector?,
     iconOnly: Boolean,
     blurEnabled: Boolean,
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
     onExpand: () -> Unit
 ) {
@@ -1887,15 +2000,12 @@ private fun CollapsedSidebarPill(
     val bgCard = colors.BackgroundCard
     val borderBase = colors.Border
     val mediaColors = colors.media
-    val pillBackgroundBrush = remember(blurEnabled, bgElevated, bgCard, mediaColors) {
-        if (blurEnabled) {
-            Brush.verticalGradient(listOf(mediaColors.glassPanelTop, mediaColors.glassPanelBottom))
-        } else {
-            Brush.verticalGradient(listOf(bgElevated, bgCard))
-        }
-    }
-    val pillBorderColor = remember(blurEnabled, borderBase) {
-        if (blurEnabled) NuvioPrimitives.white.copy(alpha = 0.14f) else borderBase.copy(alpha = 0.9f)
+    val pillBackgroundBrush = remember(blurEnabled) {
+        val alpha = if (blurEnabled) 0.65f else 0.96f
+        Brush.verticalGradient(listOf(
+            Color(0xFF1C1C1E).copy(alpha = alpha),
+            Color(0xFF1C1C1E).copy(alpha = alpha)
+        ))
     }
 
     Row(
@@ -1903,44 +2013,34 @@ private fun CollapsedSidebarPill(
             .focusProperties { canFocus = false }
             .clickable(onClick = onExpand)
             .padding(horizontal = NuvioTheme.spacing.hairline, vertical = NuvioTheme.spacing.xxs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(0.25.dp)
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!iconOnly) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_chevron_compact_left),
-                contentDescription = stringResource(R.string.cd_expand_sidebar),
-                modifier = Modifier
-                    .width(8.5.dp)
-                    .height(NuvioTheme.spacing.lg)
-                    .offset(y = (-0.5).dp)
-            )
-        }
-
         Box(
             modifier = Modifier
                 .height(NuvioTheme.sizes.player.control)
-                .graphicsLayer {
-                    shape = pillShape
-                    clip = true
-                }
                 .clip(pillShape)
+                .then(
+                    if (blurEnabled && hazeState != null) {
+                        Modifier.hazeEffect(state = hazeState) {
+                            blurRadius = 24.dp
+                            inputScale = HazeInputScale.Fixed(0.66f)
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .background(brush = pillBackgroundBrush, shape = pillShape)
-                .border(width = NuvioStrokes.tokens.hairline, color = pillBorderColor, shape = pillShape)
         ) {
             Row(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
-                    .padding(start = 5.dp, end = if (iconOnly) 5.dp else NuvioTheme.spacing.md),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(if (iconOnly) NuvioTheme.spacing.none else 9.dp)
+                    .padding(start = 5.dp, end = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(NuvioTheme.sizes.sidebar.leadingVisual)
-                        .clip(CircleShape)
-                        .background(NuvioTheme.colors.SurfaceVariant),
+                        .size(NuvioTheme.sizes.sidebar.leadingVisual),
                     contentAlignment = Alignment.Center
                 ) {
                     DrawerItemIcon(
@@ -1953,14 +2053,28 @@ private fun CollapsedSidebarPill(
                     )
                 }
 
-                if (!iconOnly) {
+                AnimatedVisibility(
+                    visible = !iconOnly,
+                    enter = expandHorizontally(
+                            animationSpec = tween(NuvioMotion.tokens.durations.fast, easing = FastOutSlowInEasing),
+                            expandFrom = Alignment.Start,
+                            clip = true
+                        ),
+                    exit = shrinkHorizontally(
+                            animationSpec = tween(NuvioMotion.tokens.durations.fast, easing = FastOutSlowInEasing),
+                            shrinkTowards = Alignment.Start,
+                            clip = true
+                        )
+                ) {
                     Text(
                         text = label,
                         color = NuvioTheme.colors.text.onOverlay,
                         style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
                             lineHeight = 30.sp
                         ),
-                        modifier = Modifier.offset(y = (-0.5).dp),
+                        modifier = Modifier
+                            .padding(start = 9.dp, end = NuvioTheme.spacing.md - 5.dp)
+                            .offset(y = (-0.5).dp),
                         maxLines = 1
                     )
                 }
@@ -1988,12 +2102,16 @@ private fun navigateToDrawerRoute(
         }
         return
     }
-    navController.navigate(targetRoute) {
-        popUpTo(navController.graph.startDestinationId) {
-            saveState = true
+    try {
+        navController.navigate(targetRoute) {
+            popUpTo(navController.graph.startDestinationId) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
         }
-        launchSingleTop = true
-        restoreState = true
+    } catch (e: IllegalArgumentException) {
+        Log.w("NuvioNavigation", "Route not found in nav graph: $targetRoute", e)
     }
 }
 

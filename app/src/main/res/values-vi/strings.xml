@@ -580,6 +580,8 @@
     <string name="buffer_auto_limit_active">Giới hạn an toàn được tự động điều chỉnh: %d MB</string>
     <string name="advanced_nuvio_focus_scroll">Cuộn theo tiêu điểm Nuvio</string>
     <string name="advanced_nuvio_focus_scroll_subtitle">Sử dụng hiệu ứng hoạt ảnh và cách định vị cuộn theo tiêu điểm toàn cục tùy chỉnh của Nuvio.</string>
+    <string name="advanced_rgb565">Giải mã hình ảnh RGB565</string>
+    <string name="advanced_rgb565_subtitle">Dùng màu 16 bit để tiết kiệm bộ nhớ cho các hình ảnh không trong suốt. Thay đổi tùy chọn này sẽ khởi động lại ứng dụng.</string>
     <string name="advanced_memory_only_vertical_scroll">Cuộn dọc chỉ trong bộ nhớ:</string>
     <string name="advanced_memory_only_vertical_scroll_subtitle">Bỏ qua các yêu cầu tải ảnh từ ổ đĩa và mạng trong khi cuộn dọc qua các hàng trên trang chủ.</string>
     <string name="advanced_compose_highlighter">Bộ tô sáng Compose</string>

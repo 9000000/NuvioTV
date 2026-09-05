@@ -313,6 +313,11 @@ fun PlaybackSettingsContent(
                 onSetStripHdr10PlusSei = { enabled ->
                     coroutineScope.launch { viewModel.setStripHdr10PlusSei(enabled) }
                 },
+                onSetMpvHi10pGnextSoftwareFallbackEnabled = { enabled ->
+                    coroutineScope.launch {
+                        viewModel.setMpvHi10pGnextSoftwareFallbackEnabled(enabled)
+                    }
+                },
                 onSetBufferEngineEnabled = { enabled ->
                     coroutineScope.launch { viewModel.setBufferEngineEnabled(enabled) }
                     if (enabled) memoryUsageTrigger++
