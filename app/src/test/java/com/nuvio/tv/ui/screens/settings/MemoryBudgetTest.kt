@@ -10,33 +10,6 @@ import org.junit.Test
 class MemoryBudgetTest {
 
     @Test
-    fun lowRamBudgetIsCappedByPhysicalCeiling() {
-        // A 2GB box with largeHeap: 512MB heap, so the ratio alone would allow 332MB.
-        // The 250MB ceiling has to win, otherwise the process gets LMK-killed.
-        assertEquals(250, MemoryBudget.computeBudgetMb(332, 512L, isLowRamTier = true))
-        // Heap reserve still wins when it is the tighter of the two.
-        assertEquals(190, MemoryBudget.computeBudgetMb(332, 400L, isLowRamTier = true))
-        // High-RAM devices keep the full ratio budget, uncapped.
-        assertEquals(1740, MemoryBudget.computeBudgetMb(1740, 2048L, isLowRamTier = false))
-    }
-
-    @Test
-    fun lowRamClampsPerfModeParallelWithoutWidening() {
-        // Perf mode's 16 x 128MB is ~2.1GB of direct buffers, so low-RAM has to come back in budget.
-        assertEquals(
-            MemoryBudget.MAX_CONNECTIONS to MemoryBudget.maxChunkMb(50, MemoryBudget.MAX_CONNECTIONS) * 1024,
-            MemoryBudget.clampParallel(16, 128 * 1024, 50, isLowRamTier = true)
-        )
-        // High-RAM keeps the raised ceilings.
-        assertEquals(
-            16 to 128 * 1024,
-            MemoryBudget.clampParallel(16, 128 * 1024, 50, isLowRamTier = false)
-        )
-        // Sub-MB chunks stay exact; values already in budget pass through.
-        assertEquals(2 to 256, MemoryBudget.clampParallel(2, 256, 50, isLowRamTier = true))
-    }
-
-    @Test
     fun testTotalUsageMb() {
         // totalUsageMb(bufferMb, connectionCount, chunkSizeMb, parallelEnabled)
         // case 1: parallel disabled

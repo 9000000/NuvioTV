@@ -18,7 +18,6 @@ import coil3.request.allowRgb565
 import coil3.bitmapFactoryMaxParallelism
 
 import okio.Path.Companion.toOkioPath
-import com.nuvio.tv.core.device.DeviceMemoryTier
 import com.nuvio.tv.core.diagnostics.SentryInitializer
 import com.nuvio.tv.core.image.StaleWhileRevalidateCacheStrategy
 import com.nuvio.tv.core.runtime.PluginRuntimeHooks
@@ -75,10 +74,6 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     }
 
     override fun onCreate() {
-        // Before super.onCreate(), which triggers Hilt field injection: MemoryBudget caches
-        // its tier on first touch, so the real device tier has to be resolved before any
-        // injected singleton can read it.
-        DeviceMemoryTier.init(this)
         super.onCreate()
         SentryInitializer.start(this, sentrySettingsDataStore)
         PluginRuntimeHooks.onApplicationCreate(this)
@@ -149,9 +144,9 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 // Normal devices (>3GB): use 0.25 for snappy image loading.
                 // - allowHardware(false) keeps bitmaps on heap instead of GPU memory
                 val cachePercent = when {
-                    totalRamMb <= 2048 -> 0.20
-                    totalRamMb <= 3072 -> 0.25
-                    else -> 0.30
+                    totalRamMb <= 2048 -> 0.15
+                    totalRamMb <= 3072 -> 0.20
+                    else -> 0.25
                 }
                 MemoryCache.Builder()
                     .maxSizePercent(context, cachePercent)
@@ -165,7 +160,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             }
             .crossfade(false)
             .precision(coil3.size.Precision.INEXACT)
-            .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            .allowHardware(false)
             .allowRgb565(imagePerformancePreferences.rgb565Enabled)
             .bitmapFactoryMaxParallelism(4)
             .build()

@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.LocaleCache
-import com.nuvio.tv.core.device.DeviceMemoryTier
 import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.recommendations.TvRecommendationManager
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
@@ -92,7 +91,7 @@ class HomeViewModel @Inject constructor(
         private const val MAX_RECENT_PROGRESS_ITEMS = 300
         private const val MAX_NEXT_UP_LOOKUPS = 24
         private const val MAX_NEXT_UP_CONCURRENCY = 4
-        private const val MAX_CATALOG_LOAD_CONCURRENCY = 4  // match eagerCatalogLoadCount so no eager row waits
+        private const val MAX_CATALOG_LOAD_CONCURRENCY = 3
 
         /** How long a home catalog is left alone before a return to Home re-requests it. */
         private const val HOME_CATALOG_REFRESH_TTL_MS = 15L * 60L * 1000L
@@ -222,9 +221,7 @@ class HomeViewModel @Inject constructor(
     internal var currentHeroCatalogKeys: List<String> = emptyList()
     internal var catalogUpdateJob: Job? = null
     internal var hasRenderedFirstCatalog = false
-    // Halve cold-start catalog fan-out on low-RAM boxes to cut the peak load+decode spike.
-    internal val catalogLoadConcurrency = if (DeviceMemoryTier.isLowRam) 2 else MAX_CATALOG_LOAD_CONCURRENCY
-    internal val catalogLoadSemaphore = Semaphore(catalogLoadConcurrency)
+    internal val catalogLoadSemaphore = Semaphore(MAX_CATALOG_LOAD_CONCURRENCY)
     internal var pendingCatalogLoads = 0
     internal val activeCatalogLoadJobs = mutableSetOf<Job>()
     internal var activeCatalogLoadSignature: String? = null
@@ -304,7 +301,7 @@ class HomeViewModel @Inject constructor(
     internal var startupAuthNoticeJob: Job? = null
 
     // Lazy catalog loading
-    internal val eagerCatalogLoadCount: Int = catalogLoadConcurrency
+    internal val eagerCatalogLoadCount: Int = 4
     internal val lazyLoadRequestedKeys: MutableSet<String> = ConcurrentHashMap.newKeySet()
     internal val pendingLazyCatalogs = linkedMapOf<String, Pair<Addon, CatalogDescriptor>>()
     /** All placeholder descriptors for homeRow construction. */

@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
-import com.nuvio.tv.core.device.DeviceMemoryTier
 import com.nuvio.tv.core.network.StreamSpeedTester
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -258,10 +257,8 @@ private class DebugStatsSampler(context: Context) {
             targetBufferMb > 0 -> "   native $nativeMb / $targetBufferMb MB"
             else -> "   native $nativeMb MB"
         }
-        // Cached total RAM rather than an ActivityManager query: this samples once a second.
-        val totalRamBytes = DeviceMemoryTier.totalRamBytes
-        val safeLimitMb = NuvioExoPlayerPerformanceHelper.getSafeNativeMemoryLimitMb(totalRamBytes)
-        val warningLimitMb = NuvioExoPlayerPerformanceHelper.getWarningNativeMemoryLimitMb(totalRamBytes)
+        val safeLimitMb = NuvioExoPlayerPerformanceHelper.getSafeNativeMemoryLimitMb(appContext)
+        val warningLimitMb = NuvioExoPlayerPerformanceHelper.getWarningNativeMemoryLimitMb(appContext)
 
         val severity = when {
             nativeMb > 0L && nativeMb > warningLimitMb -> DebugStatSeverity.DANGER
