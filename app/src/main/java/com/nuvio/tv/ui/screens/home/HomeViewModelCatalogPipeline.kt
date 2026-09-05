@@ -45,9 +45,10 @@ private data class CatalogUpdateResult(
 @OptIn(FlowPreview::class)
 internal fun HomeViewModel.observeCollectionsPipeline() {
     viewModelScope.launch {
+        var isInitial = true
         collectionsDataStore.collections
             .distinctUntilChanged()
-            .debounce(300)
+            .debounce { if (isInitial) { isInitial = false; 0L } else 300L }
             .collectLatest { collections ->
                 // Deduplicate by collection ID (keep last occurrence) to prevent
                 // duplicate LazyColumn keys when users import overlapping collections.

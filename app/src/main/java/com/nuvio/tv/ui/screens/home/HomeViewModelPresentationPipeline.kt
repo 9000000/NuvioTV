@@ -189,7 +189,7 @@ internal fun HomeViewModel.observeLayoutPreferencesPipeline() {
             )
         }
             .distinctUntilChanged()
-            .debounce(300)
+            .debounce { if (_uiState.value.layoutPreferencesReady) 300L else 0L }
             .collectLatest { prefs ->
                 val effectivePosterLabelsEnabled = if (prefs.layout == HomeLayout.MODERN) {
                     false

@@ -71,9 +71,8 @@ class AndroidTvChannelSyncService @Inject constructor(
             Log.d(TAG, "Non-leanback device; channel sync skipped")
             return
         }
-        TvChannelRefreshJobService.schedulePeriodic(context)
-
         scope.launch {
+            TvChannelRefreshJobService.schedulePeriodic(context)
             // Observe cache snapshot updates and settings changes to trigger reconciliation.
             // snapshotVersion bumps every time the CW pipeline writes new data to disk cache.
             // We drop the initial value (0) to avoid reconciling with stale disk cache before

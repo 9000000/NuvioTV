@@ -301,7 +301,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 watchedItemsVersion = watchedItemsSize,
                 hasLoadedRemoteProgress = hasLoadedRemoteProgress
             )
-        }.debounce(CW_PROGRESS_DEBOUNCE_MS).collectLatest { snapshot ->
+        }.debounce { if (_initialCwResolved.value) CW_PROGRESS_DEBOUNCE_MS else 0L }.collectLatest { snapshot ->
             val debug = CwDebugSession()
             val pipelineProfileId = profileManager.activeProfileId.value
             try {

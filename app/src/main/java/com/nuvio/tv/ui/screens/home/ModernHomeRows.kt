@@ -664,29 +664,31 @@ internal fun ModernRowSection(
                 return when (val payload = item.payload) {
                     is ModernPayload.Catalog -> {
                         val url = item.imageUrl ?: return null
-                        val metrics = item.catalogCardMetrics(
+                        val metrics = item.catalogCardRequestMetrics(
                             useLandscapePosters = useLandscapePosters,
                             portraitCardWidth = portraitCatalogCardWidth,
                             portraitCardHeight = portraitCatalogCardHeight,
                             landscapeCardWidth = landscapeCatalogCardWidth,
-                            landscapeCardHeight = landscapeCatalogCardHeight
+                            landscapeCardHeight = landscapeCatalogCardHeight,
+                            expandEnabled = effectiveExpandEnabled
                         )
                         val widthPx = with(density) { metrics.width.roundToPx() }
                         val heightPx = with(density) { metrics.height.roundToPx() }
-                        url to "${url}_${widthPx}x${heightPx}"
+                        url to "${url}_${widthPx}x${heightPx}_v0"
                     }
                     is ModernPayload.CollectionFolder -> {
                         val url = item.imageUrl ?: return null
-                        val metrics = item.catalogCardMetrics(
+                        val metrics = item.catalogCardRequestMetrics(
                             useLandscapePosters = useLandscapePosters,
                             portraitCardWidth = portraitCatalogCardWidth,
                             portraitCardHeight = portraitCatalogCardHeight,
                             landscapeCardWidth = landscapeCatalogCardWidth,
-                            landscapeCardHeight = landscapeCatalogCardHeight
+                            landscapeCardHeight = landscapeCatalogCardHeight,
+                            expandEnabled = effectiveExpandEnabled
                         )
                         val widthPx = with(density) { metrics.width.roundToPx() }
                         val heightPx = with(density) { metrics.height.roundToPx() }
-                        url to "${url}_${widthPx}x${heightPx}"
+                        url to "${url}_${widthPx}x${heightPx}_v0"
                     }
                     is ModernPayload.ContinueWatching -> {
                         // Use the same model and cache key the card computes so the prefetch warms the entry the card actually reads.

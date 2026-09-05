@@ -299,6 +299,7 @@ open class MainActivity : ComponentActivity() {
 
     /** True until the first onResume after onCreate completes. */
     private var isFirstResumeAfterCreate = false
+    private var isAppReadyForDisplay = false
 
     @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
     override fun attachBaseContext(newBase: Context) {
@@ -320,7 +321,11 @@ open class MainActivity : ComponentActivity() {
 
     @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { !isAppReadyForDisplay }
+        window?.decorView?.postDelayed({
+            isAppReadyForDisplay = true
+        }, 1500L)
         super.onCreate(savedInstanceState)
         isFirstResumeAfterCreate = true
         window?.setBackgroundDrawable(null)
@@ -577,6 +582,7 @@ open class MainActivity : ComponentActivity() {
                         authState !is AuthState.FullAccount &&
                         !onboardingCompletedThisSession
                     ) {
+                        isAppReadyForDisplay = true
                         AuthQrSignInScreen(
                             onBackPress = { finish() },
                             onContinue = {
@@ -622,6 +628,7 @@ open class MainActivity : ComponentActivity() {
                         !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin)
 
                     if (shouldShowProfileSelection) {
+                        isAppReadyForDisplay = true
                         ProfileSelectionScreen(
                             onProfileSelected = {
                                 hasSelectedProfileThisSession = true
@@ -642,6 +649,7 @@ open class MainActivity : ComponentActivity() {
                         )
                         return@Surface
                     }
+                    isAppReadyForDisplay = true
                     val effectiveExperienceMode = mainUiPrefs.experienceMode
                         ?: if (layoutChosen) ExperienceMode.ADVANCED else null
                     val needsExperienceSelection = effectiveExperienceMode == null

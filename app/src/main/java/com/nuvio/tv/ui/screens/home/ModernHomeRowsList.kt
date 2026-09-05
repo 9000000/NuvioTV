@@ -200,7 +200,7 @@ internal fun ModernHomeRowsList(
                             val wPx = with(density) { metrics.width.roundToPx() }
                             val hPx = with(density) { metrics.height.roundToPx() }
                             if (wPx <= 0 || hPx <= 0) continue
-                            val cacheKey = "${url}_${wPx}x${hPx}"
+                            val cacheKey = "${url}_${wPx}x${hPx}_v0"
                             if (verticalPrefetchImageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) continue
                             verticalPrefetchImageLoader.enqueue(
                                 ImageRequest.Builder(context)
