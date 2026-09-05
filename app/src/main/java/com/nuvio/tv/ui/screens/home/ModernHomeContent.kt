@@ -682,12 +682,12 @@ fun ModernHomeContent(
                             title = enrichedItem.name,
                             logo = enrichedItem.logo,
                             description = enrichedItem.description,
-                            contentTypeText = activeCarouselItem.heroPreview.contentTypeText,
+                            contentTypeText = activeCarouselItem?.heroPreview?.contentTypeText,
                             isSeries = isSeriesType(enrichedItem.apiType),
                             yearText = extractYearText(enrichedItem.type, enrichedItem.releaseInfo, enrichedItem.released)
-                                ?: activeCarouselItem.heroPreview.yearText,
+                                ?: activeCarouselItem?.heroPreview?.yearText,
                             runtimeText = formatHeroRuntime(enrichedItem.runtime)
-                                ?: activeCarouselItem.heroPreview.runtimeText,
+                                ?: activeCarouselItem?.heroPreview?.runtimeText,
                             imdbText = enrichedItem.imdbRating
                                 ?.let { String.format(java.util.Locale.US, "%.1f", it) },
                             ageRatingText = enrichedItem.ageRating,
@@ -697,9 +697,9 @@ fun ModernHomeContent(
                             genres = enrichedItem.genres.take(3).asStable(),
                             poster = enrichedItem.poster,
                             backdrop = enrichedItem.backdropUrl,
-                            imageUrl = activeCarouselItem.heroPreview.imageUrl,
-                            frozenBackdropUrl = activeCarouselItem.heroPreview.frozenBackdropUrl,
-                            frozenLogoUrl = activeCarouselItem.heroPreview.frozenLogoUrl
+                            imageUrl = activeCarouselItem?.heroPreview?.imageUrl,
+                            frozenBackdropUrl = activeCarouselItem?.heroPreview?.frozenBackdropUrl,
+                            frozenLogoUrl = activeCarouselItem?.heroPreview?.frozenLogoUrl
                         )
                     } else null
 
@@ -927,7 +927,9 @@ fun ModernHomeContent(
                     val stableHasPreview = stable?.preview?.title?.isNotBlank() == true
 
                     when {
-                        isScrolling && stable != null && stableHasPreview -> stable
+                        // During vertical scroll: freeze stable to avoid flashing
+                        // transient addon data before enrichment completes
+                        isScrolling && stableHasPreview -> stable!!
                         // During rapid horizontal nav: freeze to avoid backdrop flashing
                         isRapidNav && stable != null -> stable
                         // Normal: show live state
