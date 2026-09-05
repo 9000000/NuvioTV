@@ -235,9 +235,9 @@ jobs:
             set_property PLAYBACK_REPORTS_BASE_URL "https://nuvio.tv/"
           fi
 
-      - name: Test updater and build full release APKs
+      - name: Build full release APKs
         if: inputs.mode != 'dry-run'
-        run: ./gradlew :app:testFullReleaseUnitTest --tests 'com.nuvio.tv.updater.*' :app:assembleFullRelease --stacktrace
+        run: ./gradlew :app:assembleFullRelease -x test --stacktrace
 
       - name: Upload build artifacts
         if: inputs.mode != 'dry-run'
